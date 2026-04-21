@@ -10,14 +10,14 @@ from django.http import HttpRequest, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
-from .models import ContactSubmission
+from .models import ContactSubmission, WaitlistEntry
 
 log = logging.getLogger(__name__)
 
 
 # ───────────────── /api/contact ─────────────────
 
-def _parse_contact_body(request: HttpRequest) -> dict[str, str]:
+def _parse_contact_body(request: HttpRequest) -> dict[str, object]:
     try:
         data = json.loads(request.body.decode("utf-8"))
     except (ValueError, UnicodeDecodeError):
@@ -50,10 +50,27 @@ def _parse_contact_body(request: HttpRequest) -> dict[str, str]:
     elif len(message) > 5000:
         errors["message"] = "Message must be 5000 characters or fewer."
 
+    # vineyard_size_acres is optional
+    vineyard_size_raw = data.get("vineyard_size_acres")
+    vineyard_size: int | None = None
+    if vineyard_size_raw not in (None, ""):
+        try:
+            vineyard_size = int(vineyard_size_raw)
+            if vineyard_size < 0 or vineyard_size > 100000:
+                errors["vineyard_size_acres"] = "Enter a number between 0 and 100000."
+                vineyard_size = None
+        except (TypeError, ValueError):
+            errors["vineyard_size_acres"] = "Vineyard size must be a number."
+
     if errors:
         raise ValueError(errors)
 
-    return {"name": name, "email": email, "message": message}
+    return {
+        "name": name,
+        "email": email,
+        "message": message,
+        "vineyard_size_acres": vineyard_size,
+    }
 
 
 def _send_contact_email(submission: ContactSubmission) -> None:
@@ -94,6 +111,15 @@ def _send_contact_email(submission: ContactSubmission) -> None:
 @csrf_exempt
 @require_POST
 def contact(request: HttpRequest) -> JsonResponse:
+    # Honeypot: bots typically fill every field. A non-empty `website`
+    # returns success without saving — denies them useful signal.
+    try:
+        body = json.loads(request.body.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        body = {}
+    if isinstance(body, dict) and str(body.get("website", "")).strip():
+        return JsonResponse({"ok": True})
+
     try:
         fields = _parse_contact_body(request)
     except ValueError as exc:
@@ -108,6 +134,7 @@ def contact(request: HttpRequest) -> JsonResponse:
         name=fields["name"],
         email=fields["email"],
         message=fields["message"],
+        vineyard_size_acres=fields["vineyard_size_acres"],
     )
 
     try:
@@ -197,3 +224,38 @@ def estimate(request: HttpRequest) -> JsonResponse:
         },
         status=415,
     )
+
+
+# ───────────────── /api/waitlist ─────────────────
+
+@csrf_exempt
+@require_POST
+def waitlist(request: HttpRequest) -> JsonResponse:
+    try:
+        data = json.loads(request.body.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return JsonResponse({"error": "Body must be valid JSON."}, status=400)
+    if not isinstance(data, dict):
+        return JsonResponse({"error": "Body must be a JSON object."}, status=400)
+
+    # Honeypot: any non-empty value silently succeeds without saving.
+    if str(data.get("website", "")).strip():
+        return JsonResponse({"ok": True})
+
+    email = str(data.get("email", "")).strip()
+    source = str(data.get("source", "")).strip()[:64]
+
+    if not email:
+        return JsonResponse({"error": "Email is required."}, status=400)
+    if len(email) > 254:
+        return JsonResponse({"error": "Email is too long."}, status=400)
+    try:
+        validate_email(email)
+    except ValidationError:
+        return JsonResponse({"error": "Valid email is required."}, status=400)
+
+    entry, _created = WaitlistEntry.objects.get_or_create(
+        email=email,
+        defaults={"source": source},
+    )
+    return JsonResponse({"ok": True, "id": entry.id})

@@ -2,165 +2,83 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ===== GRAFT SYSTEMS BRAND PALETTE ===== */
-/* Burgundy wine-red brand + dark vineyard earth tones */
-
 @layer base {
   :root {
-    --background: 30 20% 96%;
-    --foreground: 24 30% 10%;
-    --card: 30 20% 97%;
-    --card-foreground: 24 30% 10%;
-    --popover: 30 20% 97%;
-    --popover-foreground: 24 30% 10%;
-    --primary: 352 62% 34%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 30 15% 90%;
-    --secondary-foreground: 24 30% 10%;
-    --muted: 30 10% 85%;
-    --muted-foreground: 24 10% 45%;
-    --accent: 30 15% 90%;
-    --accent-foreground: 24 30% 10%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 30 10% 82%;
-    --input: 30 10% 82%;
-    --ring: 352 62% 34%;
-    --radius: 0.5rem;
-    --chart-1: 352 62% 34%;
-    --chart-2: 30 50% 45%;
-    --chart-3: 120 30% 45%;
-    --chart-4: 45 70% 55%;
-    --chart-5: 200 50% 50%;
-    --sidebar-background: 24 20% 12%;
-    --sidebar-foreground: 30 20% 90%;
-    --sidebar-primary: 352 62% 34%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 24 15% 18%;
-    --sidebar-accent-foreground: 30 20% 90%;
-    --sidebar-border: 24 10% 20%;
-    --sidebar-ring: 352 62% 34%;
+    /* Night Harvest palette — HSL for alpha modifiers */
+    --background: 26 27% 5%;        /* #0E0B08 */
+    --surface: 20 16% 11%;           /* #1A1613 */
+    --foreground: 33 40% 92%;        /* #F4ECE0 */
+    --foreground-muted: 25 11% 58%;  /* #9A8F82 */
+    --burgundy: 353 59% 30%;         /* #7A1F2B */
+    --amber: 33 79% 57%;             /* #E8A13A */
+    --sage: 95 22% 46%;              /* #6B8E5A */
+    --border: 30 12% 18%;            /* near-surface */
   }
 
-  .dark {
-    --background: 24 25% 8%;
-    --foreground: 30 15% 90%;
-    --card: 24 20% 10%;
-    --card-foreground: 30 15% 90%;
-    --popover: 24 20% 10%;
-    --popover-foreground: 30 15% 90%;
-    --primary: 352 55% 45%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 24 15% 16%;
-    --secondary-foreground: 30 15% 90%;
-    --muted: 24 10% 20%;
-    --muted-foreground: 30 10% 55%;
-    --accent: 24 15% 16%;
-    --accent-foreground: 30 15% 90%;
-    --destructive: 0 62% 50%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 24 10% 20%;
-    --input: 24 10% 20%;
-    --ring: 352 55% 45%;
-    --chart-1: 352 55% 45%;
-    --chart-2: 30 45% 50%;
-    --chart-3: 120 30% 50%;
-    --chart-4: 45 65% 60%;
-    --chart-5: 200 45% 55%;
-  }
-}
-
-@layer base {
   * {
-    border-color: hsl(var(--border));
+    @apply border-border;
   }
+
+  html,
   body {
     @apply bg-background text-foreground;
-    font-family: 'Titillium Web', sans-serif;
-    font-weight: 400;
     -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "ss01", "cv11";
   }
-  h1, h2, h3, h4, h5, h6 {
-    font-family: 'Titillium Web', sans-serif;
-    font-weight: 600;
+
+  body {
+    min-height: 100dvh;
+    font-family: var(--font-sans);
+  }
+
+  ::selection {
+    background: hsl(var(--burgundy));
+    color: hsl(var(--foreground));
+  }
+
+  /* Lenis smooth scroll */
+  html.lenis,
+  html.lenis body {
+    height: auto;
+  }
+
+  .lenis.lenis-smooth {
+    scroll-behavior: auto !important;
+  }
+
+  .lenis.lenis-smooth [data-lenis-prevent] {
+    overscroll-behavior: contain;
+  }
+
+  .lenis.lenis-stopped {
+    overflow: clip;
   }
 }
 
-.bg-vineyard-earth {
-  background-color: #2C1810;
+@layer utilities {
+  .eyebrow {
+    @apply font-sans text-eyebrow uppercase tracking-[0.08em] text-foreground-muted;
+  }
+  .display {
+    @apply font-display;
+  }
+  .numeric {
+    @apply font-mono tabular-nums;
+  }
+  .frame {
+    @apply font-frame uppercase tracking-[0.12em];
+  }
 }
 
-.text-cream {
-  color: #F5F0E8;
-}
-
-.navbar-scrolled {
-  background-color: rgba(255, 255, 255, 0.97);
-  backdrop-filter: blur(12px);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-}
-
-.navbar-transparent {
-  background-color: transparent;
-}
-
-.vine-tracker {
-  position: fixed;
-  left: 0;
-  top: 0;
-  width: 60px;
-  height: 100vh;
-  z-index: 40;
-  pointer-events: none;
-}
-
-@keyframes scanLine {
-  0% { top: 0; opacity: 1; }
-  90% { top: 100%; opacity: 1; }
-  100% { top: 100%; opacity: 0; }
-}
-
-.scan-line {
-  animation: scanLine 3s ease-in-out infinite;
-  animation-delay: 1s;
-}
-
-@keyframes barrelRoll {
-  0% { transform: translateX(-100px) rotate(0deg); opacity: 0; }
-  20% { opacity: 1; }
-  100% { transform: translateX(0) rotate(360deg); opacity: 1; }
-}
-
-.barrel-roll-in {
-  animation: barrelRoll 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-.ramp-shape {
-  clip-path: polygon(0 0, 100% 60%, 100% 100%, 0 100%);
-}
-
-@keyframes pulse-ring {
-  0% { transform: scale(1); opacity: 0.8; }
-  50% { transform: scale(1.15); opacity: 0.4; }
-  100% { transform: scale(1); opacity: 0.8; }
-}
-
-.weight-circle {
-  animation: pulse-ring 2s ease-in-out infinite;
-}
-
-@keyframes cameraFlash {
-  0% { opacity: 0; }
-  10% { opacity: 0.95; }
-  30% { opacity: 0.7; }
-  100% { opacity: 0; }
-}
-
-.camera-flash {
-  animation: cameraFlash 0.6s ease-out forwards;
-}
-
-html {
-  scroll-behavior: smooth;
+/* Reduced motion: disable all decorative motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

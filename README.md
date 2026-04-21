@@ -33,7 +33,7 @@ Push directly to `main` only for tiny fixes. Any real change → branch + open a
 | **Backend** | Django 5, Python 3.12+ | [`backend/`](./backend/) |
 | **Email** | Resend (transactional) | Backend → `/api/contact` |
 | **Database** | SQLite (dev), Postgres (prod) | Backend |
-| **Deploy target** | Vercel (frontend), Railway (backend) | TBD |
+| **Deploy target** | Vercel (frontend), Render (backend) | [`render.yaml`](./render.yaml) |
 
 How the two talk to each other:
 
@@ -103,6 +103,37 @@ With both running, go to http://localhost:3000/contact and submit the form.
 - Response bubbles back to the browser
 
 View stored submissions at http://127.0.0.1:8080/admin/ (after you've run `createsuperuser` — see backend README).
+
+---
+
+## Deploying (Vercel + Render)
+
+### 1) Deploy backend on Render
+
+1. In Render, create a new Blueprint and point it at this repo.
+2. Render will detect [`render.yaml`](./render.yaml) and create:
+   - a web service (`graft-api`)
+   - a Postgres database (`graft-db`)
+3. In the Render service env vars, set:
+   - `DJANGO_ALLOWED_HOSTS` to your actual Render host
+   - `CORS_ALLOWED_ORIGINS` to your Vercel production domain(s)
+   - `CSRF_TRUSTED_ORIGINS` to your Vercel production domain(s)
+   - `RESEND_API_KEY` to your real Resend key
+4. Deploy and copy your backend URL, e.g. `https://graft-api.onrender.com`.
+
+### 2) Deploy frontend on Vercel
+
+1. Import this repo in Vercel.
+2. Set **Root Directory** to `frontend`.
+3. Add env var in Vercel:
+   - `BACKEND_URL=https://<your-render-service>.onrender.com`
+4. Deploy.
+
+### 3) Verify end-to-end
+
+1. Open your Vercel URL.
+2. Submit `/contact` form.
+3. Confirm response succeeds and new row appears in Django admin on Render.
 
 ---
 

@@ -1,12 +1,49 @@
 import type { Metadata } from "next";
+import { Fraunces, Inter, JetBrains_Mono, Titillium_Web } from "next/font/google";
+import { LenisProvider } from "@/components/providers/LenisProvider";
+import { FilmGrain } from "@/components/effects/FilmGrain";
+import { Nav } from "@/components/layout/Nav";
+import { Footer } from "@/components/layout/Footer";
 import "./globals.css";
 
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  variable: "--font-display",
+  display: "swap",
+  weight: ["400", "500"],
+  style: ["normal", "italic"],
+});
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-sans",
+  display: "swap",
+  weight: ["400", "500", "600"],
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono",
+  display: "swap",
+  weight: ["400", "500"],
+});
+
+const titillium = Titillium_Web({
+  subsets: ["latin"],
+  variable: "--font-frame",
+  display: "swap",
+  weight: ["600"],
+});
+
 export const metadata: Metadata = {
-  title: "Graft Systems — Know Your Yield Before the Harvest",
+  title: "Graft Systems — Know your yield before the harvest",
   description:
-    "Graft Systems uses AI to estimate grape cluster weight from photos. Know your yield before the harvest.",
-  icons: {
-    icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='4' fill='%238B2332'/><text x='16' y='22' text-anchor='middle' fill='white' font-size='18' font-weight='bold'>G</text></svg>",
+    "Yield intelligence for the modern vineyard. Graft returns a probability distribution for every estimate, so growers plan for what's likely — not just what's possible.",
+  metadataBase: new URL("https://graft.systems"),
+  openGraph: {
+    title: "Graft Systems",
+    description: "Know your yield before the harvest.",
+    type: "website",
   },
 };
 
@@ -16,20 +53,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin="anonymous"
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Titillium+Web:wght@400;600&display=swap"
-          rel="stylesheet"
-        />
-      </head>
-      <body>{children}</body>
+    <html
+      lang="en"
+      className={`dark ${fraunces.variable} ${inter.variable} ${jetbrainsMono.variable} ${titillium.variable}`}
+    >
+      <body className="antialiased">
+        <LenisProvider>
+          <Nav />
+          {children}
+          <Footer />
+        </LenisProvider>
+        <FilmGrain />
+      </body>
     </html>
   );
 }

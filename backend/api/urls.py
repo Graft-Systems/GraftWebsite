@@ -7,4 +7,5 @@ app_name = "api"
 urlpatterns = [
     path("contact", views.contact, name="contact"),
     path("estimate", views.estimate, name="estimate"),
+    path("waitlist", views.waitlist, name="waitlist"),
 ]

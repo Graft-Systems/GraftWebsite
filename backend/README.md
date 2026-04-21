@@ -127,11 +127,25 @@ The `/api/estimate` endpoint is currently a deterministic simulation — it hash
 
 When the real model is ready, replace `_simulate_estimate` in `api/views.py` with a call to your model. The response shape (`filename`, `bear`, `base`, `bull`, `blended`, `unit`, `model`) should stay the same so the frontend doesn't need to change.
 
-## Deploying to Railway (later)
+## Deploying to Render
 
-1. Sign up at [railway.app](https://railway.app).
-2. New project → Deploy from GitHub → pick `graft-website`, set root to `backend`.
-3. Add a Postgres plugin — Railway wires the `DATABASE_URL` env var automatically (you'll need to update `settings.py` to use `dj-database-url` to read it).
-4. Add the rest of the env vars from `.env.example` in Railway's dashboard.
-5. Set the start command to: `gunicorn graft_api.wsgi` (you'll need to `pip install gunicorn` and add to requirements).
-6. Deploy. Copy the Railway URL, and set `BACKEND_URL` on the Vercel deployment of the frontend to point at it.
+This repo includes a root-level `render.yaml` Blueprint that provisions:
+- a Python web service for this backend (`graft-api`)
+- a Postgres database (`graft-db`)
+
+### Deploy steps
+
+1. In Render, choose **New +** → **Blueprint** and connect this repository.
+2. Render will detect `render.yaml` and create both resources.
+3. In the web service env vars, set real values for:
+  - `DJANGO_ALLOWED_HOSTS` (your Render hostname)
+  - `CORS_ALLOWED_ORIGINS` (your Vercel production origin)
+  - `CSRF_TRUSTED_ORIGINS` (your Vercel production origin)
+  - `RESEND_API_KEY` (from resend.com)
+4. Deploy. Render runs migrations and collectstatic during startup.
+5. Copy your Render backend URL and set `BACKEND_URL` in Vercel frontend env vars.
+
+### Post-deploy checks
+
+1. Open `https://<your-render-service>.onrender.com/` and confirm `{ok: true}`.
+2. Post to `/api/contact` from your Vercel frontend and confirm success.

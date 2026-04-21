@@ -1,25 +1,23 @@
-import Navbar from "@/components/Navbar";
-import HeroSection from "@/components/HeroSection";
-import SnapPhotoSection from "@/components/SnapPhotoSection";
-import VineTracker from "@/components/VineTracker";
-import MLEstimationSection from "@/components/MLEstimationSection";
-import EstimationGraphSection from "@/components/EstimationGraphSection";
-import GeoLocatorSection from "@/components/GeoLocatorSection";
-import BarrelBenefitsSection from "@/components/BarrelBenefitsSection";
-import TryToolSection from "@/components/TryToolSection";
+import { SceneHero } from "@/components/scenes/SceneHero";
+import { SceneProblem } from "@/components/scenes/SceneProblem";
+import { SceneTool } from "@/components/scenes/SceneTool";
+import { SceneMap } from "@/components/scenes/SceneMap";
+import { SceneProof } from "@/components/scenes/SceneProof";
+import { SceneTarget } from "@/components/scenes/SceneTarget";
+import { SceneApproach } from "@/components/scenes/SceneApproach";
+import { SceneAsk } from "@/components/scenes/SceneAsk";
 
-export default function Home() {
+export default function HomePage() {
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <VineTracker />
-      <HeroSection />
-      <SnapPhotoSection />
-      <MLEstimationSection />
-      <EstimationGraphSection />
-      <GeoLocatorSection />
-      <BarrelBenefitsSection />
-      <TryToolSection />
-    </div>
+    <main className="relative">
+      <SceneHero />
+      <SceneProblem />
+      <SceneTool />
+      <SceneMap />
+      <SceneProof />
+      <SceneTarget />
+      <SceneApproach />
+      <SceneAsk />
+    </main>
   );
 }
