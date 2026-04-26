@@ -1,62 +1,61 @@
-# frontend-cinematic
+# Graft Frontend (Next.js)
 
-A second, parallel Next.js frontend for Graft Systems — the cinematic rebuild. Lives alongside [`frontend/`](../frontend/), which keeps shipping untouched.
+Primary website and tool UI for Graft Systems.
 
-## What this is
+## What this app does
 
-- **Next.js 15 / App Router / TypeScript / Tailwind** — same base stack as `frontend/`
-- Pre-wired for cinema: Framer Motion, GSAP + `@gsap/react`, Lenis (smooth scroll), Three.js + React Three Fiber + Drei
-- Shadcn-ready (clsx, tailwind-merge, cva, lucide-react, Radix primitives)
-- **API parity with `frontend/`** — identical `/api/:path*` → Django rewrite, identical env var names. No backend changes required to run either frontend.
+- Renders marketing pages and `/tool` upload workflow.
+- Sends estimate uploads to Django backend (`/api/estimate`).
+- Displays prediction history batches, including per-batch total predicted weight.
 
-## Run locally
+## Read this first
+
+For full clone-to-run setup (especially for a new engineer/agent), see:
+
+- `../backend/PredictionTool/HANDOFF.md`
+
+## Local setup
+
+From `frontend/`:
 
 ```bash
-cd frontend-cinematic
-cp .env.local.example .env.local   # edit BACKEND_URL + NEXT_PUBLIC_BACKEND_URL if Django runs elsewhere
+cp .env.local.example .env.local
 npm install
-npm run dev                         # http://localhost:3000
+npm run dev
 ```
 
-Backend (Django) runs the same way as before — see [`backend/README.md`](../backend/README.md). Default is `http://127.0.0.1:8080`.
+Frontend URL: `http://localhost:3000`
 
-> Only run one frontend at a time locally (both want port 3000). To run both side by side: `PORT=3001 npm run dev` in one of them.
+Backend default URL expected by this frontend: `http://127.0.0.1:8080`
+
+## Environment variables
+
+Copy `frontend/.env.local.example` to `.env.local`.
+
+Required values:
+
+```env
+BACKEND_URL=http://127.0.0.1:8080
+NEXT_PUBLIC_BACKEND_URL=http://127.0.0.1:8080
+```
+
+- `BACKEND_URL` is used by Next.js server-side rewrites.
+- `NEXT_PUBLIC_BACKEND_URL` is used by client-side uploads/history requests in `/tool`.
+
+## Backend dependency notes
+
+- This frontend assumes Django backend endpoints exist at:
+  - `POST /api/estimate`
+  - `GET /api/estimate/history`
+  - `DELETE /api/estimate/history/:batch_id`
+  - `POST /api/contact`
+- Upload inference is CSV-independent by design (no CSV enrichment on uploads).
 
 ## Scripts
 
 | Command | What it does |
 |---|---|
-| `npm run dev` | Dev server |
-| `npm run build` | Production build |
-| `npm run start` | Start built server |
-| `npm run lint` | ESLint |
-| `npm run typecheck` | `tsc --noEmit` |
-
-## Swapping to this on Vercel
-
-See [SWAP.md](./SWAP.md). Short version: change **Vercel Project Settings → General → Root Directory** from `frontend` to `frontend-cinematic`, redeploy. Env vars and build commands stay identical.
-
-## Structure
-
-```
-frontend-cinematic/
-├── app/                 # App Router pages
-│   ├── layout.tsx
-│   ├── page.tsx         # placeholder hero
-│   └── globals.css
-├── components/          # (empty — build as we go)
-├── hooks/
-├── lib/
-│   └── utils.ts         # cn() helper
-├── public/
-├── next.config.mjs      # /api/* → Django rewrite (same as frontend/)
-├── tailwind.config.ts   # minimal theme, dark-first, tokens via CSS vars
-├── tsconfig.json
-└── package.json
-```
-
-## Notes
-
-- Theme and type system are intentionally minimal. Colors, fonts, motion language all get defined once the creative brief comes back.
-- Uses `@/*` path alias.
-- `prefers-reduced-motion` is respected globally in `app/globals.css`.
+| `npm run dev` | Start local dev server |
+| `npm run build` | Build production bundle |
+| `npm run start` | Start built app |
+| `npm run lint` | Run ESLint |

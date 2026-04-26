@@ -58,9 +58,17 @@ You'll run **two processes** side by side — one for the frontend, one for the 
 ### Clone
 
 ```bash
-git clone https://github.com/bensontries/graft-website.git
-cd graft-website
+git clone https://github.com/Graft-Systems/GraftWebsite.git
+cd GraftWebsite
 ```
+
+### New contributor fast path
+
+If you're handing this to another engineer or coding agent, start with:
+
+- `backend/PredictionTool/HANDOFF.md`
+
+It is the authoritative "clone to running app" runbook.
 
 ### Terminal 1 — backend (Django)
 
@@ -167,6 +175,11 @@ Hosted on Django at `/api/*`. The frontend reaches them via Next.js's rewrite, s
 | `DELETE` | `/api/estimate/history/<batch_id>` | none | `{ok: true, id}` |
 
 Full docs in [`backend/README.md`](./backend/README.md).
+
+Current upload inference policy:
+
+- Uploaded-image prediction does not use CSV filename enrichment.
+- Upload responses do not include `ground_truth_weight` or `absolute_error`.
 
 ---
 

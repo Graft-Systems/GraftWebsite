@@ -2,6 +2,8 @@
 
 Python/Django backend for the Graft Systems website. Serves two endpoints used by the Next.js frontend.
 
+If you are new to this repo, read `backend/PredictionTool/HANDOFF.md` first for end-to-end setup.
+
 ## Endpoints
 
 | Method | Path | What it does |
@@ -109,7 +111,7 @@ curl -X POST http://127.0.0.1:8080/api/estimate \
 
 # Estimate history
 curl "http://127.0.0.1:8080/api/estimate/history?limit=5"
-# → {"batches":[...], "summary":{"count":5,"limit":5}}
+# → {"batches":[{"summary":{"processed":...,"model":"...","total_prediction_weight":...,"total_unit":"kg"}, ...}], "summary":{"count":5,"limit":5}}
 
 # Delete a batch (hard delete)
 curl -X DELETE "http://127.0.0.1:8080/api/estimate/history/12"
@@ -149,6 +151,7 @@ Prediction results now include `image_url` when an uploaded image was stored.
 
 Uploaded images are always treated as unseen inference-only inputs.
 `/api/estimate` does not use filename-based CSV lookup for tabular features or ground-truth labels.
+Upload results omit `ground_truth_weight` and `absolute_error`.
 
 ## Deploying to Render
 
