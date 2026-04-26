@@ -173,6 +173,33 @@ export function SceneMap() {
 
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
+  // Force Mapbox to resize its canvas when the container size changes —
+  // crucial on mobile where the initial viewport height can be 0 during
+  // layout, and on orientation changes where the container dimensions
+  // shift after the map has already mounted.
+  useEffect(() => {
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    const container = map.getContainer();
+    if (!container) return;
+
+    const observer = new ResizeObserver(() => {
+      map.resize();
+    });
+    observer.observe(container);
+
+    // One-shot resize after a couple of frames to catch any initial
+    // 0-height render.
+    const rafId = requestAnimationFrame(() => {
+      requestAnimationFrame(() => map.resize());
+    });
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      observer.disconnect();
+    };
+  }, [token]);
+
   return (
     <section
       ref={sectionRef}
@@ -181,7 +208,7 @@ export function SceneMap() {
     >
       <div className="sticky top-0 flex h-[100svh] w-full flex-col md:flex-row">
         {/* Map pane */}
-        <div className="relative flex-1">
+        <div className="relative h-[55svh] w-full shrink-0 md:h-full md:w-auto md:flex-1 md:shrink">
           {tokenMissing || !token ? (
             <MapTokenPlaceholder />
           ) : (
@@ -308,7 +335,7 @@ export function SceneMap() {
         </div>
 
         {/* Side panel */}
-        <aside className="relative z-10 flex h-full w-full flex-col justify-center border-t border-border/40 bg-surface/95 px-6 py-12 backdrop-blur-md md:w-[36%] md:border-l md:border-t-0 md:px-10 lg:w-[32%]">
+        <aside className="relative z-10 flex w-full flex-1 flex-col justify-center border-t border-border/40 bg-surface/95 px-6 py-8 backdrop-blur-md md:h-full md:w-[36%] md:flex-none md:border-l md:border-t-0 md:px-10 md:py-12 lg:w-[32%]">
           <AnimatePresence mode="wait">
             <motion.div
               key={beat}
