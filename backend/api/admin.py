@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import ContactSubmission, WaitlistEntry
+from .models import ContactSubmission, PredictionBatch, PredictionResult, WaitlistEntry
 
 
 @admin.register(ContactSubmission)
@@ -43,6 +43,36 @@ class WaitlistEntryAdmin(admin.ModelAdmin):
     search_fields = ("email", "source")
     readonly_fields = ("email", "source", "created_at")
     ordering = ("-created_at",)
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+
+class PredictionResultInline(admin.TabularInline):
+    model = PredictionResult
+    extra = 0
+    can_delete = False
+    readonly_fields = (
+        "filename",
+        "prediction_weight",
+        "ground_truth_weight",
+        "absolute_error",
+        "unit",
+        "model",
+        "depth_used",
+        "latency_ms",
+        "created_at",
+    )
+
+
+@admin.register(PredictionBatch)
+class PredictionBatchAdmin(admin.ModelAdmin):
+    list_display = ("id", "model_name", "processed_count", "created_at")
+    list_filter = ("model_name", "created_at")
+    search_fields = ("id", "model_name")
+    readonly_fields = ("model_name", "processed_count", "created_at")
+    ordering = ("-created_at",)
+    inlines = (PredictionResultInline,)
 
     def has_add_permission(self, request) -> bool:
         return False

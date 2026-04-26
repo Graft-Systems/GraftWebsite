@@ -13,7 +13,7 @@ A second, parallel Next.js frontend for Graft Systems — the cinematic rebuild.
 
 ```bash
 cd frontend-cinematic
-cp .env.local.example .env.local   # edit BACKEND_URL if your Django runs elsewhere
+cp .env.local.example .env.local   # edit BACKEND_URL + NEXT_PUBLIC_BACKEND_URL if Django runs elsewhere
 npm install
 npm run dev                         # http://localhost:3000
 ```

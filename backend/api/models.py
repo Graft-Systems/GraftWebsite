@@ -40,3 +40,39 @@ class WaitlistEntry(models.Model):
 
     def __str__(self) -> str:
         return f"{self.email} — {self.created_at:%Y-%m-%d %H:%M}"
+
+
+class PredictionBatch(models.Model):
+    model_name = models.CharField(max_length=128, blank=True, default="")
+    processed_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Batch {self.id} — {self.processed_count} items — {self.created_at:%Y-%m-%d %H:%M}"
+
+
+class PredictionResult(models.Model):
+    batch = models.ForeignKey(
+        PredictionBatch,
+        on_delete=models.CASCADE,
+        related_name="results",
+    )
+    filename = models.CharField(max_length=255)
+    prediction_weight = models.FloatField()
+    ground_truth_weight = models.FloatField(null=True, blank=True)
+    absolute_error = models.FloatField(null=True, blank=True)
+    unit = models.CharField(max_length=32, default="kg")
+    model = models.CharField(max_length=128, blank=True, default="")
+    depth_used = models.CharField(max_length=512, null=True, blank=True)
+    latency_ms = models.PositiveIntegerField(default=0)
+    image = models.ImageField(upload_to="prediction_uploads/%Y/%m/%d", null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["id"]
+
+    def __str__(self) -> str:
+        return f"{self.filename} — {self.prediction_weight:.3f} {self.unit}"

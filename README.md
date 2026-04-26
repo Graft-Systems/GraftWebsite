@@ -86,11 +86,19 @@ Backend now running at http://127.0.0.1:8080.
 
 ```bash
 cd frontend
+cp .env.local.example .env.local
 npm install
 npm run dev
 ```
 
 Open http://localhost:3000.
+
+For local uploads on `/tool`, keep both of these in `frontend/.env.local`:
+
+```bash
+BACKEND_URL=http://127.0.0.1:8080
+NEXT_PUBLIC_BACKEND_URL=http://127.0.0.1:8080
+```
 
 ### Submitting the contact form
 
@@ -127,6 +135,7 @@ View stored submissions at http://127.0.0.1:8080/admin/ (after you've run `creat
 2. Set **Root Directory** to `frontend`.
 3. Add env var in Vercel:
    - `BACKEND_URL=https://<your-render-service>.onrender.com`
+   - `NEXT_PUBLIC_BACKEND_URL=https://<your-render-service>.onrender.com`
 4. Deploy.
 
 ### 3) Verify end-to-end
@@ -144,7 +153,7 @@ View stored submissions at http://127.0.0.1:8080/admin/ (after you've run `creat
 | `/` | Home | Hero, snap-a-photo CTA, ML estimation explainer, bear/base/bull graph, GPS precision, barrel benefits, footer CTA |
 | `/about` | About | Timeline, team bios, contact CTA |
 | `/contact` | Contact | Contact form → submits to backend |
-| `/tool` | Tool | Upload up to 5 cluster photos, get simulated estimates (client-side for now; will call `/api/estimate` once ML model ships) |
+| `/tool` | Tool | Upload cluster photos, run ML estimates, and view saved prediction history |
 
 ## API endpoints (backend)
 
@@ -153,7 +162,9 @@ Hosted on Django at `/api/*`. The frontend reaches them via Next.js's rewrite, s
 | Method | Path | Body | Response |
 |---|---|---|---|
 | `POST` | `/api/contact` | `{name, email, message}` | `{ok: true, id, email_status}` |
-| `POST` | `/api/estimate` | `{filenames: string[]}` or multipart `files` | `{results: [{filename, bear, base, bull, blended, unit, model}]}` |
+| `POST` | `/api/estimate` | multipart `files`, optional `batch_id` | `{results: [...], batch_id, summary: {processed, model}}` |
+| `GET` | `/api/estimate/history?limit=10` | query `limit` (1-50) | `{batches: [...], summary: {count, limit}}` |
+| `DELETE` | `/api/estimate/history/<batch_id>` | none | `{ok: true, id}` |
 
 Full docs in [`backend/README.md`](./backend/README.md).
 

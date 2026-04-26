@@ -112,6 +112,8 @@ USE_TZ = True
 # Static files — WhiteNoise serves admin CSS/JS in production.
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
 STORAGES = {
     "default": {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
@@ -174,6 +176,27 @@ CONTACT_FROM_EMAIL = os.environ.get(
     "CONTACT_FROM_EMAIL",
     "Graft Systems Site <onboarding@resend.dev>",
 )
+
+# Prediction Tool integration.
+PREDICTION_TOOL_ROOT = os.environ.get(
+    "PREDICTION_TOOL_ROOT",
+    str(BASE_DIR / "PredictionTool"),
+)
+PREDICTION_TRAIN_DIR = os.environ.get(
+    "PREDICTION_TRAIN_DIR",
+    str(Path(PREDICTION_TOOL_ROOT) / "data" / "raw"),
+)
+_default_prediction_csv = str(Path(PREDICTION_TRAIN_DIR) / "Ground Truth for Dataset 4.csv")
+PREDICTION_TRAIN_CSV = os.environ.get("PREDICTION_TRAIN_CSV", _default_prediction_csv)
+PREDICTION_GT_CSV = os.environ.get("PREDICTION_GT_CSV", PREDICTION_TRAIN_CSV)
+PREDICTION_MODEL_PATH = os.environ.get("PREDICTION_MODEL_PATH", "")
+PREDICTION_RUNS_DIR = os.environ.get(
+    "PREDICTION_RUNS_DIR",
+    str(Path(PREDICTION_TOOL_ROOT) / "backend" / "runs"),
+)
+PREDICTION_RANDOM_STATE = int(os.environ.get("PREDICTION_RANDOM_STATE", "42"))
+PREDICTION_VAL_FRACTION = float(os.environ.get("PREDICTION_VAL_FRACTION", "0.2"))
+PREDICTION_USE_RAW_DEPTH = _env_bool("PREDICTION_USE_RAW_DEPTH", True)
 
 
 # ───── Production hardening ─────

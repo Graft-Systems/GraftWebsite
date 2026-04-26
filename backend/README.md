@@ -9,7 +9,9 @@ Python/Django backend for the Graft Systems website. Serves two endpoints used b
 | `GET` | `/` | Healthcheck — returns `{ok: true, service: "graft-api"}` |
 | `GET` | `/admin/` | Django admin panel (view contact submissions, manage users) |
 | `POST` | `/api/contact` | Saves a contact form submission to the database and sends an email via Resend |
-| `POST` | `/api/estimate` | Returns simulated grape-cluster weight estimates (stub — swap this out for the real ML model when ready) |
+| `POST` | `/api/estimate` | Runs ML inference, appends results to an optional active batch (`batch_id`), returns `batch_id` + batch summary |
+| `GET` | `/api/estimate/history?limit=10` | Returns recent saved prediction batches (most recent first) |
+| `DELETE` | `/api/estimate/history/<batch_id>` | Permanently deletes a saved prediction batch and all nested predictions |
 
 ## Stack
 
@@ -94,11 +96,24 @@ curl -X POST http://127.0.0.1:8080/api/contact \
   -d '{"name":"","email":"not-an-email","message":""}'
 # → 400 with per-field `issues` object
 
-# Estimate (JSON)
+# Estimate (multipart upload, new batch)
 curl -X POST http://127.0.0.1:8080/api/estimate \
-  -H "Content-Type: application/json" \
-  -d '{"filenames":["cluster-a.jpg"]}'
-# → {"results": [{filename, bear, base, bull, blended, unit, model}]}
+  -F "files=@/path/to/cluster-a.jpg"
+# → {"results":[{"filename":"...","prediction_weight":...,"image_url":"/media/prediction_uploads/..."}], "batch_id": 12, "summary":{"processed":1,"model":"..."}}
+
+# Estimate (append to active batch)
+curl -X POST http://127.0.0.1:8080/api/estimate \
+  -F "batch_id=12" \
+  -F "files=@/path/to/cluster-b.jpg"
+# → {"results":[...], "batch_id": 12, "summary":{"processed":2,"model":"..."}}
+
+# Estimate history
+curl "http://127.0.0.1:8080/api/estimate/history?limit=5"
+# → {"batches":[...], "summary":{"count":5,"limit":5}}
+
+# Delete a batch (hard delete)
+curl -X DELETE "http://127.0.0.1:8080/api/estimate/history/12"
+# → {"ok": true, "id": 12}
 ```
 
 ## Layout
@@ -121,11 +136,19 @@ backend/
     └── migrations/
 ```
 
-## Swapping in the real ML model
+## Prediction history persistence
 
-The `/api/estimate` endpoint is currently a deterministic simulation — it hashes the filename to generate bear/base/bull numbers.
+Every successful `/api/estimate` request is saved as:
+- `PredictionBatch` (one row per upload request)
+- `PredictionResult` (one row per uploaded image, linked to the batch)
 
-When the real model is ready, replace `_simulate_estimate` in `api/views.py` with a call to your model. The response shape (`filename`, `bear`, `base`, `bull`, `blended`, `unit`, `model`) should stay the same so the frontend doesn't need to change.
+Use `/api/estimate/history` to read recent saved batches.
+Prediction results now include `image_url` when an uploaded image was stored.
+
+## Inference CSV enrichment
+
+Uploaded images are always treated as unseen inference-only inputs.
+`/api/estimate` does not use filename-based CSV lookup for tabular features or ground-truth labels.
 
 ## Deploying to Render
 
