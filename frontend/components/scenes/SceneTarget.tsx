@@ -34,10 +34,10 @@ export function SceneTarget() {
             transition={{ duration: 0.8, delay: 0.6 }}
             className="mt-8 max-w-md text-base leading-relaxed text-foreground/75 sm:text-lg"
           >
-            The industry baseline for manual yield forecasting is ±20 to 30%
-            error (Dunn and Martin, 2004). Graft is engineered toward 95%
-            accuracy at the block level, with probabilistic output at every
-            granularity.
+            The current industry baseline for manual yield forecasting runs
+            up to 30% error (Ahmedt-Aristizabal et al., 2024). Graft is
+            engineered toward ±5% error at the block level, with probabilistic
+            output at every granularity.
           </motion.p>
 
           <motion.p
@@ -77,8 +77,7 @@ export function SceneTarget() {
             transition={{ duration: 0.6, delay: 1.8 }}
             className="frame pt-6 text-[0.6rem] text-foreground-muted"
           >
-            SOURCE · DUNN AND MARTIN (2004). Australian Journal of Grape and
-            Wine Research, 10(3), 196–198.
+            SOURCE · AHMEDT-ARISTIZABAL ET AL. (2024). IEEE Access.
           </motion.p>
         </div>
       </div>

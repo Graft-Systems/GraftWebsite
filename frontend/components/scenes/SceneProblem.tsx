@@ -6,13 +6,13 @@ import { SplitTextReveal } from "@/components/ui/SplitTextReveal";
 
 const STATS = [
   {
-    text: "Manual yield forecasts carry errors of ±20 to 30%, with block-level variance frequently exceeding 30%.",
-    source: "Dunn and Martin, 2004",
+    text: "Manual yield forecasting in current practice carries error of up to 30%, with block-level variance often exceeding that baseline.",
+    source: "Ahmedt-Aristizabal et al., IEEE Access, 2024",
     parallax: 32,
   },
   {
-    text: "Lag-phase berry-weight sampling errors run 10 to 25%. Cluster-count method errors commonly exceed 20%.",
-    source: "Clingeleffer et al., 2001",
+    text: "Traditional manual cluster-count sampling averages 7.9% error across seasons and cultivars, with maximum errors reaching 23.5%.",
+    source: "Jaramillo et al., 2021",
     parallax: 18,
   },
 ];
@@ -125,10 +125,11 @@ function PullQuote() {
       transition={{ duration: 0.85, ease: [0.2, 0.9, 0.3, 1] }}
     >
       <p className="display text-2xl italic leading-snug text-foreground lg:text-[1.75rem]">
-        &ldquo;Forecasts should be considered estimates, not predictions.&rdquo;
+        &ldquo;Current methods are labour-intensive, costly, and lack spatial
+        coverage, reducing accuracy and cost-efficiency.&rdquo;
       </p>
       <footer className="mt-5 frame text-[0.62rem] text-foreground-muted">
-        Oregon State Extension · Yield Estimation of Winegrapes
+        Ahmedt-Aristizabal et al. · IEEE Access (2024)
       </footer>
     </motion.blockquote>
   );
