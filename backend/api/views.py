@@ -203,6 +203,13 @@ def _serialize_prediction_batch(
     ordered_results = list(batch.results.all().order_by("-id"))
     total_prediction_weight = sum(result.prediction_weight for result in ordered_results)
     total_unit = ordered_results[0].unit if ordered_results else "kg"
+    # Cluster-level estimate: when a user uploads N views of one cluster, the
+    # average is a calibrated single-cluster prediction (v4-H2 aggregation).
+    # Frontend can show this when N > 1 instead of the misleading sum.
+    n_results = len(ordered_results)
+    average_prediction_weight = (
+        total_prediction_weight / n_results if n_results else 0.0
+    )
     return {
         "id": batch.id,
         "created_at": batch.created_at.isoformat(),
@@ -211,6 +218,8 @@ def _serialize_prediction_batch(
             "model": batch.model_name or "unknown",
             "total_prediction_weight": total_prediction_weight,
             "total_unit": total_unit,
+            "average_prediction_weight": average_prediction_weight,
+            "average_unit": total_unit,
         },
         "results": [
             _serialize_prediction_result(result, request=request)
@@ -359,6 +368,21 @@ def estimate(request: HttpRequest) -> JsonResponse:
                     status=500,
                 )
 
+        # Cluster-level estimate (v4-H2): when N > 1, this is the calibrated
+        # single-cluster prediction. Calibrated for "user uploads N views of
+        # one cluster" — the dominant production usage.
+        per_image_predictions = [
+            float(item.prediction_weight) for item in ordered_persisted_results
+        ]
+        n_persisted = len(per_image_predictions)
+        total_prediction_weight = sum(per_image_predictions)
+        average_prediction_weight = (
+            total_prediction_weight / n_persisted if n_persisted else 0.0
+        )
+        unit = (
+            ordered_persisted_results[0].unit if ordered_persisted_results else "kg"
+        )
+
         return JsonResponse(
             {
                 "results": [
@@ -369,6 +393,10 @@ def estimate(request: HttpRequest) -> JsonResponse:
                 "summary": {
                     "processed": batch.processed_count,
                     "model": batch.model_name or "unknown",
+                    "total_prediction_weight": total_prediction_weight,
+                    "total_unit": unit,
+                    "average_prediction_weight": average_prediction_weight,
+                    "average_unit": unit,
                 },
             }
         )

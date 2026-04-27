@@ -236,7 +236,14 @@ def _load_v2_runtime() -> dict[str, Any]:
             )
 
         regressor = joblib.load(model_path)
-        model_name_str = f"grape-weight-v2-{backbone}-hgb"
+        # Prefer the sidecar metadata's explicit model name (lets v4 / future
+        # artifacts identify themselves accurately in PredictionBatch.model_name);
+        # fall back to a generic name derived from the backbone if absent.
+        model_name_str = (
+            sidecar.get("model_name_for_adapter")
+            if isinstance(sidecar, dict) and isinstance(sidecar.get("model_name_for_adapter"), str)
+            else f"grape-weight-{backbone}-hgb"
+        )
 
         _v2_cache_key = cache_key
         _v2_cache = {

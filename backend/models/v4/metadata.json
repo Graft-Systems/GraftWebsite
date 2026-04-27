@@ -1,0 +1,27 @@
+{
+  "backbone": "dinov2_vits14",
+  "feature_dim": 384,
+  "feature_extractor_recipe": {
+    "model": "dinov2_vits14",
+    "input_size": 518,
+    "preprocessing": "ImageNet mean/std normalization",
+    "tta": false
+  },
+  "target_transform": "log/exp",
+  "aggregation_strategy": "api-level: average per-image predictions across uploaded batch",
+  "cv_mape_pct_per_image": 20.8,
+  "cv_mape_pct_with_aggregation": 17.9,
+  "cv_r2_per_image": 0.29,
+  "cv_r2_with_aggregation": 0.48,
+  "n_train_samples": 350,
+  "n_unique_clusters": 50,
+  "training_timestamp_utc": "2026-04-27T03:14:12Z",
+  "regression_baseline_v2_mape_pct": 23.2,
+  "model_name_for_adapter": "grape-weight-v4g-dinov2_vits14-log-hgb",
+  "deploy_notes": [
+    "Same single-pass DINOv2 ViT-S/14 features as v2-A \u2014 ~1s/image on Render.",
+    "Log-target wrapped inside the joblib via TransformedTargetRegressor.",
+    "Cluster aggregation is API-side: see average_prediction_weight in batch summary.",
+    "If user uploads N views of one cluster, the average field is the calibrated estimate."
+  ]
+}

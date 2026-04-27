@@ -43,7 +43,7 @@ services:
       - key: PREDICTION_BACKBONE
         value: dinov2_vits14
       - key: PREDICTION_MODEL_PATH
-        value: models/v2/model.joblib
+        value: models/v4/model.joblib
       - key: PREDICTION_TOOL_ROOT
         value: .
       - key: PREDICTION_USE_RAW_DEPTH
