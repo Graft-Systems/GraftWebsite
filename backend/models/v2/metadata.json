@@ -1,0 +1,21 @@
+{
+  "variant": "A",
+  "variant_label": "A: CNN 384-dim + HistGradientBoosting",
+  "backbone": "dinov2_vits14",
+  "backbone_input_px": 518,
+  "imagenet_preprocess": true,
+  "cv_mape_pct": 23.21,
+  "cv_mae_g": 89.4,
+  "cv_rmse_g": 120.48,
+  "cv_r2": 0.2464,
+  "n_samples": 350,
+  "n_splits": 5,
+  "random_state": 42,
+  "feature_spec": {
+    "type": "cnn_only",
+    "cnn_backbone": "dinov2_vits14",
+    "cnn_dim": 384,
+    "total_dim": 384
+  },
+  "trained_at": "2026-04-26T22:55:38.810947+00:00"
+}

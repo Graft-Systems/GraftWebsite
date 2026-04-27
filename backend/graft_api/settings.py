@@ -197,6 +197,7 @@ PREDICTION_RUNS_DIR = os.environ.get(
 PREDICTION_RANDOM_STATE = int(os.environ.get("PREDICTION_RANDOM_STATE", "42"))
 PREDICTION_VAL_FRACTION = float(os.environ.get("PREDICTION_VAL_FRACTION", "0.2"))
 PREDICTION_USE_RAW_DEPTH = _env_bool("PREDICTION_USE_RAW_DEPTH", True)
+PREDICTION_BACKBONE = os.environ.get("PREDICTION_BACKBONE", "hand").strip().lower()
 
 
 # ───── Production hardening ─────

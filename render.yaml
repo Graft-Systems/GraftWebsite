@@ -3,14 +3,17 @@ services:
     name: graft-api
     runtime: python
     rootDir: backend
-    plan: free
+    plan: pro
     autoDeploy: true
     healthCheckPath: /
-    buildCommand: pip install -r requirements.txt
+    buildCommand: >-
+      pip install -r requirements.txt &&
+      python -c "import torch; torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14', verbose=False)"
     startCommand: >-
       bash -lc "python manage.py migrate --noinput &&
       python manage.py collectstatic --noinput &&
-      gunicorn graft_api.wsgi --bind 0.0.0.0:$PORT --log-file - --capture-output --error-logfile -"
+      gunicorn graft_api.wsgi --bind 0.0.0.0:$PORT --log-file - --capture-output --error-logfile -
+      --workers 1 --timeout 120"
     envVars:
       - key: PYTHON_VERSION
         value: 3.13.2
@@ -36,6 +39,15 @@ services:
         fromDatabase:
           name: graft-db
           property: connectionString
+      # ── v2 inference (DINOv2 + HistGradientBoosting) ──
+      - key: PREDICTION_BACKBONE
+        value: dinov2_vits14
+      - key: PREDICTION_MODEL_PATH
+        value: models/v2/model.joblib
+      - key: PREDICTION_TOOL_ROOT
+        value: .
+      - key: PREDICTION_USE_RAW_DEPTH
+        value: "false"
 
 databases:
   - name: graft-db
