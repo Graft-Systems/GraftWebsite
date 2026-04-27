@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import vineyardHeroImage from "../../../backend/PredictionTool/frontend/src/assets/9001767d22a96a837c810a69a1e41d17ce23ac36.png";
+import vineyardHeroImage from "./assets/tool-hero.png";
 
 type ResultItem = {
   filename: string;
