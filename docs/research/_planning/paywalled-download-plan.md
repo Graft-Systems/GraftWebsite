@@ -1,6 +1,6 @@
 # Paywalled Sources Download Plan
 
-**Status:** 0 of 47 retrieved.
+**Status:** 10 of 47 retrieved. (Outstanding quick win: P6 Magarey 2005 in 06_outbreak-prediction.)
 **Owner:** Benson Klein (bensonn@umich.edu, University of Michigan library access).
 **Source of truth:** `paywalled_queue.md` (read-only). This file is the operational checklist generated from it.
 **Generated:** 2026-04-29.
@@ -90,8 +90,8 @@ Save to: `docs/research/assets/01_visual-detection/paywalled/`
 |---|---|---|---|---|---|
 | ☐ | P1 | EPPO Standard PP 1/004 (4th ed.). Efficacy evaluation of fungicides: *Erysiphe necator* on grapevine. EPPO. | 2004 | https://www.eppo.int/RESOURCES/eppo_standards/pp1 (free EPPO; may need EPPO account) | `P1_EPPO_2004_PP1-004_E-necator.pdf` |
 | ☐ | P2 | Knauer et al. Improved classification of PM via spatial-spectral hyperspectral analysis. *Plant Methods*. | 2017 | 10.1186/s13007-017-0198-y | `P2_Knauer_2017_hyperspectral-PM.pdf` |
-| ☐ | P3 | Tang et al. Real-time detector for grape leaf diseases (GLDD, 4449 images). *Frontiers in Plant Science*. | 2020 | 10.3389/fpls.2020.00751 (PMC7285655, open access) | `P3_Tang_2020_GLDD-detector.pdf` |
-| ☐ | P4 | Hazelrigg et al. Disease susceptibility of cold-climate grapes in Vermont. | 2018 | https://www.uvm.edu/~orchard/fruit/pubs/18Hazelrigg_ISHS_GrapeDiseasePrePub.pdf (free UVM PDF) | `P4_Hazelrigg_2018_VT-cold-climate.pdf` |
+| ☑ | P3 | Tang et al. Real-time detector for grape leaf diseases (GLDD, 4449 images). *Frontiers in Plant Science*. | 2020 | 10.3389/fpls.2020.00751 (PMC7285655, open access) | `P3_Tang_2020_GLDD-detector.pdf` |
+| ☑ | P4 | Hazelrigg et al. Disease susceptibility of cold-climate grapes in Vermont. | 2018 | https://www.uvm.edu/~orchard/fruit/pubs/18Hazelrigg_ISHS_GrapeDiseasePrePub.pdf (free UVM PDF) | `P4_Hazelrigg_2018_VT-cold-climate.pdf` |
 
 ---
 
@@ -117,8 +117,8 @@ Save to: `docs/research/assets/04_industry-publications/paywalled/`
 |---|---|---|---|---|---|
 | ☐ | P1 | Puelles M et al. Predictive models for grape downy mildew DSS, Mediterranean. *Crop Protection*. | 2024 | 10.1016/j.cropro.2023.106484 | `P1_Puelles_2024_DSS-mediterranean.pdf` |
 | ☐ | P2 | Delière L et al. Field eval of expertise-based DSS for grapevine mildews. *Pest Management Science*. | 2015 | 10.1002/ps.3917 | `P2_Deliere_2015_expertise-DSS.pdf` |
-| ☐ | P3 | Caffi T et al. Weather-driven model for *P. viticola* infections. *Frontiers in Plant Science*. | 2021 | 10.3389/fpls.2021.636607 (PMC7985336, open access) | `P3_Caffi_2021_weather-driven-P-viticola.pdf` |
-| ☐ | P4 | Morales M et al. Trends and perspectives on predictive mildew models. *Microorganisms* (MDPI). | 2023 | 10.3390/microorganisms11010087 (PMC9866057, open access) | `P4_Morales_2023_predictive-models-trends.pdf` |
+| ☑ | P3 | Caffi T et al. Weather-driven model for *P. viticola* infections. *Frontiers in Plant Science*. | 2021 | 10.3389/fpls.2021.636607 (PMC7985336, open access) | `P3_Caffi_2021_weather-driven-P-viticola.pdf` |
+| ☑ | P4 | Morales M et al. Trends and perspectives on predictive mildew models. *Microorganisms* (MDPI). | 2023 | 10.3390/microorganisms11010087 (PMC9866057, open access) | `P4_Morales_2023_predictive-models-trends.pdf` |
 
 ---
 
@@ -130,9 +130,9 @@ Save to: `docs/research/assets/07_miscellaneous/paywalled/`
 |---|---|---|---|---|---|
 | ☐ | P1 | Valente et al. Accuracy of low-cost RTK GNSS systems. *Computers and Electronics in Agriculture*. | 2020 | 10.1016/j.compag.2018.12.033 | `P1_Valente_2020_RTK-GNSS.pdf` |
 | ☐ | P2 | Parhi P, Karlson A, Bederson B. Target size for one-handed thumb on small touchscreens. *MobileHCI*. | 2006 | 10.1145/1152215.1152260 | `P2_Parhi_2006_thumb-target-size.pdf` |
-| ☐ | P3 | EFSA. Training in evaluation of pesticides. | 2023 | https://pmc.ncbi.nlm.nih.gov/articles/PMC10687746/ (PMC, open access) | `P3_EFSA_2023_pesticide-training.pdf` |
+| ☑ | P3 | EFSA. Training in evaluation of pesticides. | 2023 | https://pmc.ncbi.nlm.nih.gov/articles/PMC10687746/ (PMC, open access) | `P3_EFSA_2023_pesticide-training.pdf` |
 | ☐ | P4 | MIT Touch Lab. Human fingertip width study. | 2003 | No DOI; search title | `P4_MIT_2003_fingertip-width.pdf` |
-| ☐ | P5 | ISO/ASABE. ISO 11783-1 Agricultural tractors serial data network (ISOBUS). | 2017 | https://cdn.standards.iteh.ai/samples/57556/6d72b9ee40524c4ebc04f82ade71a648/ISO-11783-1-2017.pdf (free sample) | `P5_ISO_2017_ISOBUS-11783.pdf` |
+| ☑ | P5 | ISO/ASABE. ISO 11783-1 Agricultural tractors serial data network (ISOBUS). | 2017 | https://cdn.standards.iteh.ai/samples/57556/6d72b9ee40524c4ebc04f82ade71a648/ISO-11783-1-2017.pdf (free sample) | `P5_ISO_2017_ISOBUS-11783.pdf` |
 
 ---
 
@@ -144,10 +144,10 @@ Save to: `docs/research/assets/business/paywalled/`
 |---|---|---|---|---|---|
 | ☐ | P1 | Broome et al. Fungicide Use Patterns in US Wine Grape Regions. *Plant Disease*. | 2024 | 10.1094/PDIS-04-23-0798-RE | `P1_Broome_2024_US-fungicide-patterns.pdf` |
 | ☐ | P2 | Rossi et al. Predictive models for grape downy mildew DSS Mediterranean. *Crop Protection*. | 2023 | 10.1016/j.cropro.2023.106358 | `P2_Rossi_2023_DSS-mediterranean.pdf` |
-| ☐ | P3 | Hyde C, Cal Poly. PM Cost Comparison Edna Valley. | 2010 | https://digitalcommons.calpoly.edu/cgi/viewcontent.cgi?article=1011&context=agbsp (Cal Poly free PDF) | `P3_Hyde_2010_PM-cost-edna-valley.pdf` |
-| ☐ | P4 | Fuller, Alston, Sambucci. Value of PM resistance in CA grapes. | 2014 | https://www.econstor.eu/bitstream/10419/194486/1/1-s2.0-S2212977414000234-main.pdf (EconStor free PDF) | `P4_Fuller_2014_PM-resistance-value.pdf` |
-| ☐ | P5 | DEPHY. Pesticide phase-out in viticulture. *OENO One*. | 2024 | https://oeno-one.eu/article/view/7885 (likely free OENO One) | `P5_DEPHY_2024_pesticide-phaseout.pdf` |
-| ☐ | P6 | EPRS. EU Directive 2009/128/EC Study. | 2018 | https://www.europarl.europa.eu/RegData/etudes/STUD/2018/627113/EPRS_STU(2018)627113_EN.pdf (free EU PDF) | `P6_EPRS_2018_EU-pesticide-directive.pdf` |
+| ☑ | P3 | Hyde C, Cal Poly. PM Cost Comparison Edna Valley. | 2010 | https://digitalcommons.calpoly.edu/cgi/viewcontent.cgi?article=1011&context=agbsp (Cal Poly free PDF) | `P3_Hyde_2010_PM-cost-edna-valley.pdf` |
+| ☑ | P4 | Fuller, Alston, Sambucci. Value of PM resistance in CA grapes. | 2014 | https://www.econstor.eu/bitstream/10419/194486/1/1-s2.0-S2212977414000234-main.pdf (EconStor free PDF) | `P4_Fuller_2014_PM-resistance-value.pdf` |
+| ☑ | P5 | DEPHY. Pesticide phase-out in viticulture. *OENO One*. | 2024 | https://oeno-one.eu/article/view/7885 (likely free OENO One) | `P5_DEPHY_2024_pesticide-phaseout.pdf` |
+| ☑ | P6 | EPRS. EU Directive 2009/128/EC Study. | 2018 | https://www.europarl.europa.eu/RegData/etudes/STUD/2018/627113/EPRS_STU(2018)627113_EN.pdf (free EU PDF) | `P6_EPRS_2018_EU-pesticide-directive.pdf` |
 
 ---
 
