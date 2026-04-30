@@ -1,0 +1,69 @@
+flowchart TD
+    subgraph Clients["Clients"]
+        direction LR
+        WEB["Browser\nNext.js apps/web"]
+        IOS["iOS App\nReact Native + Expo\n(Milestone 2)"]
+    end
+
+    subgraph Edge["CDN / Edge"]
+        direction LR
+        VERCEL["Vercel\n(web hosting + CDN)"]
+        CF["Cloudflare\n(DNS + DDoS)"]
+    end
+
+    subgraph AuthLayer["Auth"]
+        CLERK["Clerk\n(SSO across marketing + spray app)"]
+    end
+
+    subgraph API["API Layer"]
+        DJANGO["services/api\nDjango + DRF + PostGIS\n(Render)"]
+    end
+
+    subgraph ML["ML Inference"]
+        FASTAPI["services/ml\nFastAPI + DINOv2 / ConvNeXt\n(AWS / GCP GPU)"]
+    end
+
+    subgraph Workers["Background Workers"]
+        CELERY["services/worker\nCelery + Redis\n\nWeather pulls\nSA-1: UC IPM + uspest.org scrapes\nRisk-index recomputes\nNotification dispatch\nData-lake ETL"]
+    end
+
+    subgraph Data["Data Layer"]
+        PG["Postgres + PostGIS\n(Operational DB)"]
+        S3["S3 + Iceberg / Delta Lake\n(Data Lake)"]
+        REDIS["Redis\n(Queue + Cache)"]
+    end
+
+    subgraph External["External Providers"]
+        WEATHER["Visual Crossing / Tomorrow.io\n(Weather)"]
+        MAPS["Mapbox / MapLibre\n(Satellite Tiles)"]
+        UCIPM["UC IPM + uspest.org\n(Risk Indices, SA-1)"]
+        GEMINI["Gemini\n(Chatbot LLM)"]
+        APNS["APNs\n(Push Notifications)"]
+    end
+
+    subgraph Observability["Observability"]
+        OBS["Sentry + OpenTelemetry\nDatadog / Grafana"]
+    end
+
+    WEB -->|"HTTPS"| VERCEL
+    IOS -->|"HTTPS"| CF
+    VERCEL --> CLERK
+    CF --> CLERK
+    CLERK --> DJANGO
+    DJANGO --> PG
+    DJANGO --> REDIS
+    DJANGO --> FASTAPI
+    DJANGO --> GEMINI
+    CELERY --> REDIS
+    CELERY --> PG
+    CELERY --> S3
+    CELERY --> WEATHER
+    CELERY --> UCIPM
+    DJANGO --> S3
+    DJANGO --> MAPS
+    DJANGO --> APNS
+    WORKERS -.->|"job queue"| CELERY
+    DJANGO -.->|"emits events"| S3
+    DJANGO --> OBS
+    CELERY --> OBS
+    FASTAPI --> OBS

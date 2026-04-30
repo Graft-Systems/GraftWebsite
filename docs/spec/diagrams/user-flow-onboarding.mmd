@@ -1,0 +1,42 @@
+flowchart TD
+    A([Visitor arrives at\ngraft-systems.com])
+    B["Click 'Spray' in\nGraft nav"]
+    C["/spray landing page\n(hero + value prop + CTA)"]
+    D["Click 'Log in or Sign up'"]
+    E["Clerk auth modal\n(email / SSO)"]
+    F{"New user?"}
+    G["Email verification"]
+    H["Onboarding wizard\nStep 1: Accept Terms of Service"]
+    I["Step 2: Per-category data consent\n(ML training, research sharing,\nagronomic data, analytics)"]
+    J["Step 3: Create Organization\n(user becomes Owner)"]
+    K["Step 4: Draw vineyard polygon\non interactive satellite map"]
+    L["Label block\n(name, variety, row count, acres)"]
+    M["Save Block\n(geometry stored as PostGIS polygon)"]
+    N["Step 5: Connect weather feed\n(Visual Crossing default\nfor Napa / Sonoma region)"]
+    O["Step 6: First capture\n(upload photo of leaf cluster)"]
+    P["ML prediction returned\npowdery_prob, downy_prob\nseverity 1-10, confidence"]
+    Q["First Recommendation card\ndisplayed on dashboard\n(Spray / Hold / Monitor)"]
+    R([User lands on\nauthentic dashboard view])
+
+    A --> B
+    B --> C
+    C --> D
+    D --> E
+    E --> F
+    F -->|"new"| G
+    G --> H
+    F -->|"existing"| Q
+    H --> I
+    I --> J
+    J --> K
+    K --> L
+    L --> M
+    M --> N
+    N --> O
+    O --> P
+    P --> Q
+    Q --> R
+
+    style A fill:#f0f4ff,stroke:#4a6fa5
+    style R fill:#e8f5e9,stroke:#388e3c
+    style Q fill:#e8f5e9,stroke:#388e3c
