@@ -1,0 +1,12 @@
+{
+  "results": [
+    {
+      "filename": "1a_Color.png",
+      "prediction_weight": 0.46732994382866616,
+      "model": "grape-weight-v4g-dinov2_vits14-log-hgb",
+      "unit": "kg",
+      "depth_used": null,
+      "latency_ms": 326
+    }
+  ]
+}
