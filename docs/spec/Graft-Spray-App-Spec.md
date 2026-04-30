@@ -1830,7 +1830,7 @@ This section mirrors CODEBASE_PLAN sections 13 (Risk Register) and 14 (Open Ques
 
 ### 24.1 Open questions status (as of 2026-04-30)
 
-12 of 14 questions resolved; 1 partially resolved; 1 pending Benson's confirmation. **All M0 and M1 milestones are now unblocked.** M2 awaits Q13 completion.
+13 of 14 questions resolved; 1 partially resolved (Q13). **All M0 and M1 milestones are now unblocked.** M2 awaits Q13 completion.
 
 | ID | Topic | Status | Resolution or note |
 |---|---|---|---|
@@ -1840,7 +1840,7 @@ This section mirrors CODEBASE_PLAN sections 13 (Risk Register) and 14 (Open Ques
 | Q4 | Mapbox vs. MapLibre | RESOLVED | MapLibre at launch with provider abstraction so the Mapbox swap at scale is configuration-only. |
 | Q5 | Spray routing option | RESOLVED | Subpath `graftsystems.com/spray/*` via Next.js parallel route groups `(marketing)` + `(spray)`. |
 | Q6 | `/tool` page future | RESOLVED | Stays on the marketing site under `(marketing)/tool/`. No fold-in. |
-| Q7 | `/api/waitlist` during dev | PENDING | Head Chef recommends keep live (zero engineering cost, captures demand signal during M0-M1, warms a soft-launch list at M1). Awaiting Benson confirmation. |
+| Q7 | `/api/waitlist` during dev | RESOLVED | Keep `/api/waitlist` live during M0-M1 (Head Chef recommendation, confirmed by Benson 2026-04-30). Zero engineering cost, captures demand signal, warms a soft-launch list at M1. |
 | Q8 | Auth provider | RESOLVED | Clerk. M0-02 per spec §20. |
 | Q9 | `.gitattributes` policy | RESOLVED | Add `* text=auto eol=lf` in M0-01. |
 | Q10 | ILL paywalled papers | RESOLVED | Mark 06 P4 Strizyk 1983 and 02 P11 Oh 2000 as best-effort; spec PDF proceeds with available sources, ILL backfills citations later. |
