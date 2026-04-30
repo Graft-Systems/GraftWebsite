@@ -73,3 +73,25 @@ env/
 staticfiles/
 media/
 
+# Monorepo (M0-01)
+.turbo/
+*.tsbuildinfo
+.eslintcache
+apps/*/.next/
+apps/*/dist/
+apps/*/build/
+apps/*/coverage/
+services/*/dist/
+services/*/build/
+services/*/coverage/
+services/*/.venv/
+packages/*/dist/
+packages/*/build/
+
+# pnpm
+.pnpm-store/
+
+# Generated / temporary
+.tmp/
+.cache/
+

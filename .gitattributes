@@ -1,0 +1,60 @@
+# Default behavior: normalize line endings to LF in repo, native on checkout.
+# Per resolved Open Question Q9 (CODEBASE_PLAN section 14, M0-01).
+* text=auto eol=lf
+
+# Source files: enforce LF explicitly (defensive).
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.py text eol=lf
+*.toml text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.sh text eol=lf
+*.mmd text eol=lf
+*.csv text eol=lf
+
+# Windows-only files: keep CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Common binary types: no normalization.
+*.pdf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.svg binary
+*.zip binary
+*.gz binary
+*.tar binary
+*.tgz binary
+*.7z binary
+*.parquet binary
+*.h5 binary
+*.npz binary
+*.joblib binary
+*.onnx binary
+*.tflite binary
+*.mp4 binary
+*.mov binary
+*.avi binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+
+# Git LFS: dataset folders per resolved Open Question Q11 (CODEBASE_PLAN section 14).
+# Activated when the follow-up `graft-spray/m0/dataset-import` PR introduces the
+# 6 dataset collections (Grapes Disease Dataset, j4xs3kh3fd-2, Research on
+# Identifying Powdery Mildew, Burgundy Documents, Treatment Research,
+# Predicting Mildew Outbreaks).
+docs/research/assets/*/datasets/** filter=lfs diff=lfs merge=lfs -text
