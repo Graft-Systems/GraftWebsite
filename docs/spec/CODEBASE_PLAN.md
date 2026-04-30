@@ -414,9 +414,9 @@ If anything breaks in production:
 
 ---
 
-## Section 8 — Database & Data-Lake Schema Plan [SKELETON]
+## Section 8 — Database & Data-Lake Schema Plan [RESOLVED 2026-04-30]
 
-**Depends on:** Spec PDF Data Model section (currently in source markdown, not yet rendered to PDF). Initial sketch:
+**Resolved by:** Spec PDF §9 (Data Model and Schema) at `docs/spec/Graft-Spray-App-Spec.pdf` (and its markdown source `Graft-Spray-App-Spec.md`). The full 27-entity table (with `ExternalRiskIndex` per SA-1) is enumerated there with field-level definitions, indexes, RLS notes, and the migration sequence. The summary below is preserved as a quick-reference.
 
 ### 8.1 Operational store (Postgres + PostGIS)
 
@@ -456,9 +456,9 @@ Schema registry: every event type versioned. Breaking changes require migration 
 
 ---
 
-## Section 9 — API Surface Plan [SKELETON]
+## Section 9 — API Surface Plan [RESOLVED 2026-04-30]
 
-**Depends on:** Spec PDF Feature Specification + Data Model. Initial route group inventory:
+**Resolved by:** Spec PDF §8 (Feature Specification, with API contracts per feature) and §9 (Data Model). For each must-have feature, the spec lists the API endpoints under "API contracts." The full OpenAPI spec is generated at `services/api/openapi.yaml` per PR per feature. The route-group summary below is preserved as a quick-reference index into the spec.
 
 | Route group | Base path | Milestone | Notes |
 |---|---|---|---|
@@ -546,9 +546,9 @@ Force pushes blocked on `main` and `graft-spray/main`.
 
 ---
 
-## Section 12 — Testing-Strategy Mapping [SKELETON]
+## Section 12 — Testing-Strategy Mapping [RESOLVED 2026-04-30]
 
-**Depends on:** Spec PDF §8 Feature Specification (full acceptance criteria per feature).
+**Resolved by:** Spec PDF §22 (Testing Strategy) at `docs/spec/Graft-Spray-App-Spec.pdf`. §22.3 in the spec contains the full per-spec-section test mapping. The summary below is preserved as a quick-reference index.
 
 | Spec § | Feature | Unit | Integration | E2E |
 |---|---|---|---|---|
