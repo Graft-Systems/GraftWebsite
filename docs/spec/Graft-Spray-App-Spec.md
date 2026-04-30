@@ -1155,4 +1155,370 @@ The App Store Connect privacy questionnaire declares:
 
 ---
 
-<!-- END OF DRAFT. Sections 16 through 25 to be added in subsequent commits on graft-spray/m0/spec-pdf. -->
+## 16. Web MVP Compliance and Accessibility
+
+### 16.1 WCAG 2.2 AA
+
+The web application targets WCAG 2.2 Level AA at launch and Level AAA on field-mode-critical surfaces (Block detail, Recommendation card, Capture). Verification per release:
+
+- Automated checks via `axe-core` integrated into the Playwright E2E suite; CI fails on any new AA violation.
+- Manual audit by an accessibility specialist before each milestone closeout.
+- Keyboard navigation: every interactive element reachable via Tab; focus indicators meet 3:1 contrast minimum.
+- Screen reader: tested against VoiceOver (Safari macOS, Safari iOS) and NVDA (Firefox Windows).
+- Color contrast: 4.5:1 minimum for normal text, 7:1 for field mode (AAA).
+- Reduced motion: `prefers-reduced-motion` honored on all animated transitions.
+- Form errors: associated programmatically via `aria-describedby`; never conveyed by color alone.
+
+### 16.2 GDPR readiness (Burgundy and Bordeaux phase, M3 onwards)
+
+Activated in M3 alongside the Burgundy regional rollout. Requirements:
+
+- **Legal bases.** Article 6(1)(b) for service delivery (the user's contract with Graft Spray). Article 6(1)(a) explicit consent for ML training use of imagery and spray records. The consent is granular per category and recorded in `ConsentRecord` (per section 19).
+- **Data subject rights.** Per-user export (JSON plus photo zip) within 30 days of request via the in-app data export flow. Per-user deletion within 30 days; operational data immediately, lake data within the 30-day window (or anonymized irreversibly if used in trained models, with the trade-off documented to the user).
+- **Data residency.** EU users' personal data stored in an EU region (Frankfurt or Ireland) at the API and operational store layer. The data lake is partitioned to keep EU users' raw imagery and PII in EU regions; pseudonymized training-derived datasets are co-located globally. M3 introduces the EU partition.
+- **Cookie banner.** Required when serving EU visitors. Implementation via Vercel Edge middleware; defaults to declining all non-essential cookies (per section 21 and CODEBASE_PLAN privacy-first defaults).
+- **DPA (Data Processing Agreement).** Available on request; template drafted in M3-readiness.
+- **DPO (Data Protection Officer).** Per Article 37, required given large-scale processing; appointed at M3.
+- **Breach notification.** Procedure documented; 72-hour breach-disclosure path defined.
+
+### 16.3 CCPA readiness (Napa and Sonoma phase, M0 onwards)
+
+Activated in M0 alongside California rollout. Requirements:
+
+- **Notice at collection.** Privacy policy includes the categories of personal information collected and the purposes per CCPA section 1798.100.
+- **Right to know, delete, correct.** All exposed via the in-app data export and account deletion flows.
+- **Right to opt-out of sale or share.** Graft Spray does not sell or share personal data. The privacy policy declares this explicitly. No "Do Not Sell or Share My Personal Information" link is required because there is nothing to opt out of.
+- **Sensitive personal information.** Imagery and vineyard polygons are not "sensitive PI" per CCPA's enumerated categories; nonetheless they are treated with the same encryption and access controls.
+- **Non-discrimination.** Service quality does not depend on consent toggles for ML training or analytics.
+
+### 16.4 Cookie policy
+
+The web application uses only first-party cookies for authentication (Clerk session) and CSRF protection. No third-party advertising cookies. No analytics cookies that survive a single session (analytics is privacy-preserving per section 18). The cookie banner appears for EU visitors only and is dismissible without consent for non-essential categories.
+
+### 16.5 Browser support matrix
+
+| Browser | Minimum version | Notes |
+|---|---|---|
+| Safari (macOS, iOS) | 16+ | Primary mobile-web target; iOS Safari is the default on iPhone before the M2 native app |
+| Chrome (desktop, Android) | 110+ | |
+| Firefox (desktop) | 110+ | |
+| Edge (desktop) | 110+ | |
+| Older browsers | n/a | Graceful degradation: marketing pages remain readable; the app shell shows an "upgrade your browser" notice |
+
+### 16.6 Performance budget
+
+| Metric | Target | Measured |
+|---|---|---|
+| Largest Contentful Paint (marketing pages) | under 2.5s p75 | Vercel Speed Insights |
+| Largest Contentful Paint (Spray app shell, post-login) | under 3.5s p75 | Vercel Speed Insights |
+| First Input Delay (replaced by INP in 2024) | under 200ms p75 | Vercel Speed Insights |
+| Cumulative Layout Shift | under 0.1 | Vercel Speed Insights |
+| Lighthouse Performance score | 90+ on marketing pages, 80+ on app shell | CI Lighthouse run per PR |
+
+The Spray bundle is code-split from the marketing bundle so that Lighthouse scores on the marketing pages are unaffected by Spray-app code (per CODEBASE_PLAN section 21 acceptance criteria).
+
+---
+
+## 17. Security, Privacy, and Liability
+
+### 17.1 Encryption
+
+- **In transit.** TLS 1.3 minimum on every public endpoint. HSTS with `max-age=31536000; includeSubDomains; preload` on `graftsystems.com`. Internal service-to-service traffic on private networks (VPC) where possible.
+- **At rest.** AES-256-GCM. KMS-managed keys with quarterly rotation. Postgres encrypted at the volume level via Render's managed encryption. S3 SSE-KMS with a dedicated CMK per environment.
+- **Application-level encryption.** `IntegrationConnection.config` (which holds API keys and tokens for user-supplied integrations) is encrypted at the application layer with a KMS data key envelope before persisting to Postgres.
+- **Signed upload URLs.** Capture uploads use S3 pre-signed PUT URLs scoped to the user's org prefix and expiring after 5 minutes. Signed download URLs (5-minute expiry) for serving captures back to the client.
+
+### 17.2 Authentication and authorization
+
+Section 20 details the Clerk-backed identity layer. Authorization at the API layer enforces the four roles (Owner, Admin, Member, Viewer) on every read and write path. Tests verify no cross-tenant leak under any read path.
+
+### 17.3 Confidentiality of business data
+
+Photos, videos, vineyard polygons, spray records, and product preferences are treated as confidential business data of the org. The application does not surface any user's data to any other org. Internal staff cannot read user imagery without an audited, time-limited grant per section 17.6.
+
+### 17.4 Liability disclaimer for spray recommendations
+
+The application surfaces a prominent disclaimer at:
+- Account creation, on the Terms of Service screen.
+- The Settings, Notifications screen.
+- Every Recommendation card (collapsed by default; expandable with one tap).
+- The bottom of every exported PDF report.
+
+Disclaimer copy (drafted by counsel before launch):
+
+> Graft Spray's recommendations are decision-support tools based on published peer-reviewed disease models and live regional risk indices. They are not a substitute for consultation with your local extension service or a licensed pest control adviser. Always read and follow the product label, and consult your local pesticide regulatory authority for the current registered product list, application rates, and use restrictions in your region. Graft Spray and Graft Systems disclaim liability for any crop loss, regulatory violation, or harm arising from reliance on the recommendations herein.
+
+### 17.5 FRAC rotation enforcement (resistance management)
+
+Section 8.7 specifies that every recommendation respects FRAC rotation rules to mitigate resistance development [Brain 05_treatment-methods / P7, P8]. Internally, the rotation engine maintains a per-block rolling history of FRAC groups used in the last 14 days (configurable). Recommendations that would violate the rotation rule are filtered before being served to the user.
+
+### 17.6 Internal staff access controls
+
+- Role-based: only staff with the `Spray Support` role can access user data, and only after creating a Jira-tracked support ticket linking the user's request.
+- Time-limited: support grants expire after 4 hours.
+- Break-glass: emergency access requires two-person approval and triggers an immediate audit log entry plus user notification.
+- All staff access logged immutably in the audit bucket.
+
+### 17.7 Penetration testing and vulnerability management
+
+- Annual third-party penetration test before each major-region launch (M1 launch, M3 EU launch, M5 LATAM launch).
+- Continuous SCA via GitHub Dependabot and Snyk.
+- Vulnerability disclosure program documented at `/legal/security`. Reports go to a private mailbox; commitment to acknowledge within 5 business days.
+
+### 17.8 Compliance frameworks targets
+
+| Framework | Target milestone | Scope |
+|---|---|---|
+| CCPA | M1 (Napa launch) | California users |
+| GDPR | M3 (Burgundy launch) | EU users |
+| SOC 2 Type II | M3 (Burgundy launch) | Org-wide |
+| ISO 27001 | Post-M5 | Org-wide; required for some EU enterprise customers |
+
+### 17.9 Incident response
+
+A documented incident-response runbook covers:
+- Security incident (breach, unauthorized access, data exfiltration suspicion).
+- Availability incident (production downtime, data corruption, third-party provider outage).
+- Compliance incident (GDPR breach, accidental cross-tenant data leak).
+
+Severity levels (S1 through S4), on-call rotation, and 72-hour GDPR breach-disclosure path defined in `docs/runbooks/incident-response.md` (M0-M1 deliverable).
+
+---
+
+## 18. Analytics and Telemetry
+
+### 18.1 Telemetry vs. training data separation
+
+App telemetry (screen views, taps, time-to-decision, errors) is treated as a separate concern from the training data captured per section 19. Telemetry is anonymized at the device level (no user-identifying fields persisted in telemetry events) and is subject to its own consent toggle ("share anonymized usage analytics") which can be off while the app still works.
+
+### 18.2 Analytics tooling
+
+| Concern | Tool | Why |
+|---|---|---|
+| Product analytics | PostHog (self-hosted EU instance for GDPR posture) | Privacy-friendly, owns the data, supports session replay (off by default) |
+| Performance monitoring | Vercel Speed Insights (web), Sentry Performance (API + iOS) | Already in the existing stack |
+| Error tracking | Sentry (web, iOS, API, ML) | Existing |
+| Distributed tracing | OpenTelemetry plus Datadog or Grafana Cloud | API and ML services |
+
+### 18.3 Telemetry events emitted
+
+Each authenticated screen emits a `screen.view` event with `{org_id_hash, user_id_hash, screen_name, locale, app_version}`. Each interaction emits a `ui.tap` event with `{screen, target_id}`. ML inferences emit `ml.latency` events with `{model, latency_ms, device}`. Errors emit `error.client` and `error.server` events into Sentry.
+
+`org_id_hash` and `user_id_hash` are HMAC-SHA256 hashes of the org and user IDs with a per-environment secret key. The hashes are stable enough for cohort analysis but cannot be reversed to recover the underlying IDs.
+
+### 18.4 Conversion and engagement metrics
+
+Tracked at the org level (not per user) for the savings tracker and adoption metrics:
+- Time-to-first-recommendation per new org (median, p75, p95).
+- Recommendation acceptance rate.
+- Capture-to-correction rate (proxy for ML quality).
+- Year-to-date savings vs. baseline (per org).
+- Notification open rate and acted-on rate.
+
+### 18.5 Dashboards
+
+Engineering and product dashboards live in PostHog and Datadog respectively. Product dashboards visible to Benson and the eventual Graft team; engineering dashboards to engineers and on-call.
+
+### 18.6 Alerting
+
+- Production error rate above 1% over 5 minutes: PagerDuty page to the on-call.
+- ML inference p95 latency above 8 seconds over 15 minutes: page.
+- External risk-index parser failure (per section 11.7 and risks R18, R19): page if the failure persists more than 2 hours.
+
+---
+
+## 19. Data Capture and Learning Pipeline
+
+This section is the operational core of Graft Spray's long-term advantage. The application captures every user-generated artifact and operational event into an append-only data lake that compounds the recommendation engine's accuracy with every additional user.
+
+### 19.1 Capture inventory
+
+Every event and artifact below persists with structured metadata. The metadata envelope is the `DataLakeEvent` model (per section 9).
+
+| Category | Examples | Why it feeds the brain |
+|---|---|---|
+| **Imagery** | Leaf and cluster photos and videos uploaded from web or iOS | Expands the labeled image corpus; powers active-learning re-training of the ML classifier per section 10 |
+| **ML predictions and corrections** | Model output (powdery prob, downy prob, severity 1 to 10, confidence) plus user agreement or correction | Hard-positive and hard-negative mining for the next model version |
+| **Vineyard geometry** | Block polygons, labels, planted varieties, training systems, row spacing | Improves geo-stratified models and per-region calibration |
+| **Weather pulls** | Every weather observation and forecast pulled per block per provider | Builds proprietary historical weather corpus tied to disease outcomes |
+| **External risk-index pulls** (SA-1) | UC IPM and uspest.org indices per region per hour | Provides authoritative cross-reference; ground truth for local-engine calibration |
+| **Sensor readings** | User-connected sensor streams (Davis, METER, Sencrop, Pessl) | Calibrates leaf-wetness proxies; fuses on-farm with regional data |
+| **Spray records** | Date, product, rate, equipment, conditions, applicator, target disease | Closes the loop: did the spray work? Drives recommendation tuning |
+| **Recommendations and outcomes** | Every recommendation served plus whether the user followed it plus downstream disease observation | Reinforcement signal for the recommendation engine |
+| **Risk-index runs** | Every Gubler-Thomas, DMCast, Caffi 2011 computation per block per day | Backtesting and model-comparison data |
+| **Chatbot interactions** | Prompts, responses, thumbs up or down, citations clicked | RAG quality improvement and intent-router training |
+| **Notifications** | Sent plus opened plus acted on | Notification timing and threshold optimization |
+| **User integrations** | Connections to third-party data sources, uploaded legacy spray history (CSV, PDF) | Enriches per-user context |
+| **App telemetry** | Screen views, taps, time-to-decision, errors | UX optimization (separate from training data per section 18.1) |
+
+### 19.2 Storage architecture
+
+| Tier | Implementation | Purpose | Retention |
+|---|---|---|---|
+| Operational store | Postgres + PostGIS (Render-managed) | Transactional state: current vineyard, current recommendation, current account | Live, with point-in-time recovery 7 days |
+| Object storage | S3 (or Cloudflare R2) | Raw imagery, video, uploaded documents | Indefinite if user consented to training use; 90-day default if not |
+| Data lake | S3 + Apache Iceberg or Delta Lake | Append-only, partitioned by `org_id / category / date`. Every captured event lands here in Parquet with strict schema | 7 years (compliance) |
+| Feature store | Feast or equivalent | Derived features for ML training and online inference | Co-terminal with model artifacts |
+| Schema registry | Confluent Schema Registry or equivalent | Every event type versioned; breaking changes require migration plan | Indefinite |
+| Audit log | Append-only S3 bucket | Every read or write touching user data | Minimum 2 years |
+
+### 19.3 Ingest pipeline
+
+All capture events flow through a single ingest service:
+
+1. **Producer.** Source service (`services/api`, `services/ml`, `services/worker`) emits an event to the ingest endpoint at `services/api/spray/ingest/`.
+2. **Validation.** The ingest service validates the event payload against the registered schema for that event type. Unknown event types are rejected with HTTP 400; CI prevents merging code that emits an unregistered event type (per section 19.5).
+3. **Operational write.** A subset of events also writes to the operational store (e.g., `recommendation.served` writes the `Recommendation` row).
+4. **Lake write.** All validated events write to S3 in Parquet format, partitioned by `org_id / category / date`.
+5. **Enrichment.** A nightly Celery job (`data_lake_etl.py`) joins lake events with operational state to produce curated training datasets, stratified by region and labeled with provenance (`source_user_id`, `source_org_id`, `capture_timestamp`, `device`, `app_version`, `consent_flags`).
+6. **Active-learning queue.** Low-confidence ML predictions automatically queue for human re-labeling per section 10.7; corrections feed back into the next training cycle.
+
+### 19.4 Schema registry
+
+Every event type has a versioned schema (JSON Schema or Avro) checked into `services/api/spray/schemas/events/<category>/<event_type>/v<n>.json`. CI runs a script that:
+- Detects new event types in code (via grep for `emit_event(...)` calls).
+- Verifies each new event type has a matching schema file.
+- Verifies every schema change is backward-compatible (no removed required fields, no type narrowing).
+- Fails the PR check on unregistered event types or breaking schema changes.
+
+### 19.5 Security and privacy controls
+
+| Control | Implementation |
+|---|---|
+| Encryption | Per section 17.1; TLS 1.3 in transit, AES-256 at rest, KMS-managed keys with quarterly rotation |
+| Tenant isolation | Per section 17.2; row-level security in Postgres, S3 bucket-prefix isolation, query-time enforcement in the lake |
+| Access control | RBAC (Owner, Admin, Member, Viewer) at org level; principle of least privilege for internal staff; break-glass per section 17.6 |
+| PII minimization | Name, email, phone segregated into a separate Postgres schema; training pipelines see only pseudonymous IDs |
+| Consent management | `ConsentRecord` per category per user; toggles on Settings, Privacy. Each can be off while the app still works. |
+| Legal bases | GDPR Article 6(1)(b) for service delivery + Article 6(1)(a) consent for ML training; CCPA opt-out for sale or share (none, but documented); explicit opt-in required for any third-party sharing |
+| Per-user data subject rights | In-app export (JSON + photo zip) within 30 days; in-app account deletion that purges operational data immediately and lake data within 30 days (or anonymizes irreversibly if used in trained models, with the trade-off documented to the user) |
+| Retention | Raw imagery indefinite if user consented to training use; 90-day default if not. Spray records retained per regional compliance (CA 2-year minimum, EU 5-year, France 5-year). |
+| Data residency | EU users' personal data stored in EU region (Frankfurt or Ireland) by Burgundy phase. US users in us-west. Argentine users in São Paulo or us-east depending on availability. Lake training data is pseudonymized so it can be globally co-located. |
+| Penetration testing | Annual third-party pen test before each milestone launch; vulnerability disclosure program documented |
+| Compliance frameworks | SOC 2 Type II target by M3 (Burgundy phase); GDPR by M3; CCPA by M1 |
+
+### 19.6 Acceptance criteria
+
+- Every must-have feature in section 8 emits at least one event into the data lake with a documented schema.
+- A user can export all their data via the in-app data-export flow.
+- A user can delete their account and verify (via support contact) that data was removed within 30 days.
+- Internal staff cannot read user imagery without an audited, time-limited grant.
+- The schema-registry CI check blocks any PR that introduces an unregistered event type.
+- The audit log captures every read or write against user data, retained for at least 2 years.
+
+---
+
+## 20. Account and Identity System
+
+### 20.1 Lifecycle
+
+| Step | Description |
+|---|---|
+| 1. Sign up | Email + password, or Sign in with Apple, or Google OAuth. All routes converge on a Clerk-managed account. |
+| 2. Verify | Verify email (and phone if used for SMS notifications). |
+| 3. Onboard | Accept terms of service and privacy policy; per-category consent toggles per section 19. |
+| 4. Create or join Org | Vineyards are multi-user; first user becomes Owner. Org name and region required. |
+| 5. Log in | Session token (JWT or opaque, Clerk-managed) stored securely (Keychain on iOS via `expo-secure-store`; httpOnly Secure SameSite cookie on web). |
+| 6. Stay signed in | Refresh tokens; idle and absolute session timeouts (configurable, defaults: 12 h idle, 30 d absolute). |
+| 7. Log out | Current device or all devices (revokes all refresh tokens). |
+| 8. Reset password | Emailed signed link, expires in 30 minutes. |
+| 9. Change password | In-app, requires current password. |
+| 10. Enable MFA | TOTP (Google Authenticator) or passkey/WebAuthn. Required for Owner role; optional for others. |
+| 11. Account deletion | In-app, two-step confirmation. Fulfils Apple Guideline 5.1.1(v). Triggers data-lake purge per section 19.5. |
+
+### 20.2 Roles and permissions
+
+| Role | Permissions | MFA |
+|---|---|---|
+| Owner | Full org control, billing, user invites, deletion. | Required |
+| Admin | Manage blocks, integrations, recommendations. Cannot manage billing or delete the org. | Optional |
+| Member | Capture photos, log sprays, view recommendations. Cannot manage blocks or integrations. | Optional |
+| Viewer | Read-only across the entire org (consultants, advisors). | Optional |
+
+The Owner role cannot be left vacant: deleting the last Owner forces transfer to another Admin or org deletion.
+
+### 20.3 Tech choice: Clerk vs. Auth0
+
+Clerk is selected for M0-02 implementation. Justification:
+
+- Faster setup (hours vs. days for Auth0).
+- Better developer experience and React-first SDKs (`@clerk/nextjs`, `@clerk/expo`).
+- Native Org and Membership primitives match our domain model 1:1.
+- Built-in MFA (TOTP, passkey), Sign in with Apple, social providers.
+- Pricing favorable at our launch user counts; switch cost low if we outgrow Clerk.
+- Auth0 considered as fallback if enterprise SSO becomes a launch-blocking customer ask (post-M3 EU enterprise prospects); switch path documented.
+
+### 20.4 Multi-tenant model
+
+Org → Membership → User. Roles enforced at:
+- DB layer: `Membership.role` plus PostgreSQL row-level security.
+- API layer: DRF permission classes per endpoint (`IsOrgOwner`, `IsOrgAdmin`, `IsOrgMember`, `IsOrgViewer`).
+- UI layer: client-side route guards plus button-disable states (defense in depth, not the source of truth).
+
+### 20.5 Sessions
+
+| Concern | Setting |
+|---|---|
+| Access token lifetime | 15 minutes |
+| Refresh token lifetime | 30 days |
+| Refresh token rotation | On every use |
+| Idle session timeout | 12 hours (configurable per org) |
+| Absolute session timeout | 30 days (configurable per org) |
+| Concurrent sessions per user | 5 (configurable) |
+| Log out everywhere | Revokes every refresh token for the user |
+
+### 20.6 Brute-force protection
+
+- Rate-limit login: 5 attempts per minute per IP, 10 per minute per account.
+- Progressive delays after 3 consecutive failures.
+- CAPTCHA after 5 consecutive failures.
+- Account lock after 10 consecutive failures, requires email-based unlock.
+
+### 20.7 Anomaly detection
+
+- New-device email alert ("we noticed a sign-in from a new device in [city, country], at [time]; if this was not you, [revoke all sessions]").
+- Impossible-travel detection (sign-in from two cities geographically incompatible within the time window). Triggers an additional MFA challenge.
+- Failed-login spike alerting via Sentry.
+
+### 20.8 Audit log
+
+Every auth event recorded immutably in `AuthEvent`:
+
+| Event type | Captured |
+|---|---|
+| `sign_up` | At signup |
+| `email_verify` | When verification completes |
+| `login_success` | Successful login |
+| `login_failure` | Failed login attempt with reason (wrong password, MFA fail, etc.) |
+| `logout` | Manual log out, with `scope=current_device` or `scope=all_devices` |
+| `password_change` | Including IP and user agent |
+| `password_reset_requested` | Email sent |
+| `password_reset_completed` | Reset succeeded |
+| `mfa_enable` | Method (TOTP, passkey) |
+| `mfa_disable` | Method (TOTP, passkey) |
+| `role_change` | Including before / after roles and the actor |
+| `account_deletion_requested` | Initial request |
+| `account_deletion_completed` | After 30-day grace period or immediate (per request) |
+
+Retained for 7 years per SOC 2 requirements.
+
+### 20.9 Compliance requirements
+
+- **Apple Sign in with Apple** offered alongside any third-party SSO (Apple Guideline 4.8). Implemented via `expo-apple-authentication` in M2.
+- **In-app account deletion** (Apple Guideline 5.1.1(v)). Two-step confirmation; immediate deletion of operational data; 30-day lake-data purge with progress visible in the data export.
+- **Privacy nutrition label** declares Account, Contact Info, Identifiers, User Content, and Usage Data per section 15.8.
+- **GDPR-compliant consent flow** at signup: granular toggles, no pre-ticked boxes, plain language, withdrawable at any time from Settings, Privacy.
+- **COPPA.** Terms of Service prohibit users under 13 from creating accounts; signup form requires age confirmation. The application is not directed at children.
+
+### 20.10 Acceptance criteria
+
+- A new user can complete signup → email verify → org creation in under 3 minutes.
+- Logging out from one device does not log out other devices unless "log out everywhere" is selected.
+- The forgotten-password flow works end-to-end with no support contact required.
+- Owner role cannot be left vacant; deleting the last Owner forces transfer or org deletion.
+- All auth events appear in the audit log with timestamp, IP, user agent, and outcome.
+- Account deletion completes operational-data deletion within 60 seconds of confirmation; lake-data purge or anonymization completes within 30 days, with a progress indicator visible to the user.
+
+---
+
+<!-- END OF DRAFT. Sections 21 through 25 to be added in subsequent commits on graft-spray/m0/spec-pdf. -->
