@@ -1828,31 +1828,28 @@ Region-by-region rollout based on demand and partner channels. Each new region r
 
 This section mirrors CODEBASE_PLAN sections 13 (Risk Register) and 14 (Open Questions) and is restated for the spec PDF reader.
 
-### 24.1 Resolved open questions (as of 2026-04-30)
+### 24.1 Open questions status (as of 2026-04-30)
 
-| ID | Topic | Resolution |
-|---|---|---|
-| Q1 | `frontend-cinematic/` directory | Keep in place, do not touch. M0-01 restructure leaves the directory unchanged at repo root. |
-| Q2 | Submodule mid-flight work | Leave dirty in working tree. No commit, no revert for Spray work. |
-| Q9 | `.gitattributes` for LF/CRLF | Add `* text=auto eol=lf` in M0-01. |
-| Q12 | Orphan branches (`add-animation-libs`, `cinematic-frontend`, `sync-cinematic-fixes`) | Abandon. Do not preserve, do not merge. |
+12 of 14 questions resolved; 1 partially resolved; 1 pending Benson's confirmation. **All M0 and M1 milestones are now unblocked.** M2 awaits Q13 completion.
 
-### 24.2 Open questions (pending Benson)
+| ID | Topic | Status | Resolution or note |
+|---|---|---|---|
+| Q1 | `frontend-cinematic/` directory | RESOLVED | Keep in place, do not touch. M0-01 leaves it at repo root unchanged. |
+| Q2 | Submodule mid-flight work | RESOLVED | Leave dirty. No commit, no revert; submodule is untouched for Spray work. |
+| Q3 | Render PostGIS support | RESOLVED | Render Postgres Pro tier supports PostGIS. M0-03 stays on Render. |
+| Q4 | Mapbox vs. MapLibre | RESOLVED | MapLibre at launch with provider abstraction so the Mapbox swap at scale is configuration-only. |
+| Q5 | Spray routing option | RESOLVED | Subpath `graftsystems.com/spray/*` via Next.js parallel route groups `(marketing)` + `(spray)`. |
+| Q6 | `/tool` page future | RESOLVED | Stays on the marketing site under `(marketing)/tool/`. No fold-in. |
+| Q7 | `/api/waitlist` during dev | PENDING | Head Chef recommends keep live (zero engineering cost, captures demand signal during M0-M1, warms a soft-launch list at M1). Awaiting Benson confirmation. |
+| Q8 | Auth provider | RESOLVED | Clerk. M0-02 per spec §20. |
+| Q9 | `.gitattributes` policy | RESOLVED | Add `* text=auto eol=lf` in M0-01. |
+| Q10 | ILL paywalled papers | RESOLVED | Mark 06 P4 Strizyk 1983 and 02 P11 Oh 2000 as best-effort; spec PDF proceeds with available sources, ILL backfills citations later. |
+| Q11 | Dataset folders import | RESOLVED | Include via Git LFS. M0-01 sets up LFS; dedicated `graft-spray/m0/dataset-import` PR follows once quota is provisioned. |
+| Q12 | Orphan branches | RESOLVED | Abandon. Do not preserve, do not merge. |
+| Q13 | App Store identity | PARTIAL | App name = "Graft Systems" per Benson (note: clarify whether the App Store-facing name should be "Graft Systems" or "Graft Spray" before submission, since the spec uses "Graft Spray" throughout for the product). Bundle ID, Apple Developer team ID, and App Store primary category remain TBD before M2. |
+| Q14 | Default API pricing tiers | RESOLVED | Free tier across the board until traffic warrants upgrade. Visual Crossing, Tomorrow.io, MapLibre + Esri or Sentinel-2, Gemini API free tier, Sentry developer plan; Datadog skipped at launch (Sentry-only for observability). Each integration prints a usage-approaching-limit warning. |
 
-| ID | Question | Blocks |
-|---|---|---|
-| Q3 | Render PostgreSQL Pro tier supports PostGIS extension? If not, plan migration target (Supabase, AWS RDS). | M0-03 |
-| Q4 | Mapbox vs. MapLibre for satellite map. Default to MapLibre (free) per spec, or stay on Mapbox to leverage existing token? | M0-05 |
-| Q5 | Spray routing option: subpath, subdomain, or hybrid. Default = subpath; confirm. | M0-02a |
-| Q6 | `/tool` page future. Stays on marketing site, or folds into Spray app shell? | M0-02a |
-| Q7 | Existing `/api/waitlist` endpoint: keep collecting waitlist entries on `main` while Spray is in development? | none (clarification only) |
-| Q8 | Auth provider: Clerk (recommended) vs. Auth0. Confirm. | M0-02 |
-| Q10 | Outstanding ILL-only paywalled papers (B Strizyk 1983, D Oh 2000): proceed with spec PDF using available sources, mark them best-effort, may not retrieve? | none (proceeding) |
-| Q11 | Dataset folders not imported in M0-00a (Grapes Disease Dataset, j4xs3kh3fd-2, Research on Identifying Powdery Mildew, Burgundy Documents, Treatment Research, Predicting Mildew Outbreaks): include via Git LFS, keep external, or DVC? | M1-10 ML training data sourcing |
-| Q13 | App identity for Apple App Store: bundle ID, team ID, app name, primary category. | M2 |
-| Q14 | Default region pricing tiers per external API (weather, satellite tiles, Gemini, Sentry, Datadog). | M0-06 (weather provider choice) |
-
-### 24.3 Risk register (R1 through R20)
+### 24.2 Risk register (R1 through R20)
 
 | ID | Risk | Severity | Likelihood | Owner | Mitigation |
 |---|---|---|---|---|---|
