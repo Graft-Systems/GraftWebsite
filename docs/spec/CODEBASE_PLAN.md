@@ -600,7 +600,7 @@ Numbered questions that block specific milestones. Each must be answered before 
 **Resolved 2026-04-30 by Benson (first batch, structural):** Q1, Q2, Q9, Q12.
 **Resolved 2026-04-30 by Benson (second batch, technical):** Q3, Q4, Q5, Q6, Q8, Q10, Q11, Q14.
 **Partially resolved 2026-04-30 by Benson:** Q13 (app name confirmed as "Graft Systems"; bundle ID, Apple Developer team ID, and App Store primary category remain TBD before M2).
-**Awaiting Benson's confirmation:** Q7 (clarification-only; Head Chef recommends keep `/api/waitlist` live, rationale inline).
+**Q7 confirmed 2026-04-30 by Benson:** keep `/api/waitlist` live per the Head Chef recommendation. All 14 questions now resolved or partially resolved (Q13 partial only).
 **All M0 and M1 milestones are now unblocked.** M2 awaits Q13 completion. Resolutions inline below.
 
 1. **Q1 — `frontend-cinematic/`: what is it?** (R9) Decision options: (a) keep as separate Next.js app under `apps/web-cinematic`, (b) merge into `apps/web` if intended successor, (c) archive to `attic/`, (d) delete. Likely connected to branches `add-animation-libs`, `cinematic-frontend`, `sync-cinematic-fixes`. **Blocks:** M0-01.
@@ -616,7 +616,7 @@ Numbered questions that block specific milestones. Each must be answered before 
 6. **Q6 — `/tool` page future.** Existing `/tool` page is the grape-weight inference UI. Once Spray launches, does it stay on the marketing site, or fold into the Spray app? **Blocks:** M0-02a.
    - **RESOLVED 2026-04-30 by Benson:** `/tool` stays on the marketing site under `(marketing)/tool/`. Graft Spray is a distinct product; no fold-in.
 7. **Q7 — Existing `WaitlistEntry` collection.** Keep collecting waitlist entries on `main` while Spray develops? If yes, `/api/waitlist` stays live during M0-M1. **Blocks:** nothing (clarification only).
-   - **HEAD CHEF RECOMMENDATION 2026-04-30:** Keep `/api/waitlist` live. Rationale: (1) zero engineering cost; the endpoint is already deployed and tested. (2) It captures real demand signal during M0-M1 development, which helps prioritize beta-invite ordering at M1 launch. (3) It gives Graft Spray a warm soft-launch list of self-identified interested users to email when M1 ships, which beats cold outreach. **Awaiting Benson's confirmation.**
+   - **HEAD CHEF RECOMMENDATION 2026-04-30:** Keep `/api/waitlist` live. Rationale: (1) zero engineering cost; the endpoint is already deployed and tested. (2) It captures real demand signal during M0-M1 development, which helps prioritize beta-invite ordering at M1 launch. (3) It gives Graft Spray a warm soft-launch list of self-identified interested users to email when M1 ships, which beats cold outreach. **CONFIRMED 2026-04-30 by Benson:** Keep `/api/waitlist` live during M0-M1 per the Head Chef recommendation above.
 8. **Q8 — Auth provider.** Clerk vs Auth0 (per spec §20). Spec recommends Clerk; confirm. **Blocks:** M0-02.
    - **RESOLVED 2026-04-30 by Benson:** Clerk. M0-02 implements per spec §20.
 9. **Q9 — `.gitattributes` policy.** (R10) Add `* text=auto eol=lf`? Affects all Windows-based contributors and existing diffs. **Blocks:** M0-01.
