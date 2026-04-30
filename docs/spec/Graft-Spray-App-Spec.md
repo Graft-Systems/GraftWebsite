@@ -1521,4 +1521,425 @@ Retained for 7 years per SOC 2 requirements.
 
 ---
 
-<!-- END OF DRAFT. Sections 21 through 25 to be added in subsequent commits on graft-spray/m0/spec-pdf. -->
+## 21. Graft Website Integration
+
+![Website Integration](diagrams/website-integration.png)
+
+Graft Spray is delivered through the existing Graft Systems marketing website at `graftsystems.com`, not as a standalone domain. The integration is intentional: the user starts inside Graft, sees Spray as a first-class product offering, and on signing in moves into a dedicated authenticated app shell that does not feel like the marketing site.
+
+### 21.1 Existing site
+
+- Repository: `https://github.com/Graft-Systems/GraftWebsite` (the same repository this specification lives in).
+- Frontend: Next.js 15 with App Router; existing route group `(marketing)` containing `/`, `/about`, `/contact`, `/tool`.
+- Backend: Django 5.2 plus DRF (`services/api/` after the M0-01 monorepo bootstrap, currently `backend/` per CODEBASE_PLAN).
+- Existing deploys: Vercel (web) + Render (backend).
+
+### 21.2 Navigation integration
+
+A new top-level link **"Spray"** is added to the existing Graft website navigation bar. Position recommendation: rightmost product link before "Contact." Final position to be confirmed by the design step in M0-02a.
+
+Behavior:
+- **Unauthenticated visitor.** Clicking "Spray" routes to `/spray` (a marketing landing page that explains Graft Spray and presents a primary "Log in or Sign up" CTA).
+- **Authenticated user.** Clicking "Spray" routes directly to the authenticated app shell (`/spray/dashboard`). No second login prompt.
+- **Nav state.** When logged in, a user avatar and menu replace the standard "Log in" button. When logged out, the standard marketing nav is unchanged.
+
+### 21.3 Routing options
+
+Three architectural options were considered for hosting the Spray application:
+
+| Option | URL | Pros | Cons |
+|---|---|---|---|
+| **A. Subpath (recommended)** | `graftsystems.com/spray/*` | Single domain; simpler SEO; shared cookies for SSO; no CORS pain; users perceive Spray as a Graft product. | Tightly couples web deploys; bundle code-split required to keep marketing Lighthouse scores untouched. |
+| **B. Subdomain** | `spray.graftsystems.com` | Clean separation; independent deploy cadence. | Cookie sharing for SSO requires `.graftsystems.com` parent-domain cookies; CORS configuration; users may perceive Spray as a separate property. |
+| **C. Hybrid** | `/spray` marketing landing on main site; `app.graftsystems.com` for the authenticated app | Best of both. | Most complex; two deploys to coordinate. |
+
+**Decision: Option A (subpath).** Implementation: Next.js App Router with parallel route groups. Marketing pages stay under `(marketing)`; authenticated Spray app lives under a new `(spray)` route group. Code-splitting via dynamic imports keeps the Spray bundle out of the marketing critical path.
+
+(Open Question Q5 in section 24 confirms this default; Benson can override to B or C in M0-02a.)
+
+### 21.4 Login and signup handoff
+
+- The CTA on the `/spray` marketing landing page opens the auth flow defined in section 20 (Clerk-hosted UI with Graft brand styling).
+- Single sign-on across the marketing site and the authenticated app: a logged-in session persists when the user navigates back to marketing pages, so the "Spray" nav entry deep-links straight into the app on subsequent clicks.
+- **Post-login routing.**
+  - Brand-new user with no Org → onboarding wizard (`/spray/onboarding`).
+  - Existing user with an Org → dashboard (`/spray/dashboard`).
+- After signup, run the consent and Org-creation flow from section 20.
+- **Logout** returns the user to the marketing `/spray` landing page (not the homepage) so the next click resumes naturally.
+
+### 21.5 Distinct authenticated UI experience
+
+The authenticated app must look and behave like a dedicated product, not like a logged-in version of the marketing site.
+
+- **Separate layout shell.** The marketing top nav and footer are replaced inside `(spray)` by the app shell defined in section 7 (persistent left sidebar, top bar with org switcher, notifications, user menu).
+- **Distinct visual treatment.** Same brand palette and typography (so the user feels they are still in Graft) but a denser, utility-first information architecture appropriate for a working tool. Specific differences:
+  - Spacing scale: marketing uses 8px base unit with generous padding; Spray app uses 4px base unit with tighter padding (closer to a desktop SaaS density).
+  - Component density: marketing shows hero sections with whitespace; Spray shows tabular data, cards, and forms.
+  - Component variants: same primitives in `packages/ui` but the Spray surface configures dense variants (smaller buttons, tighter table rows).
+- **Separate code surface.** Spray lives under `apps/web/app/(spray)/`. Marketing pages remain at `apps/web/app/(marketing)/`. No marketing-page imports inside the Spray app, and vice versa, except shared `packages/ui` primitives.
+- **No marketing chrome inside the app.** No "Subscribe to our newsletter" banners. No marketing footer. No analytics-pixel popups. The Spray app is a working tool.
+- **Consistent return path.** A small "Back to Graft Systems" link in the user menu opens the marketing homepage in a new tab so the user never feels trapped.
+
+### 21.6 Shared vs. separate concerns
+
+| Concern | Shared with marketing site | Separate to Spray |
+|---|---|---|
+| Domain and TLS cert | ✅ (subpath) | n/a |
+| Brand tokens (colors, fonts, logo) | ✅ via `packages/ui/tokens` | n/a |
+| Top navigation | ✅ marketing nav unchanged | App shell topbar inside `(spray)` |
+| Auth provider and session | ✅ (Clerk SSO) | n/a |
+| Footer | ✅ on marketing pages | None inside app |
+| Page layout and IA | n/a | ✅ |
+| Analytics scope | Tagged events distinguish marketing from Spray | ✅ |
+| Deploy cadence | Same Vercel deploy at launch; can split if needed | n/a |
+| Lighthouse scoring | Marketing pages must remain unaffected by Spray bundle | Code-split to enforce this |
+
+### 21.7 Implementation plan
+
+This is the M0-02a PR's task list:
+
+1. Add a `(spray)` route group to `apps/web/app/`. Scaffold `(spray)/layout.tsx` with the app shell.
+2. Add the **"Spray"** link to the existing nav component in `apps/web/components/marketing/Nav.tsx`. Gate the destination on auth state via Clerk's `useUser` hook.
+3. Build the `/spray` marketing landing page (one screen): hero, three-bullet value prop, primary CTA.
+4. Wire the CTA into Clerk's hosted authentication flow.
+5. Implement the post-login router: onboarding wizard for new orgs, dashboard for existing.
+6. Build the authenticated app shell (sidebar plus top bar). Place all section 8 must-have features inside it.
+7. Implement a shared brand-tokens consumer in both the marketing site and the Spray app via `packages/ui/tokens`.
+8. SEO: add `/spray` to `apps/web/app/sitemap.ts`; mark `/spray/dashboard/*` and other authenticated routes `noindex`.
+9. Update the website README and deploy docs to reflect the new Spray surface.
+
+### 21.8 Acceptance criteria
+
+- The existing Graft website continues to work unchanged outside the Spray surface (no regressions in the marketing pages).
+- An unauthenticated user clicking "Spray" sees the marketing landing and a clear log-in or sign-up CTA.
+- An authenticated user clicking "Spray" reaches the dashboard in one click (no extra login prompt).
+- The authenticated UI uses the dedicated app shell, not the marketing layout.
+- Logging out returns to `/spray` landing (or a configured destination), preserving the integration.
+- SSO: signing in inside Spray also reflects on the marketing site nav (avatar visible).
+- Lighthouse scores for the marketing pages are unaffected by the Spray bundle (separate code-split).
+
+---
+
+## 22. Testing Strategy
+
+The application targets a classical pyramid: many unit tests, fewer integration tests, fewer end-to-end tests, and a small visual-regression and accessibility tier.
+
+### 22.1 Frameworks per surface
+
+| Surface | Unit | Integration | E2E | Visual | Accessibility |
+|---|---|---|---|---|---|
+| `apps/web` | Vitest | Vitest + msw | Playwright | Playwright snapshots or Chromatic | axe-core in Playwright |
+| `apps/mobile` (M2+) | Jest + RN Testing Library | Jest + msw | Maestro (preferred) or Detox | RN Storybook + Chromatic | RN Accessibility tests |
+| `services/api` | pytest | pytest + httpx + database fixtures | (covered by web E2E) | n/a | n/a |
+| `services/ml` (M1-10+) | pytest | pytest + httpx | (covered by web E2E) | n/a | n/a |
+| `services/worker` | pytest | pytest with Celery test harness | (covered by web E2E) | n/a | n/a |
+
+### 22.2 Coverage targets
+
+| Layer | Threshold |
+|---|---|
+| `services/api` | 80% line, 70% branch |
+| `services/ml` | 70% line |
+| `services/worker` | 75% line |
+| `apps/web` (excluding generated client) | 70% line |
+| `apps/mobile` (M2+) | 70% line |
+
+CI fails the PR check if coverage drops below threshold.
+
+### 22.3 Per-spec-section test mapping
+
+Cross-references CODEBASE_PLAN section 12 and is restated here for the spec PDF reader:
+
+| Spec section | Feature | Unit | Integration | E2E |
+|---|---|---|---|---|
+| §8.1 | Two-tap spray decision | n/a | n/a | Playwright: home → block → recommendation in 2 taps; Maestro mobile equivalent in M2 |
+| §8.5 | Capture upload + ML interpretation | pytest (capture validators), Vitest (component) | pytest+httpx (POST /api/spray/captures end-to-end through ML stub) | Playwright: upload photo → see severity 1-10 result |
+| §8.7-8 | Recommendation engine | pytest (FRAC rotation logic, PHI/REI checks) | pytest+httpx (GET /api/spray/recommendations) | Playwright: seed weather + capture → see recommendation |
+| §8.9 | Severity heatmap | Vitest (color scale) | n/a | Playwright: heatmap renders on map |
+| §8.11 | Chatbot RAG | pytest (RAG retrieval), Vitest (component) | pytest with Gemini stub | Playwright: ask question, see grounded answer with citation |
+| §8.12 | Map polygon draw | Vitest (geom utils) | pytest (POST /api/spray/blocks with PostGIS) | Playwright: draw polygon, save, see in list |
+| §11 | Forecasting engine | pytest against published reference cases (Gubler-Thomas, DMCast, Caffi) | pytest (Celery beat schedule) | n/a |
+| §11.7 | SA-1 external aggregator | pytest (UC IPM parser, USPest parser) against captured fixtures | pytest with Celery test harness | n/a |
+| §19 | Data lake events | pytest (schema validation) | pytest (event emission lands in lake) | n/a |
+| §20 | Account and identity | pytest (RBAC), Vitest (forms) | pytest (Clerk webhook verification) | Playwright: signup → verify → onboard → org create |
+| §21 | Website integration | n/a | n/a | Playwright: Spray nav appears for both auth states; SSO verified by signing in on the app and checking marketing nav |
+
+### 22.4 ML evaluation tests
+
+The cloud and on-device ML models are evaluated against:
+
+- The held-out internal Napa/Sonoma test set (per section 10.5) on every model training run; CI fails if per-class F1 drops more than 2 percentage points from the previously promoted model.
+- The active-learning queue: corrections are applied to the next training cycle and re-evaluated.
+- Per-region stratified evaluation reported in the model card per release.
+
+### 22.5 Visual regression tests
+
+Playwright snapshots (or Chromatic if budget permits) capture the home dashboard, Block detail, Recommendation card, and Map screens at three viewport sizes (mobile 375x667, tablet 768x1024, desktop 1440x900). Snapshots reviewed manually on every PR that touches `apps/web/app/(spray)/` or `packages/ui/`.
+
+### 22.6 Accessibility tests
+
+`axe-core` integrated into the Playwright E2E suite. Every new screen runs an automated accessibility scan; CI fails on any new AA violation.
+
+### 22.7 Manual QA per milestone
+
+Before each milestone closeout, a manual QA run covers:
+- Each section 8 acceptance criterion in production-like environment.
+- Per-region: weather provider connection, risk-index computation, recommendation generation, capture upload, all four roles (Owner, Admin, Member, Viewer).
+- Section 16 accessibility manual checks (screen reader, keyboard navigation).
+- Section 15 App Store compliance manual checks (M2 only).
+
+### 22.8 Load and chaos testing (post-M1)
+
+- Load test: simulate 10x expected M1 launch traffic against `services/api` and `services/ml`. Identify bottlenecks.
+- Chaos test: kill a Celery worker mid-task, kill the Redis instance, lose a weather-provider response. Verify graceful degradation.
+
+---
+
+## 23. Roadmap and Milestones
+
+The roadmap below mirrors CODEBASE_PLAN section 6 and is enumerated per spec section. Each milestone has entry criteria, scope, exit criteria, and an owner.
+
+### 23.1 M0 — Foundations
+
+**Entry criteria.** PR #2 (research dossier) merged. PR #3 (CODEBASE_PLAN) approved. PR #4 (this spec PDF) approved.
+
+**Scope.**
+
+| Task | Branch | Owner |
+|---|---|---|
+| Monorepo bootstrap (pnpm + Turborepo) | `graft-spray/m0/repo-bootstrap` | Builder |
+| Account and identity (Clerk) | `graft-spray/m0/auth-identity` | Builder |
+| Website integration (`/spray` nav, app shell) | `graft-spray/m0/website-integration` | Builder + Creator |
+| Postgres + PostGIS schema | `graft-spray/m0/postgis-schema` | Builder |
+| Data-lake ingest service | `graft-spray/m0/data-lake-ingest` | Builder |
+| Satellite map + polygon draw | `graft-spray/m0/maps-polygon-draw` | Builder |
+| Weather adapter (Napa/Sonoma) | `graft-spray/m0/weather-adapter-napa` | Builder |
+| **External risk-index aggregator (SA-1)** | `graft-spray/m0/external-risk-index-feeds` | Builder |
+
+**Exit criteria.**
+- A user can sign up, create an Org, draw a Block, and see a stub recommendation card.
+- The data lake receives at least one event per category in section 19.
+- The SA-1 external aggregator successfully scrapes UC IPM and uspest.org once per hour for the Napa/Sonoma region.
+- All tests passing; coverage targets met.
+
+### 23.2 M1 — Web MVP launch
+
+**Entry criteria.** M0 closeout signed off by Benson.
+
+**Scope.**
+
+| Task | Branch | Owner |
+|---|---|---|
+| Gubler-Thomas risk engine | `graft-spray/m1/risk-engine-gubler-thomas` | Builder + Analyst (validation) |
+| DMCast risk engine | `graft-spray/m1/risk-engine-dmcast` | Builder + Analyst |
+| Capture upload (web) | `graft-spray/m1/capture-upload-web` | Builder |
+| Cloud ML inference | `graft-spray/m1/ml-inference-cloud` | Builder + Analyst |
+| ML correction loop | `graft-spray/m1/ml-correction-loop` | Builder |
+| Recommendation engine v1 | `graft-spray/m1/recommendation-engine-v1` | Builder + Strategist |
+| Savings tracker | `graft-spray/m1/savings-tracker` | Builder + Creator |
+| Integrations panel | `graft-spray/m1/integrations-panel` | Builder |
+| Gemini chatbot | `graft-spray/m1/chatbot-rag` | Builder |
+| Web push notifications | `graft-spray/m1/notifications-web-push` | Builder |
+| Data export and account deletion | `graft-spray/m1/data-export-and-deletion` | Builder |
+| i18n foundation (English baseline) | `graft-spray/m1/i18n-foundation` | Builder |
+| Observability | `graft-spray/m1/observability` | Builder |
+| Security hardening | `graft-spray/m1/security-hardening` | Builder + Strategist |
+| QA and launch checklist | `graft-spray/m1/qa-and-launch-checklist` | Strategist |
+
+**Exit criteria.**
+- All section 8 must-haves pass acceptance criteria.
+- Web MVP deployed to production at `graftsystems.com/spray`.
+- First 10 Napa/Sonoma beta users onboarded successfully.
+- CCPA compliance verified.
+- Lighthouse scores meet section 16.6 budget.
+
+### 23.3 M2 — iOS launch
+
+**Entry criteria.** M1 closeout signed off; first 30 days of M1 production data reviewed.
+
+**Scope.** React Native + Expo app shipping to the App Store. Includes:
+- Expo SDK 51+, New Architecture enabled.
+- On-device first-pass model (TFLite or ONNX) wrapping the cloud-trained MobileNetV3.
+- `expo-notifications` plus APNs push.
+- `expo-apple-authentication` for Sign in with Apple.
+- `react-native-maps` or `@rnmapbox/maps` polygon drawing.
+- `expo-camera` + `expo-av` capture flow.
+- Offline buffering via `expo-sqlite`.
+- Shared `packages/client-core` integration.
+- EAS Build, EAS Submit, EAS Update pipelines.
+
+**Exit criteria.**
+- App Store approval.
+- TestFlight beta with 10 internal + 20 external testers.
+- All section 15 App Store compliance items verified.
+
+### 23.4 M3 — Burgundy + French i18n + GDPR
+
+**Entry criteria.** M2 in production for at least 60 days.
+
+**Scope.**
+- French translation completed and reviewed by a Burgundy-region partner.
+- INRAE Optidose / Mildiumagro adapter for the regional risk-index source.
+- Météo-France ICOS adapter for weather.
+- E-Phy (ANSES) pesticide registry adapter.
+- EU data residency: API and operational store deployed to Frankfurt or Ireland.
+- GDPR readiness: DPA template, DPO appointed, consent flow audited, breach-disclosure runbook tested.
+- SOC 2 Type II audit kicked off.
+
+**Exit criteria.**
+- First 5 Burgundy beta users onboarded successfully.
+- French UI tested by native French speaker plus a Burgundy partner.
+- GDPR compliance verified by counsel.
+- SOC 2 Type II observation period started.
+
+### 23.5 M4 — Bordeaux
+
+**Entry criteria.** M3 in production for 30 days.
+
+**Scope.** Reuse Burgundy infrastructure. Bordeaux-specific weather and risk sources, Bordeaux-specific terminology in French strings.
+
+**Exit criteria.** First 5 Bordeaux beta users onboarded.
+
+### 23.6 M5 — Mendoza + Spanish i18n
+
+**Entry criteria.** M4 in production for 30 days.
+
+**Scope.**
+- Spanish translation completed and reviewed by an INTA Mendoza partner.
+- INTA Pampa adapter for weather.
+- INTA Mendoza adapter for risk indices.
+- SENASA pesticide registry adapter.
+- Latin American data residency: assess São Paulo or us-east depending on AWS or GCP availability.
+
+**Exit criteria.** First 5 Mendoza beta users onboarded.
+
+### 23.7 M6+ — Global expansion
+
+Region-by-region rollout based on demand and partner channels. Each new region requires:
+- Translation review by a regional partner.
+- Default weather and risk-index providers configured.
+- Local pesticide registry adapter.
+- Compliance assessment.
+- A dedicated PR per region per the same template.
+
+---
+
+## 24. Open Questions and Risks
+
+This section mirrors CODEBASE_PLAN sections 13 (Risk Register) and 14 (Open Questions) and is restated for the spec PDF reader.
+
+### 24.1 Resolved open questions (as of 2026-04-30)
+
+| ID | Topic | Resolution |
+|---|---|---|
+| Q1 | `frontend-cinematic/` directory | Keep in place, do not touch. M0-01 restructure leaves the directory unchanged at repo root. |
+| Q2 | Submodule mid-flight work | Leave dirty in working tree. No commit, no revert for Spray work. |
+| Q9 | `.gitattributes` for LF/CRLF | Add `* text=auto eol=lf` in M0-01. |
+| Q12 | Orphan branches (`add-animation-libs`, `cinematic-frontend`, `sync-cinematic-fixes`) | Abandon. Do not preserve, do not merge. |
+
+### 24.2 Open questions (pending Benson)
+
+| ID | Question | Blocks |
+|---|---|---|
+| Q3 | Render PostgreSQL Pro tier supports PostGIS extension? If not, plan migration target (Supabase, AWS RDS). | M0-03 |
+| Q4 | Mapbox vs. MapLibre for satellite map. Default to MapLibre (free) per spec, or stay on Mapbox to leverage existing token? | M0-05 |
+| Q5 | Spray routing option: subpath, subdomain, or hybrid. Default = subpath; confirm. | M0-02a |
+| Q6 | `/tool` page future. Stays on marketing site, or folds into Spray app shell? | M0-02a |
+| Q7 | Existing `/api/waitlist` endpoint: keep collecting waitlist entries on `main` while Spray is in development? | none (clarification only) |
+| Q8 | Auth provider: Clerk (recommended) vs. Auth0. Confirm. | M0-02 |
+| Q10 | Outstanding ILL-only paywalled papers (B Strizyk 1983, D Oh 2000): proceed with spec PDF using available sources, mark them best-effort, may not retrieve? | none (proceeding) |
+| Q11 | Dataset folders not imported in M0-00a (Grapes Disease Dataset, j4xs3kh3fd-2, Research on Identifying Powdery Mildew, Burgundy Documents, Treatment Research, Predicting Mildew Outbreaks): include via Git LFS, keep external, or DVC? | M1-10 ML training data sourcing |
+| Q13 | App identity for Apple App Store: bundle ID, team ID, app name, primary category. | M2 |
+| Q14 | Default region pricing tiers per external API (weather, satellite tiles, Gemini, Sentry, Datadog). | M0-06 (weather provider choice) |
+
+### 24.3 Risk register (R1 through R20)
+
+| ID | Risk | Severity | Likelihood | Owner | Mitigation |
+|---|---|---|---|---|---|
+| R1 | Submodule fragility (`backend/PredictionTool` `.gitmodules` broken) | High | Realized | Builder | M0-01 fix; long-term move `grape_weight_tool` to PyPI. |
+| R2 | Submodule local dirty state | Medium | Realized | Benson | Q2 resolved: leave alone. |
+| R3 | Route namespace conflict (existing `/`, `/about`, `/contact`, `/tool` vs new `/spray`) | Low | Possible | Builder | Next.js parallel route groups; M0-02a verifies. |
+| R4 | Hardcoded CORS/CSRF origins in `render.yaml` | Medium | Likely | Builder | Parameterize via env var; existing `https://.*\.vercel\.app` regex covers preview deploys. |
+| R5 | Email identity coupling (`CONTACT_FROM_EMAIL` hardcoded) | Low | Possible | Builder | Add `SPRAY_FROM_EMAIL`; M1-16 introduces. |
+| R6 | Inference cache invalidation across multiple model paths | Medium | Possible | Builder | M1-10 cache versioning by artifact mtime; consider Redis-backed cache. |
+| R7 | Database growth (`PredictionResult` plus new Spray tables) | Medium | Likely | Strategist | M0-03 indexes; M1-09 retention; M1+ lake archival. |
+| R8 | DINOv2 weights pre-cache build step in `render.yaml` | Low | Possible | Builder | M1-10 extends to cache Spray classifier weights. |
+| R9 | `frontend-cinematic/` purpose unclear | Medium | Possible | Benson | Q1 resolved: keep in place untouched. |
+| R10 | LF/CRLF on Windows | Low | Realized | Builder | Q9 resolved: add `.gitattributes` in M0-01. |
+| R11 | Inference latency SLA on shared Render Pro worker | Medium | Likely | Builder | M1-10 profile; route via Celery if above 2s/image; scale Render workers as needed. |
+| R12 | Spec PDF generation gated on missing 🔴 papers | High | Was realized; now resolved by Scout report | Benson + Scribe | A and C retrieved; B and D ILL-only and don't block PDF. |
+| R13 | Mapbox vs. MapLibre cost at scale | Low | Possible | Builder | M0-05 prototype with MapLibre; Mapbox fallback. Q4 pending. |
+| R14 | PostGIS not installed on Render | Medium | Possible | Builder | Q3 pending; M0-03 confirms or plans migration. |
+| R15 | No existing test infrastructure | Medium | Realized | Builder | M0-01 scaffolds Vitest, pytest, Playwright. |
+| R16 | Submodule pointer pushed without internal commit pushed first | High | Possible | Benson | Q2 resolved: don't touch. Documented in M0-01 README. |
+| R17 | Vercel root directory change is a manual setting | High | Possible | Builder | Pre-flight checklist in M0-01 PR description; capture pre-existing settings. |
+| R18 | External risk-index scraping etiquette (M0-06b) | Medium | Possible | Builder | Identifying user-agent; respect `robots.txt`; throttle once per region per hour; request official API from UC IPM and OSU IPPC. |
+| R19 | Source HTML changes break the parser (M0-06b) | Medium | Likely | Builder | Parser-regression tests against captured fixtures; Sentry alert on parse failure; 24h stale-flag fallback. |
+| R20 | TOS compliance for external sources (M0-06b) | Low | Possible | Strategist | Per-source TOS review; documented attribution language; proactive contact with source maintainers. |
+
+---
+
+## 25. Appendix: Glossary, References, Source Map
+
+### 25.1 Glossary
+
+| Term | Definition |
+|---|---|
+| **Active learning** | A training-loop pattern where model-uncertainty-flagged examples are routed to humans for labeling and fed back into the next training cycle. |
+| **Block** | A sub-vineyard area treated as a single management unit (single variety, single training system, single spray timeline). |
+| **DMCast** | Downy mildew prediction model from Park, Seem, Gadoury, Pearson 1997. |
+| **EPPO PP 1/004** | The European and Mediterranean Plant Protection Organization standard for evaluating fungicide efficacy against *Erysiphe necator*; defines a 0-5 disease severity scale used as the reference for Graft Spray's 1-10 scale. |
+| **FRAC group** | The Fungicide Resistance Action Committee classification of fungicides by mode of action. Rotation across FRAC groups is the cornerstone of resistance management. |
+| **Gubler-Thomas Risk Index** | The UC Davis powdery mildew risk index, named for Gubler and Thomas. Range 0 to 100. Revised in 2013 with updated high-temperature thresholds. |
+| **JTBD** | Jobs-to-Be-Done; a framing for user research focused on the outcome a user is hiring the product to accomplish. |
+| **MFA** | Multi-factor authentication. |
+| **PHI** | Pre-Harvest Interval; the minimum number of days between a pesticide application and harvest, per the product label. |
+| **REI** | Re-Entry Interval; the minimum hours after a pesticide application during which workers must not enter the treated area. |
+| **RLS** | Row-Level Security; a PostgreSQL feature that restricts which rows a user can see based on policies. |
+| **SA-1** | Spec amendment 1: live external risk-index aggregator. See section 11.7 and CODEBASE_PLAN Appendix A. |
+| **TFLite** | TensorFlow Lite; the on-device model format used for the iOS first-pass classifier. |
+| **WCAG** | Web Content Accessibility Guidelines. Graft Spray targets 2.2 Level AA. |
+
+### 25.2 References
+
+The full source dossier lives at `docs/research/` in this repository. The dossier is the read-only context for this specification. Major reference categories:
+
+- `00_index.md` — master index of the brain, with category and source ID conventions.
+- `01_visual-detection.md` — disease imagery, severity scales, ML classifier prior art.
+- `02_weather-impacts.md` — temperature, humidity, leaf wetness effects on disease.
+- `03_live-weather-feeds.md` — weather data sources, leaf wetness estimation.
+- `04_industry-publications.md` — decision-support systems, industry surveys.
+- `05_treatment-methods.md` — fungicide chemistry, resistance management, organic methods.
+- `06_outbreak-prediction.md` — predictive models (Gubler-Thomas, DMCast, Caffi mechanistic).
+- `07_miscellaneous.md` — UI ergonomics, GNSS, regulatory standards.
+- `business/competitive-landscape.md` — competitive analysis (NOT in chatbot RAG).
+- `glossary.md` — extended dossier-specific glossary.
+- `paywalled_queue.md` — manifest of paywalled sources.
+- `sources_master.csv` — full source registry with 405+ entries.
+- `_planning/paywalled-download-plan.md` — operational checklist with Scout 2026-04-30 resolutions for the original 5 outstanding 🔴 papers.
+
+### 25.3 Source map: spec section to dossier category
+
+| Spec section | Primary dossier category | Key sources |
+|---|---|---|
+| §3 User Personas | (general) | Industry surveys, [Brain 04_industry-publications] |
+| §8.5 Capture and interpretation | 01_visual-detection | EPPO PP 1/004 (P1), Knauer 2017 (P2), Tang 2020 GLDD (P3), Hazelrigg 2018 (P4) |
+| §10 ML pipeline | 01_visual-detection | (above) plus PlantVillage, internal Napa/Sonoma test set |
+| §11 Disease forecasting engine | 06_outbreak-prediction | Gubler-Thomas (P1, P2), DMCast Park 1997 (P5), Magarey 2005 (P6), Caffi 2011 mechanistic (P3), Bendek 2007 (P7), Caffi 2009 (P8 corrected to Rossi-Giosuè-Caffi), Kennelly 2007 (P9), Rossi 2010 ascospore (P10) |
+| §11.7 SA-1 live external aggregation | 06_outbreak-prediction + 03_live-weather-feeds | UC IPM Grape PM RAI, USPest grape PM tool |
+| §11.6 Leaf wetness fallback | 03_live-weather-feeds | Gleason CART (P1) |
+| §12 Weather and external integration | 02_weather-impacts + 03_live-weather-feeds | Caffi 2016 T-wetness-copper (02 P1), Rossi-Caffi 2007 oospore (02 P2), Bois 2018 Bordeaux T-zoning (03 P2), Willocquet 1996 (03 P4) |
+| §17.5 FRAC rotation | 05_treatment-methods | Gadoury 2012 (P7), Rossi 2013 downy management (P8), Kortekamp 2010 Cu-S (P1), Gessler 2011 P-viticola review (P6) |
+| §15.5 Pesticide-advice disclaimer | 04_industry-publications + 07_miscellaneous | EFSA pesticide training (07 P3), Puelles 2024 DSS (04 P1), Delière 2015 expertise DSS (04 P2) |
+| §13 Notification system | 06_outbreak-prediction + 07_miscellaneous | Risk thresholds (06 P2), thumb target sizing (07 P2), MIT fingertip width (07 P4) |
+| §16 Web compliance | 07_miscellaneous | EFSA pesticide training (07 P3), ISO 11783 ISOBUS (07 P5) |
+| §8.13 Savings tracker | business | Hyde 2010 PM cost Edna Valley (P3), Fuller 2014 PM resistance value (P4), Broome 2024 US fungicide patterns (P1, pending), Rossi 2023 DSS Mediterranean (P2, pending) |
+
+Citations throughout this specification reference the dossier with the format `[Brain <category> / S#]` for open-access sources or `[Brain <category> / P#]` for paywalled sources, where the IDs match `paywalled_queue.md` and `sources_master.csv`. Where a citation is needed but the specific source has not yet been resolved, the placeholder `[CITATION_NEEDED: <description>]` appears.
+
+---
+
+**End of specification.**
+
+Version 1.0 DRAFT, 2026-04-30. Generated on `graft-spray/m0/spec-pdf` branch. Pending PR review and approval before promotion to production.
+
