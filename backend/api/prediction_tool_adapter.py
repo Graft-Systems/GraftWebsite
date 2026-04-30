@@ -282,11 +282,13 @@ def _run_v2_inference(image_paths: list[Path]) -> list[dict[str, Any]]:
             feat = cnn(tensor)  # (1, 384)
         feature_vector = feat.cpu().numpy().astype(np.float32)
         prediction = float(regressor.predict(feature_vector)[0])
+        # Convert grams to kilograms since InferenceResult defaults to unit="kg"
+        prediction_kg = prediction / 1000.0
         elapsed = int((time.perf_counter() - started) * 1000)
 
         item = InferenceResult(
             filename=image_path.name,
-            prediction_weight=prediction,
+            prediction_weight=prediction_kg,
             model=model_name_str,
             depth_used=None,
             latency_ms=elapsed,
@@ -326,11 +328,13 @@ def _run_v1_inference(image_paths: list[Path]) -> list[dict[str, Any]]:
             use_raw_depth=settings.PREDICTION_USE_RAW_DEPTH,
         )
         prediction = float(model.predict(np.asarray([features]))[0])
+        # Convert grams to kilograms since InferenceResult defaults to unit="kg"
+        prediction_kg = prediction / 1000.0
         elapsed = int((time.perf_counter() - started) * 1000)
 
         item = InferenceResult(
             filename=image_path.name,
-            prediction_weight=prediction,
+            prediction_weight=prediction_kg,
             model="grape-weight-rf-v1",
             depth_used=str(depth_path) if depth_path else None,
             latency_ms=elapsed,
