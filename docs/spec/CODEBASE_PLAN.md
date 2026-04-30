@@ -597,26 +597,40 @@ Coverage targets: pytest ≥80% on `services/*`, vitest ≥70% on `apps/web` (ex
 
 Numbered questions that block specific milestones. Each must be answered before its referenced milestone can land.
 
-**Resolved 2026-04-30 by Benson:** Q1, Q2, Q9, Q12. Resolutions inline below. **M0-01 unblocked from these four.** Still pending: Q3, Q4, Q5, Q6, Q7, Q8, Q10, Q11, Q13, Q14.
+**Resolved 2026-04-30 by Benson (first batch, structural):** Q1, Q2, Q9, Q12.
+**Resolved 2026-04-30 by Benson (second batch, technical):** Q3, Q4, Q5, Q6, Q8, Q10, Q11, Q14.
+**Partially resolved 2026-04-30 by Benson:** Q13 (app name confirmed as "Graft Systems"; bundle ID, Apple Developer team ID, and App Store primary category remain TBD before M2).
+**Awaiting Benson's confirmation:** Q7 (clarification-only; Head Chef recommends keep `/api/waitlist` live, rationale inline).
+**All M0 and M1 milestones are now unblocked.** M2 awaits Q13 completion. Resolutions inline below.
 
 1. **Q1 — `frontend-cinematic/`: what is it?** (R9) Decision options: (a) keep as separate Next.js app under `apps/web-cinematic`, (b) merge into `apps/web` if intended successor, (c) archive to `attic/`, (d) delete. Likely connected to branches `add-animation-libs`, `cinematic-frontend`, `sync-cinematic-fixes`. **Blocks:** M0-01.
    - **RESOLVED 2026-04-30 by Benson:** Old work, unrelated to Spray. Keep in place at repo root, untouched. M0-01 restructure does NOT move it into `apps/`. Do not delete (no reason to).
 2. **Q2 — Submodule mid-flight work.** (R2) `backend/PredictionTool` has uncommitted internal changes. Options: (a) commit + push internal changes, then bump parent pointer; (b) revert submodule to `d0018a2` and discard local work; (c) leave dirty in working tree (carries to all branches but never committed). **Blocks:** M0-01.
    - **RESOLVED 2026-04-30 by Benson:** Lay off and let it rest. Do not commit the parent pointer move, do not revert, do not touch the submodule for Spray work. Dirty state stays in the working tree, never enters a Spray commit.
 3. **Q3 — Render PostGIS support.** (R14) Need to confirm whether Render Postgres Pro tier supports PostGIS, or whether we migrate (Supabase / AWS RDS). **Blocks:** M0-03.
+   - **RESOLVED 2026-04-30 by Benson:** Render Postgres Pro tier (and other paid tiers) fully supports PostGIS. M0-03 stays on Render. R14 closed.
 4. **Q4 — Mapbox vs MapLibre.** (R13) Default to MapLibre (free) per spec, or stay on Mapbox to leverage existing token? **Blocks:** M0-05.
+   - **RESOLVED 2026-04-30 by Benson:** MapLibre at launch. Design the map-tile provider abstraction so that swapping to Mapbox at scale is a configuration change, not a refactor: a `services/api/spray/providers/map_tile_*` adapter on the server side and a thin `apps/web/components/spray/Map.tsx` that reads the provider from env. R13 mitigation locked in.
 5. **Q5 — Spray routing option.** (Spec §21) Three routing options: (a) subpath `graftsystems.com/spray/*` (recommended), (b) subdomain `spray.graftsystems.com`, (c) hybrid. Confirm before M0-02a. **Blocks:** M0-02a.
+   - **RESOLVED 2026-04-30 by Benson:** Option (a), subpath `graftsystems.com/spray/*`. M0-02a implements via Next.js parallel route groups: `(marketing)` and `(spray)` inside `apps/web/app/`.
 6. **Q6 — `/tool` page future.** Existing `/tool` page is the grape-weight inference UI. Once Spray launches, does it stay on the marketing site, or fold into the Spray app? **Blocks:** M0-02a.
+   - **RESOLVED 2026-04-30 by Benson:** `/tool` stays on the marketing site under `(marketing)/tool/`. Graft Spray is a distinct product; no fold-in.
 7. **Q7 — Existing `WaitlistEntry` collection.** Keep collecting waitlist entries on `main` while Spray develops? If yes, `/api/waitlist` stays live during M0-M1. **Blocks:** nothing (clarification only).
+   - **HEAD CHEF RECOMMENDATION 2026-04-30:** Keep `/api/waitlist` live. Rationale: (1) zero engineering cost; the endpoint is already deployed and tested. (2) It captures real demand signal during M0-M1 development, which helps prioritize beta-invite ordering at M1 launch. (3) It gives Graft Spray a warm soft-launch list of self-identified interested users to email when M1 ships, which beats cold outreach. **Awaiting Benson's confirmation.**
 8. **Q8 — Auth provider.** Clerk vs Auth0 (per spec §20). Spec recommends Clerk; confirm. **Blocks:** M0-02.
+   - **RESOLVED 2026-04-30 by Benson:** Clerk. M0-02 implements per spec §20.
 9. **Q9 — `.gitattributes` policy.** (R10) Add `* text=auto eol=lf`? Affects all Windows-based contributors and existing diffs. **Blocks:** M0-01.
    - **RESOLVED 2026-04-30 by Benson:** Yes, add `* text=auto eol=lf` in `.gitattributes`. Lands as part of M0-01.
 10. **Q10 — Spec PDF retrieval blockers.** (R12) Of the 5 missing 🔴 papers, 2 are likely ILL-only (06 P4 Strizyk 1983, 02 P11 Oh 2000). Mark as "best-effort, may not retrieve" and proceed with spec PDF using available sources? **Blocks:** spec PDF generation.
+   - **RESOLVED 2026-04-30 by Benson:** Mark 06 P4 Strizyk 1983 and 02 P11 Oh 2000 as "best-effort, may not retrieve." Spec PDF proceeds with available sources. (Spec PDF v1.0 DRAFT generated in PR #4 commit `4a39365`; both ILL papers backfill into citations whenever U-M ILL fulfills.)
 11. **Q11 — Dataset folders not imported in M0-00a (this PR's predecessor).** Six dataset/research collections in `UMICH LOGIN/` not imported: `Grapes Disease Dataset`, `j4xs3kh3fd-2`, `Research on Identifying Powdery Mildew`, `Burgundy Documents`, `Treatment Research`, `Predicting Mildew Outbreaks`. Decision: include via Git LFS, keep external (referenced by path), or DVC? **Blocks:** M1-10 ML training data sourcing.
+   - **RESOLVED 2026-04-30 by Benson:** Include via Git LFS. M0-01 sets up Git LFS in the monorepo bootstrap with `.gitattributes` tracking patterns for `*.pdf`, `*.zip`, `*.h5`, `*.npz`, `*.parquet`, plus image directories under `docs/research/assets/*/datasets/**`. The 6 dataset folders land in a follow-up dedicated PR (`graft-spray/m0/dataset-import`) once LFS is operational and the bandwidth quota is provisioned. M1-10 then has full training-data access.
 12. **Q12 — Orphan branches.** `add-animation-libs`, `cinematic-frontend`, `sync-cinematic-fixes` exist alongside `main`. Are they live work, abandoned, or merged? Inspect required. **Blocks:** M0-01.
    - **RESOLVED 2026-04-30 by Benson:** Abandon. Do not preserve, do not merge. M0-01 leaves them untouched on origin; they remain as historical record only.
 13. **Q13 — App identity for Apple App Store.** What's the bundle ID, team ID, app name, primary category? Needed for EAS / App Store Connect setup in M2. **Blocks:** M2.
+   - **PARTIALLY RESOLVED 2026-04-30 by Benson:** App name = "Graft Systems" (per Benson; note: the product is referred to as "Graft Spray" throughout the spec, so confirm before App Store submission whether the App Store-facing name should be "Graft Systems" or "Graft Spray"). Bundle ID, Apple Developer team ID, and App Store primary category remain TBD before M2 (suggested category at minimum: Business, with Productivity as alternate; Benson's call).
 14. **Q14 — Default region pricing tiers.** Spec says "API budget undetermined; for every external API list pricing tiers." Confirm preferred default tier per provider (weather, satellite tiles, Gemini, Sentry, Datadog) or keep all on free tiers until traffic warrants. **Blocks:** M0-06 (weather provider choice).
+   - **RESOLVED 2026-04-30 by Benson:** Free tier across the board until traffic warrants an upgrade. Per provider at launch: Visual Crossing free dev tier (1,000 calls per day), Tomorrow.io free tier as alternate, MapLibre with free Esri or Sentinel-2 tiles, Gemini API free tier, Sentry free or developer plan, Datadog skipped at launch (Sentry-only for observability), Render free Postgres for dev and Pro tier for prod (already paying). Each integration prints a usage warning when approaching its free-tier limit so an upgrade decision arrives ahead of an outage.
 
 ---
 
