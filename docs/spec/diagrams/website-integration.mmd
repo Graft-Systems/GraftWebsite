@@ -1,0 +1,65 @@
+flowchart LR
+    subgraph MarketingNav["Marketing Site Navigation\n(graft-systems.com)"]
+        direction LR
+        NAV_HOME["Home"]
+        NAV_ABOUT["About"]
+        NAV_TOOL["Tool"]
+        NAV_SPRAY["Spray"]
+        NAV_CONTACT["Contact"]
+    end
+
+    subgraph AuthRouting["Auth Routing"]
+        direction TB
+        AUTH_CHECK{"User\nlogged in?"}
+        LANDING["/spray\nLanding Page\n(hero + value prop + CTA)"]
+        CLERK_AUTH["Clerk Auth\n(login or signup)"]
+        APP_SHELL["/spray/app\nAuthenticated App Shell"]
+    end
+
+    subgraph AppLayout["App Shell Layout"]
+        direction TB
+        subgraph Sidebar["Sidebar Navigation"]
+            direction TB
+            SB1["Vineyards"]
+            SB2["Map (satellite + overlays)"]
+            SB3["Captures"]
+            SB4["Recommendations"]
+            SB5["Spray Log"]
+            SB6["Integrations"]
+            SB7["Chatbot"]
+            SB8["Settings"]
+        end
+        subgraph Topbar["Top Bar"]
+            direction LR
+            TB1["Org switcher"]
+            TB2["Notifications"]
+            TB3["User menu"]
+        end
+    end
+
+    subgraph UserMenu["User Menu Actions"]
+        UM1["Account settings"]
+        UM2["Switch org"]
+        UM3["Back to Graft Systems\n(opens marketing homepage\nin new tab)"]
+    end
+
+    subgraph SSO["Shared Auth Session"]
+        SSO_NOTE["Clerk SSO\nSame session valid across\nmarketing site + spray app\nNo re-login required"]
+    end
+
+    NAV_SPRAY --> AUTH_CHECK
+    AUTH_CHECK -->|"logged out"| LANDING
+    AUTH_CHECK -->|"logged in"| APP_SHELL
+    LANDING --> CLERK_AUTH
+    CLERK_AUTH --> APP_SHELL
+    APP_SHELL --> Sidebar
+    APP_SHELL --> Topbar
+    TB3 --> UserMenu
+    UM3 -->|"new tab"| NAV_HOME
+
+    APP_SHELL -.->|"marketing chrome removed\ninside app"| SSO_NOTE
+
+    style LANDING fill:#f0f4ff,stroke:#4a6fa5
+    style APP_SHELL fill:#e8f5e9,stroke:#388e3c
+    style CLERK_AUTH fill:#fff8e1,stroke:#f9a825
+    style SSO_NOTE fill:#fce4ec,stroke:#c62828

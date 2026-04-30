@@ -1,0 +1,47 @@
+flowchart LR
+    HOME["Home Dashboard\n(authenticated)"]
+
+    subgraph PrimaryPath["Primary Path (2 taps)"]
+        direction LR
+        TAP1["Tap 1:\nBlock card on dashboard\n(shows risk gauge + last capture date)"]
+        TAP2["Tap 2:\nBlock Detail view\n(recommendation card visible immediately)"]
+        DECISION{"Recommendation\nCard"}
+        SPRAY["Tap 'Spray Now'\nlog spray record\nset next reminder"]
+        HOLD["Tap 'Hold'\ndismiss + set monitor alert"]
+        MONITOR["Tap 'Monitor'\nschedule follow-up capture"]
+    end
+
+    subgraph NotificationPath["Notification Path (1 tap)"]
+        direction LR
+        PUSH["Push notification\n(web push or APNs)\n'Block X: High PM risk'\n'Spray recommended today'"]
+        DIRECT["Tap notification\ngoes directly to\nrecommendation card"]
+    end
+
+    subgraph RecommendationCard["Recommendation Card Detail"]
+        direction TB
+        RC1["Risk level badge\n(low / moderate / high)"]
+        RC2["ML severity score 1-10\nfrom latest capture"]
+        RC3["Local risk index\n(Gubler-Thomas / DMCast)"]
+        RC4["External risk index\n(UC IPM / uspest.org)"]
+        RC5["Weather summary\n(T, RH, leaf wetness)"]
+        RC6["Suggested product\n(from UserProductPreference)"]
+        RC7["PHI and REI\nfor selected product"]
+    end
+
+    HOME --> TAP1
+    TAP1 --> TAP2
+    TAP2 --> DECISION
+    DECISION --> SPRAY
+    DECISION --> HOLD
+    DECISION --> MONITOR
+
+    PUSH --> DIRECT
+    DIRECT --> DECISION
+
+    TAP2 -.->|"card contains"| RecommendationCard
+
+    style HOME fill:#f0f4ff,stroke:#4a6fa5
+    style SPRAY fill:#e8f5e9,stroke:#388e3c
+    style HOLD fill:#fff8e1,stroke:#f9a825
+    style MONITOR fill:#e3f2fd,stroke:#1565c0
+    style PUSH fill:#fce4ec,stroke:#c62828

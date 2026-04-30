@@ -1,0 +1,55 @@
+flowchart LR
+    subgraph Offline["Training Pipeline (Offline)"]
+        direction TB
+        DS["Labeled Datasets\nPlantVillage\nGLDD\nUser Captures"]
+        AUG["Data Augmentation\n(crop, flip, color jitter,\nmix-up)"]
+        TRAIN_MOB["Train MobileNetV3\n(on-device model)"]
+        TRAIN_CNX["Train ConvNeXt\n(cloud model)"]
+        EVAL["Evaluation\nper-class F1\nMAE on severity 1-10"]
+        ARTIFACT["Version Artifacts\nMLflow / DVC"]
+        EXPORT_TFL["Export TFLite + ONNX\n(mobile)"]
+        EXPORT_DOC["Export Docker Image\n(cloud inference)"]
+
+        DS --> AUG
+        AUG --> TRAIN_MOB
+        AUG --> TRAIN_CNX
+        TRAIN_MOB --> EVAL
+        TRAIN_CNX --> EVAL
+        EVAL --> ARTIFACT
+        ARTIFACT --> EXPORT_TFL
+        ARTIFACT --> EXPORT_DOC
+    end
+
+    subgraph Online["Inference Pipeline (Online)"]
+        direction TB
+        UPLOAD["User Capture Upload\n(photo / video)"]
+        CLOUD_INF["Cloud Inference\nConvNeXt\n(services/ml FastAPI)"]
+        OUTPUT["Prediction Output\npowdery_prob\ndowny_prob\nseverity 1-10\nconfidence"]
+        subgraph MobilePath["iOS First-Pass (on-device)"]
+            MOB_INF["TFLite MobileNetV3\n(on-device)"]
+            CONF_CHECK{"confidence\n>= threshold?"}
+            MOB_INF --> CONF_CHECK
+        end
+        UPLOAD --> MOB_INF
+        CONF_CHECK -->|"yes"| OUTPUT
+        CONF_CHECK -->|"no"| CLOUD_INF
+        UPLOAD --> CLOUD_INF
+        CLOUD_INF --> OUTPUT
+    end
+
+    subgraph ActiveLearning["Active Learning Loop"]
+        direction TB
+        LOW_CONF["Low-Confidence Captures\n(queued automatically)"]
+        LABEL["Human Re-Label Queue\n(agronomist review)"]
+        ENRICH["Enriched Dataset\n(added to training set)"]
+        RETRAIN["Next Training Cycle"]
+
+        LOW_CONF --> LABEL
+        LABEL --> ENRICH
+        ENRICH --> RETRAIN
+        RETRAIN --> TRAIN_CNX
+    end
+
+    OUTPUT --> LOW_CONF
+    EXPORT_TFL -.->|"deployed to"| MOB_INF
+    EXPORT_DOC -.->|"deployed to"| CLOUD_INF

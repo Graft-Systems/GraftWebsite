@@ -1,0 +1,78 @@
+flowchart TD
+    subgraph Inputs["Inputs"]
+        direction LR
+        WX["WeatherObservation\n(T, RH, leaf wetness,\nprecip)"]
+        SENSOR["User-Connected Sensor\nStreams\n(Davis, Onset, etc.)"]
+    end
+
+    subgraph LocalBranch["Local Risk Compute Branch"]
+        direction TB
+        RISK_TASK["services/worker/tasks/\nrisk_index.py"]
+        GT["Gubler-Thomas\nPowdery Mildew Model"]
+        DMCAST["DMCast\nDowny Mildew Model"]
+        RISK_RUN["RiskIndexRun\n(per Block per day)\nmodel_name, score,\nrisk_level, inputs_snapshot"]
+        RISK_TASK --> GT
+        RISK_TASK --> DMCAST
+        GT --> RISK_RUN
+        DMCAST --> RISK_RUN
+    end
+
+    subgraph ExternalBranch["External Risk Aggregation Branch (SA-1)"]
+        direction TB
+        CELERY_BEAT["Celery Beat\n(hourly schedule)"]
+        EXT_TASK["services/worker/tasks/\nexternal_risk_index.py"]
+        UCIPM_SCRAPE["Scrape UC IPM\nGrape PM RAI\n(region-level index)"]
+        USPEST_SCRAPE["Scrape uspest.org\n(region-level index)"]
+        PARSE["Parse + Normalize\n(risk_index_value,\nrisk_level: low/moderate/high)"]
+        EXT_IDX["ExternalRiskIndex\n(per region per source)\nid, region, source,\nrisk_index_value, risk_level,\npulled_at, raw_payload"]
+        CELERY_BEAT --> EXT_TASK
+        EXT_TASK --> UCIPM_SCRAPE
+        EXT_TASK --> USPEST_SCRAPE
+        UCIPM_SCRAPE --> PARSE
+        USPEST_SCRAPE --> PARSE
+        PARSE --> EXT_IDX
+    end
+
+    subgraph RecommendationEngine["Recommendation Engine"]
+        direction TB
+        RECO_SVC["services/api/spray/\nrecommendations.py"]
+        CROSS_REF["Cross-reference\nlocal vs external risk"]
+        DIVERGE{"Divergence\n> threshold?"}
+        FLAG["Flag for Human Review\n(agronomist alert)"]
+        RECO_OUT["Recommendation\n(action, rationale,\nrisk_level)"]
+        RECO_SVC --> CROSS_REF
+        CROSS_REF --> DIVERGE
+        DIVERGE -->|"yes"| FLAG
+        DIVERGE -->|"no"| RECO_OUT
+        FLAG --> RECO_OUT
+    end
+
+    subgraph Outputs["Outputs"]
+        direction LR
+        GAUGE["Per-Block Risk Gauge\n(dashboard card)"]
+        HEATMAP["Heatmap Overlay\n(satellite map)"]
+    end
+
+    subgraph DataLake["Data Lake Events (Section 19)"]
+        direction LR
+        EVT1["risk_index.computed\n(RiskIndexRun emitted)"]
+        EVT2["external_risk_index.pulled\n(ExternalRiskIndex emitted)"]
+    end
+
+    WX --> RISK_TASK
+    SENSOR --> RISK_TASK
+    WX --> EXT_TASK
+
+    RISK_RUN --> RECO_SVC
+    EXT_IDX --> RECO_SVC
+
+    RECO_OUT --> GAUGE
+    RECO_OUT --> HEATMAP
+
+    RISK_RUN -.->|"emits"| EVT1
+    EXT_IDX -.->|"emits"| EVT2
+
+    style ExternalBranch fill:#fff8e1,stroke:#f9a825
+    style LocalBranch fill:#e8f5e9,stroke:#388e3c
+    style RecommendationEngine fill:#e3f2fd,stroke:#1565c0
+    style DataLake fill:#fce4ec,stroke:#c62828

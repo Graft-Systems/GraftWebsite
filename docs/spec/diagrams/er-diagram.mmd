@@ -1,0 +1,248 @@
+erDiagram
+    Org {
+        uuid id PK
+        string name
+        string slug
+        string plan
+        timestamp created_at
+    }
+    User {
+        uuid id PK
+        string clerk_id
+        string email
+        string full_name
+        timestamp created_at
+    }
+    Membership {
+        uuid id PK
+        uuid org_id FK
+        uuid user_id FK
+        string role
+        timestamp joined_at
+    }
+    Session {
+        uuid id PK
+        uuid user_id FK
+        string clerk_session_id
+        timestamp started_at
+        timestamp ended_at
+    }
+    AuthEvent {
+        uuid id PK
+        uuid user_id FK
+        string event_type
+        string ip_address
+        timestamp occurred_at
+    }
+    ConsentRecord {
+        uuid id PK
+        uuid user_id FK
+        string category
+        boolean granted
+        timestamp consented_at
+        string version
+    }
+    Vineyard {
+        uuid id PK
+        uuid org_id FK
+        string name
+        string region
+        string appellation
+        float acres
+        timestamp created_at
+    }
+    Block {
+        uuid id PK
+        uuid vineyard_id FK
+        string name
+        geometry polygon
+        string variety
+        int row_count
+        timestamp created_at
+    }
+    WeatherStation {
+        uuid id PK
+        uuid org_id FK
+        string provider
+        string external_id
+        float latitude
+        float longitude
+        string name
+    }
+    WeatherObservation {
+        uuid id PK
+        uuid station_id FK
+        float temp_c
+        float rh_pct
+        float leaf_wetness
+        float precip_mm
+        timestamp observed_at
+    }
+    ExternalRiskIndex {
+        uuid id PK
+        string region
+        string source
+        float risk_index_value
+        string risk_level
+        timestamp pulled_at
+        json raw_payload
+    }
+    RiskIndexRun {
+        uuid id PK
+        uuid block_id FK
+        string model_name
+        float score
+        string risk_level
+        timestamp run_at
+        json inputs_snapshot
+    }
+    SprayRecord {
+        uuid id PK
+        uuid block_id FK
+        uuid user_id FK
+        uuid product_id FK
+        timestamp applied_at
+        float volume_per_acre
+        string equipment
+        string notes
+    }
+    Product {
+        uuid id PK
+        uuid org_id FK
+        string name
+        string active_ingredient
+        string frac_group
+        int phi_days
+        int rei_hours
+        boolean organic_certified
+    }
+    UserProductPreference {
+        uuid id PK
+        uuid user_id FK
+        uuid product_id FK
+        int rank
+    }
+    Capture {
+        uuid id PK
+        uuid block_id FK
+        uuid user_id FK
+        string media_type
+        string s3_key
+        float latitude
+        float longitude
+        timestamp captured_at
+    }
+    MLPrediction {
+        uuid id PK
+        uuid capture_id FK
+        string model_version
+        float powdery_prob
+        float downy_prob
+        int severity_1_to_10
+        float confidence
+        timestamp predicted_at
+    }
+    MLCorrection {
+        uuid id PK
+        uuid prediction_id FK
+        uuid user_id FK
+        float corrected_powdery_prob
+        float corrected_downy_prob
+        int corrected_severity
+        timestamp corrected_at
+    }
+    Recommendation {
+        uuid id PK
+        uuid block_id FK
+        string action
+        string rationale
+        string risk_level
+        timestamp generated_at
+        boolean dismissed
+    }
+    RecommendationOutcome {
+        uuid id PK
+        uuid recommendation_id FK
+        uuid user_id FK
+        string outcome
+        string notes
+        timestamp recorded_at
+    }
+    Notification {
+        uuid id PK
+        uuid user_id FK
+        string channel
+        string title
+        string body
+        timestamp sent_at
+        boolean read
+    }
+    NotificationEvent {
+        uuid id PK
+        uuid notification_id FK
+        string event_type
+        timestamp occurred_at
+    }
+    IntegrationConnection {
+        uuid id PK
+        uuid org_id FK
+        string provider
+        string status
+        json credentials_encrypted
+        timestamp connected_at
+    }
+    ResearchDocument {
+        uuid id PK
+        uuid org_id FK
+        string title
+        string source
+        string s3_key
+        timestamp uploaded_at
+    }
+    ChatSession {
+        uuid id PK
+        uuid user_id FK
+        string title
+        timestamp started_at
+    }
+    ChatMessage {
+        uuid id PK
+        uuid chat_session_id FK
+        string role
+        text content
+        timestamp sent_at
+    }
+    DataLakeEvent {
+        uuid id PK
+        string event_name
+        uuid entity_id
+        string entity_type
+        json payload
+        timestamp emitted_at
+    }
+
+    Org ||--o{ Membership : "has"
+    Membership }o--|| User : "belongs to"
+    Org ||--o{ Vineyard : "owns"
+    Vineyard ||--o{ Block : "contains"
+    User ||--o{ Session : "creates"
+    User ||--o{ AuthEvent : "triggers"
+    User ||--o{ ConsentRecord : "records"
+    Block ||--o{ Capture : "has"
+    Capture ||--o| MLPrediction : "produces"
+    MLPrediction ||--o{ MLCorrection : "receives"
+    Block ||--o{ RiskIndexRun : "has"
+    Block ||--o{ Recommendation : "receives"
+    Recommendation ||--o| RecommendationOutcome : "has"
+    Block ||--o{ SprayRecord : "logs"
+    WeatherStation ||--o{ WeatherObservation : "records"
+    Org ||--o{ Product : "maintains"
+    Product ||--o{ UserProductPreference : "preferred via"
+    User ||--o{ UserProductPreference : "sets"
+    SprayRecord }o--|| Product : "uses"
+    User ||--o{ Notification : "receives"
+    Notification ||--o{ NotificationEvent : "tracks"
+    Org ||--o{ IntegrationConnection : "has"
+    Org ||--o{ ResearchDocument : "stores"
+    User ||--o{ ChatSession : "starts"
+    ChatSession ||--o{ ChatMessage : "contains"
