@@ -592,8 +592,12 @@ Coverage targets: pytest ≥80% on `services/*`, vitest ≥70% on `apps/web` (ex
 
 Numbered questions that block specific milestones. Each must be answered before its referenced milestone can land.
 
+**Resolved 2026-04-30 by Benson:** Q1, Q2, Q9, Q12. Resolutions inline below. **M0-01 unblocked from these four.** Still pending: Q3, Q4, Q5, Q6, Q7, Q8, Q10, Q11, Q13, Q14.
+
 1. **Q1 — `frontend-cinematic/`: what is it?** (R9) Decision options: (a) keep as separate Next.js app under `apps/web-cinematic`, (b) merge into `apps/web` if intended successor, (c) archive to `attic/`, (d) delete. Likely connected to branches `add-animation-libs`, `cinematic-frontend`, `sync-cinematic-fixes`. **Blocks:** M0-01.
+   - **RESOLVED 2026-04-30 by Benson:** Old work, unrelated to Spray. Keep in place at repo root, untouched. M0-01 restructure does NOT move it into `apps/`. Do not delete (no reason to).
 2. **Q2 — Submodule mid-flight work.** (R2) `backend/PredictionTool` has uncommitted internal changes. Options: (a) commit + push internal changes, then bump parent pointer; (b) revert submodule to `d0018a2` and discard local work; (c) leave dirty in working tree (carries to all branches but never committed). **Blocks:** M0-01.
+   - **RESOLVED 2026-04-30 by Benson:** Lay off and let it rest. Do not commit the parent pointer move, do not revert, do not touch the submodule for Spray work. Dirty state stays in the working tree, never enters a Spray commit.
 3. **Q3 — Render PostGIS support.** (R14) Need to confirm whether Render Postgres Pro tier supports PostGIS, or whether we migrate (Supabase / AWS RDS). **Blocks:** M0-03.
 4. **Q4 — Mapbox vs MapLibre.** (R13) Default to MapLibre (free) per spec, or stay on Mapbox to leverage existing token? **Blocks:** M0-05.
 5. **Q5 — Spray routing option.** (Spec §21) Three routing options: (a) subpath `graftsystems.com/spray/*` (recommended), (b) subdomain `spray.graftsystems.com`, (c) hybrid. Confirm before M0-02a. **Blocks:** M0-02a.
@@ -601,9 +605,11 @@ Numbered questions that block specific milestones. Each must be answered before 
 7. **Q7 — Existing `WaitlistEntry` collection.** Keep collecting waitlist entries on `main` while Spray develops? If yes, `/api/waitlist` stays live during M0-M1. **Blocks:** nothing (clarification only).
 8. **Q8 — Auth provider.** Clerk vs Auth0 (per spec §20). Spec recommends Clerk; confirm. **Blocks:** M0-02.
 9. **Q9 — `.gitattributes` policy.** (R10) Add `* text=auto eol=lf`? Affects all Windows-based contributors and existing diffs. **Blocks:** M0-01.
+   - **RESOLVED 2026-04-30 by Benson:** Yes, add `* text=auto eol=lf` in `.gitattributes`. Lands as part of M0-01.
 10. **Q10 — Spec PDF retrieval blockers.** (R12) Of the 5 missing 🔴 papers, 2 are likely ILL-only (06 P4 Strizyk 1983, 02 P11 Oh 2000). Mark as "best-effort, may not retrieve" and proceed with spec PDF using available sources? **Blocks:** spec PDF generation.
 11. **Q11 — Dataset folders not imported in M0-00a (this PR's predecessor).** Six dataset/research collections in `UMICH LOGIN/` not imported: `Grapes Disease Dataset`, `j4xs3kh3fd-2`, `Research on Identifying Powdery Mildew`, `Burgundy Documents`, `Treatment Research`, `Predicting Mildew Outbreaks`. Decision: include via Git LFS, keep external (referenced by path), or DVC? **Blocks:** M1-10 ML training data sourcing.
 12. **Q12 — Orphan branches.** `add-animation-libs`, `cinematic-frontend`, `sync-cinematic-fixes` exist alongside `main`. Are they live work, abandoned, or merged? Inspect required. **Blocks:** M0-01.
+   - **RESOLVED 2026-04-30 by Benson:** Abandon. Do not preserve, do not merge. M0-01 leaves them untouched on origin; they remain as historical record only.
 13. **Q13 — App identity for Apple App Store.** What's the bundle ID, team ID, app name, primary category? Needed for EAS / App Store Connect setup in M2. **Blocks:** M2.
 14. **Q14 — Default region pricing tiers.** Spec says "API budget undetermined; for every external API list pricing tiers." Confirm preferred default tier per provider (weather, satellite tiles, Gemini, Sentry, Datadog) or keep all on free tiers until traffic warrants. **Blocks:** M0-06 (weather provider choice).
 
