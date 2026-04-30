@@ -1,6 +1,6 @@
 # Paywalled Sources Download Plan
 
-**Status:** 35 of 47 retrieved. 12 outstanding (5 still block the spec PDF, including 2 likely-ILL).
+**Status:** 35 of 47 retrieved. **Updated 2026-04-30 per Scout report (end of file):** 4 effectively outstanding (2 quick wins, 2 ILL with 2-4 week turnaround), 1 dropped as misattribution. Spec PDF unblocks as soon as the 2 quick wins (A, C) are in.
 **Owner:** Benson Klein (bensonn@umich.edu, University of Michigan library access).
 **Source of truth:** `paywalled_queue.md` (read-only). This file is the operational checklist generated from it.
 **Generated:** 2026-04-29.
@@ -179,3 +179,65 @@ Other categories: no specific image needs at M0/M1; capture at runtime from real
 ## Progress tracking
 
 When you tick a box, drop the PDF in the same commit. Suggested commit message: `docs(research): add P<N> paywalled paper for <category>`. Once all 🔴 are in, ping me to start the spec PDF.
+
+---
+
+## Scout report 2026-04-30 — resolution of the 5 outstanding 🔴 paywalled refs
+
+Three of the 5 had problems (misattributions or ghost citations) that explain why the original DOI lookups failed. Two are genuinely ILL-only.
+
+| Outcome | Cat | Ref | Original queue claim | What's actually true |
+|---|---|---|---|---|
+| **A — REDIRECT (open access, quick win)** | 06 | P1 Thomas 1994 | "Thomas CS et al. Original Gubler-Thomas model paper. *Plant Disease*. 1994." | The 1994 record is a conference abstract (Phytopathology 84:1070) with no full text. The citable Gubler-Thomas foundation paper is **Gubler WD, Rademacher MR, Vasquez SJ, Thomas CS. 1999. Control of PM Using the UC Davis PM Risk Index. *APSnet Features*. DOI 10.1094/APSnetFeature-1999-0199**, fully open-access at https://www.apsnet.org/edcenter/apsnetfeatures/Pages/UCDavisRisk.aspx. |
+| **B — ILL only** | 06 | P4 Strizyk 1983 | "Modèle de comportement: état potentiel d'infection. *Phytoma* No. 347." | Confirmed real, but Phytoma 1983 is not digitized anywhere. ILL request only. |
+| **C — AUTHOR CORRECTION + JSTOR (quick win)** | 06 | P8 Caffi 2009 | "Caffi T, Rossi V, Bugiani R. Evaluation of a mechanistic primary infection model. *J Plant Pathology* 91(3):615–627." | Authors are actually **Rossi V, Giosuè S, Caffi T**. Title: "Modelling the dynamics of infections caused by sexual and asexual spores during Plasmopara viticola epidemics." Available on JSTOR (U-M licensed). |
+| **D — ILL only** | 02 | P11 Oh 2000 | "Effects of T, RH, pH, triazole on *U. necator* sporulation/germination. CABI 83115803." | Confirmed real, Korean journal (likely Korean J Plant Pathology or Korean J Mycology), no digital trace, ILL only. May need translation. |
+| **E — DROP (ghost citation)** | 03 | P3 Mills 1999 | "Mills et al. DMCAST: prediction model for grape downy mildew. *Viticulture and Enology Science*. 1999." | No paper named "Mills 1999 DMCAST" exists in any database. The canonical DMCAST paper is **Park EW et al. 1997** (already retrieved as 06 P5). Drop this queue entry. |
+
+### Step-by-step actions
+
+**A — Gubler 1999 APSnet (open access, ~5 min):**
+1. Open https://www.apsnet.org/edcenter/apsnetfeatures/Pages/UCDavisRisk.aspx in your browser.
+2. Browser File menu → Print → "Save as PDF" (in the destination dropdown).
+3. Filename: `P1_Thomas_1994_GublerThomas-original.pdf` (keep this filename so spec PDF citations don't break).
+4. Save to: `docs/research/assets/06_outbreak-prediction/paywalled/`.
+
+**B — Strizyk 1983 (ILL, 2-4 week wait):**
+1. Open https://www.lib.umich.edu/find-borrow-request/borrowing-other-libraries/interlibrary-loan
+2. Click "Request via ILL" (or "Make an ILL request").
+3. Fill in:
+   - Author: `Strizyk, S.`
+   - Title: `Modèle de comportement: état potentiel d'infection`
+   - Journal: `Phytoma (La Défense des Végétaux)`
+   - Year: `1983`
+   - Volume: `No. 347`
+   - Notes: `French language. Likely needs scan from INRAE or BnF Paris.`
+4. Submit. Save received PDF (in 2-4 weeks) as `P4_Strizyk_1983_etat-potentiel.pdf` in same folder as A.
+
+**C — Rossi/Giosuè/Caffi 2009 via JSTOR (~10 min):**
+1. Open https://search.lib.umich.edu/articles
+2. Sign in with your U-M uniqname.
+3. Paste this exact search string into the box: `"Modelling the dynamics of infections caused by sexual and asexual spores" Plasmopara viticola Rossi 2009`
+4. The JSTOR result should be near the top. Click it.
+5. Click "Online Access" or "View PDF."
+6. Filename: `P8_Caffi_2009_primary-infection-eval.pdf` (filename kept for spec continuity; the queue's author attribution is wrong, the title and citation reference are otherwise valid).
+7. Save to: `docs/research/assets/06_outbreak-prediction/paywalled/`.
+
+**D — Oh 2000 (ILL, 2-4 week wait):**
+1. Same ILL form as B.
+2. Fill in:
+   - Author: `Oh, JH` (or `Oh, Jeung-Haing`)
+   - Title: `Effects of temperature, relative humidity, pH and triazole fungicides on sporulation and conidial germination of Uncinula necator`
+   - Year: `2000`
+   - Journal: `Korean Journal of Plant Pathology` (try first) or `Korean Journal of Mycology` (alternate)
+   - Notes: `CABI accession 83115803. Korean language. May need translation.`
+3. Submit. Save received PDF as `P11_Oh_2000_U-necator-sporulation.pdf` in `docs/research/assets/02_weather-impacts/paywalled/`.
+
+**E — Mills 1999 (no action, queue entry dropped):**
+- Queue line marked DROP. No file expected.
+
+### Effective queue status
+
+After this report and once A + C are retrieved:
+- **37 / 46** effectively complete (35 already in + A + C; Mills dropped from denominator).
+- 2 outstanding ILL (B Strizyk, D Oh) on 2-4 week clock; spec PDF doesn't have to wait for them.
