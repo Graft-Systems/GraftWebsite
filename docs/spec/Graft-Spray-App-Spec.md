@@ -763,4 +763,396 @@ When the cloud model and on-device model disagree by more than the configured to
 
 ---
 
-<!-- END OF DRAFT. Sections 11 through 25 to be added in subsequent commits on graft-spray/m0/spec-pdf. -->
+## 11. Disease Forecasting Engine
+
+![Risk Index Data Flow](diagrams/risk-index-flow.png)
+
+The forecasting engine runs three published peer-reviewed disease models locally, per block, on a daily schedule via Celery beat. Spec amendment SA-1 augments these local computations with hourly aggregation of two authoritative public extension service indices: the UC IPM Grape Powdery Mildew Risk Assessment Index and the Oregon State USPest grape powdery mildew forecasting tool. Cross-referencing local-vs-external is the heart of recommendation confidence.
+
+### 11.1 Gubler-Thomas powdery mildew risk index
+
+The canonical UC Davis index for *Erysiphe necator*. Original model paper Thomas, Gubler, Leavitt 1994 (now archived; the citable APSnet feature is Gubler et al. 1999) [Brain 06_outbreak-prediction / P1]. Revised high-temperature thresholds per Gubler 2013 [Brain 06_outbreak-prediction / P2].
+
+**Algorithm (summary).**
+- Index range 0 to 100.
+- Each consecutive 6-hour window of temperature in the 70 to 85 °F (21 to 29 °C) optimum raises the index by 20 points (clipped to 100).
+- Each consecutive 6-hour window with temperature continuously below 50 °F (10 °C) or above 95 °F (35 °C; revised 2013 threshold) drops the index by 10 points (floored at 0).
+- All other 6-hour windows leave the index unchanged.
+- Risk levels (default): low (0 to 30), moderate (40 to 50), high (60 and above).
+
+**Inputs.** Hourly air temperature from the active weather station for the block.
+
+**Outputs.** `RiskIndexRun.risk_index_value` (integer 0 to 100), `risk_level` (enum low / moderate / high), `inputs.window_breakdown` (jsonb showing the per-6-hour window contributions for the explanation pane).
+
+### 11.2 DMCast downy mildew prediction
+
+Park, Seem, Gadoury, Pearson 1997 [Brain 06_outbreak-prediction / P5]. Predicts primary downy mildew (*Plasmopara viticola*) infection events.
+
+**Algorithm (summary).** Combines the 10:10:24 rule for primary infection (minimum 10 °C, minimum 10 mm rain, minimum 24 hours leaf wetness) with secondary-infection windows derived from temperature and leaf wetness duration.
+
+**Inputs.** Hourly temperature, relative humidity, leaf wetness, precipitation.
+
+**Outputs.** Same shape as Gubler-Thomas. Risk levels: low / moderate / high keyed to predicted infection event likelihood within the next 7 days.
+
+### 11.3 Mechanistic primary infection model
+
+Caffi, Rossi, Legler, Bugiani 2011 [Brain 06_outbreak-prediction / P3]. A more recent mechanistic alternative to DMCast, used for cross-checking and as a candidate to replace DMCast in M2+ if validation supports it.
+
+**Inputs.** Same as DMCast plus oospore germination state estimated from autumn-winter weather history per Rossi & Caffi 2007 [Brain 02_weather-impacts / P2].
+
+**Outputs.** Same shape; surfaced as a parallel `RiskIndexRun` row with `model=CAFFI_2011_MECHANISTIC` for backtesting comparison.
+
+### 11.4 Leaf wetness infection events
+
+Mills-table-derived infection-event lookup for both diseases [Brain 06_outbreak-prediction / P1, P9; Brain 02_weather-impacts / P2, P5]. Used as a bottom-up validator for DMCast and Caffi 2011 outputs.
+
+### 11.5 Inputs and recompute cadence
+
+Inputs come from the Weather and External Data Integration Layer (section 12): hourly temperature, relative humidity, leaf wetness, precipitation, wind speed. The Celery beat schedule recomputes per-block risk indices once daily by default; a per-block "recompute now" admin trigger and an automatic recompute on weather-update or capture-upload event are also supported.
+
+### 11.6 Fallback when leaf-wetness sensors are unavailable
+
+When a vineyard has no connected leaf-wetness sensor (most M0/M1 users), the engine estimates leaf wetness from RH and temperature using the Gleason CART model [Brain 03_live-weather-feeds / P1]. Estimated values are tagged in `RiskIndexRun.inputs.leaf_wetness_source = "estimated_gleason_cart"` so explanations can disclose the estimation.
+
+### 11.7 SA-1 live external aggregation
+
+Per CODEBASE_PLAN Appendix A, the engine is augmented by a separate hourly Celery task at `services/worker/tasks/external_risk_index.py` that fetches authoritative regional indices and writes `ExternalRiskIndex` rows.
+
+**Sources at launch.**
+- UC IPM Grape Powdery Mildew Risk Assessment Index (https://ipm.ucanr.edu/weather/grape-powdery-mildew-risk-assessment-index/). Region: California.
+- Oregon State USPest grape PM tool (https://uspest.org/risk/grape_powdery_app). Region: Pacific Northwest.
+
+**Scrape policy.** Identifying user-agent (`Graft Spray External-Feeds Bot, contact: ...`); respect `robots.txt`; throttle to once per region per hour. Reach out to UC IPM (UC ANR) and OSU IPPC for an official API or partnership at the earliest opportunity (per risks R18, R19, R20 in section 24).
+
+**Cross-reference logic.** For each per-block recommendation compute, the engine compares the local Gubler-Thomas (or DMCast) risk level against the most recent ExternalRiskIndex risk level for the block's region. If the divergence exceeds a configurable threshold (default 2 levels, e.g., local=low while external=high), the discrepancy is logged, flagged in the recommendation explanation, and routed to a human-review queue. Until calibration completes, the recommendation engine prefers the authoritative external value.
+
+**Resilience.** Source HTML changes that break the parser are caught by parser-regression tests against captured fixtures. On parse failure, the system serves the last cached value with a stale-flag for up to 24 hours, then degrades the recommendation by marking external feeds as unavailable until the parser is fixed.
+
+### 11.8 Risk level and color scheme
+
+A single canonical risk-level enumeration is used everywhere in the application (dashboard cards, map heatmap, notifications, exports):
+
+| Risk level | Local index range (Gubler-Thomas) | Color (default) | Color ("field mode") |
+|---|---|---|---|
+| Low | 0 to 30 | Green | High-saturation green |
+| Moderate | 40 to 50 | Amber | High-saturation amber |
+| High | 60 and above | Red | High-saturation red |
+| Unknown | n/a | Grey | Grey |
+
+The color scheme is colorblind-safe (Okabe-Ito-derived) and is documented in `packages/ui/src/tokens/risk-colors.ts`.
+
+### 11.9 Output schema
+
+Each `RiskIndexRun` returns:
+
+```json
+{
+  "id": "uuid",
+  "block_id": "uuid",
+  "model": "GUBLER_THOMAS | DMCAST | CAFFI_2011_MECHANISTIC",
+  "risk_index_value": 65,
+  "risk_level": "high",
+  "computed_at": "2026-04-30T12:00:00Z",
+  "inputs": {
+    "window_breakdown": [...],
+    "leaf_wetness_source": "estimated_gleason_cart"
+  },
+  "external_cross_reference": {
+    "uc_ipm_index": "high",
+    "uspest_index": "high",
+    "agreement": true,
+    "divergence_levels": 0
+  }
+}
+```
+
+---
+
+## 12. Weather and External Data Integration Layer
+
+### 12.1 Provider abstraction
+
+Every external data source flows through a single provider abstraction defined in `services/api/spray/providers/base.py`. One adapter class per provider; each implements:
+
+```python
+class WeatherProvider(Protocol):
+    def fetch_observations(self, station: WeatherStation, since: datetime) -> list[WeatherObservation]: ...
+    def fetch_forecast(self, station: WeatherStation, days: int) -> list[WeatherObservation]: ...
+    def health(self) -> ProviderHealth: ...
+```
+
+User-supplied integrations (Davis, METER, Sencrop, Pessl) plug in via the same interface.
+
+### 12.2 Region-aware default provider selection
+
+When a vineyard is created, its region is geocoded from the centroid and a default weather provider is chosen automatically (per the table in section 4.3). Org admins can override the default per vineyard or per block.
+
+### 12.3 Provider catalog at launch
+
+| Provider | Regions | Tier | Cost note | Adapter file |
+|---|---|---|---|---|
+| Visual Crossing | Global | Paid (free dev tier) | Default for Napa, Sonoma, Mendoza | `visual_crossing.py` |
+| Tomorrow.io | Global | Paid (free dev tier) | Alternate to Visual Crossing | `tomorrow_io.py` |
+| Météo-France ICOS | France | Free with registration | Default for Burgundy, Bordeaux | `meteo_france_icos.py` |
+| INTA Pampa | Argentina | Free | Default for Mendoza | `inta_pampa.py` |
+| Davis WeatherLink | Per station | Per-user paid | User-supplied integration | `davis_weatherlink.py` |
+| METER Group ATMOS-41 | Per station | Per-user paid | User-supplied integration | `meter_atmos41.py` |
+| Sencrop | Per station | Per-user paid | User-supplied integration | `sencrop.py` |
+| Pessl iMETOS | Per station | Per-user paid | User-supplied integration | `pessl_imetos.py` |
+| Generic CSV import | Any | Free | One-shot or scheduled | `generic_csv.py` |
+
+### 12.4 Rate-limit handling, caching, historical backfill
+
+- Cache: provider responses cached at `(station_id, ts_bucket)` for 15 minutes; longer for forecasts (1 hour).
+- Rate limits: per-provider quota tracked; exponential backoff on 429.
+- Backfill: when a new vineyard is created, the engine backfills the last 14 days of weather observations to give Gubler-Thomas an initial baseline.
+
+### 12.5 SA-1 external risk-index providers (new sub-layer)
+
+A parallel sub-layer alongside weather providers, defined in `services/api/spray/providers/external_risk_base.py`:
+
+```python
+class ExternalRiskIndexProvider(Protocol):
+    def fetch_index(self, region: str) -> ExternalRiskIndex: ...
+    def health(self) -> ProviderHealth: ...
+```
+
+**Adapters at launch.**
+
+| Provider | URL | Adapter file | Region |
+|---|---|---|---|
+| UC IPM Grape PM RAI | https://ipm.ucanr.edu/weather/grape-powdery-mildew-risk-assessment-index/ | `uc_ipm_grape_pm.py` | California |
+| Oregon State USPest grape PM | https://uspest.org/risk/grape_powdery_app | `uspest_grape_pm.py` | Pacific Northwest |
+
+**Scheduling.** A Celery beat task runs each adapter once per hour per region. Output writes to `ExternalRiskIndex` and emits the `external_risk_index.pulled` event into the data lake.
+
+**Failure modes and mitigations.** R18 (rate limits / scraping etiquette), R19 (HTML structure drift), R20 (TOS compliance) are all addressed in section 24's risk register.
+
+### 12.6 Pesticide registry adapters
+
+Per region, the application reads from the canonical pesticide registry to validate that recommended products are legally registered in the active vineyard's region:
+
+| Region | Registry | Adapter |
+|---|---|---|
+| California | CDPR PUR via CalAgPermits | `cdpr_calagpermits.py` |
+| France | E-Phy (ANSES) | `ephy_anses.py` |
+| Argentina | SENASA | `senasa.py` |
+
+Recommended products that fail the registry check are filtered out at recommendation time and surfaced in the explanation pane as "this product is not registered for use in your region per [registry name] as of [date]."
+
+---
+
+## 13. Notification System
+
+### 13.1 Channels
+
+| Channel | Surface | Library |
+|---|---|---|
+| Apple Push Notification service (APNs) | iOS app (M2+) | `expo-notifications` |
+| Web push | Web app | Service worker + Push API |
+| Email | Web + iOS, opt-in fallback | Resend (already in the existing backend) |
+| In-app banner | Both surfaces | App shell topbar |
+
+### 13.2 Permission flow
+
+Per Apple App Review Guideline 5.1.1(iv) and per WCAG 2.2, the application asks for notification permission only after the user has completed onboarding and seen the first recommendation card. The permission ask is contextual ("Block 3 just crossed into moderate risk; want push alerts when this happens?") and includes a "not now" path that defaults to in-app banner only.
+
+### 13.3 Per-block subscription model
+
+Each user subscribes to notifications per block:
+
+| Subscription mode | Behavior |
+|---|---|
+| Off | No notifications for this block |
+| Real-time | Push immediately when risk-level transitions occur |
+| Digest | Bundle into the next quiet-hours window or per the user's configured cadence |
+
+Org admins can set org-wide defaults that members override per their preference.
+
+### 13.4 Quiet hours
+
+Default quiet hours: 9pm to 6am local. Notifications generated during quiet hours bundle into the next morning's digest. The user can override quiet hours per channel or disable them entirely.
+
+### 13.5 Threshold configuration
+
+Per block, advanced users can set:
+- Minimum risk level to trigger notification (default: moderate).
+- Minimum risk-level transition delta (default: 1 level; e.g., low to moderate triggers, low to low does not).
+- Maximum daily notification count (default: 3) before automatic digest fallback.
+
+### 13.6 Test harness
+
+An admin-only "send test notification" button on the Settings, Notifications screen lets the user verify push, email, and web-push delivery. Backed by `POST /api/spray/notifications/test`.
+
+### 13.7 Delivery reliability and tracking
+
+Every `Notification` row spawns one or more `NotificationEvent` rows tracking sent / opened / acted_on. Open and acted-on events feed both the analytics in section 18 and the data lake (per section 19) for notification-timing optimization.
+
+---
+
+## 14. Tech Stack and Architecture
+
+![System Architecture](diagrams/system-architecture.png)
+
+The full target tree is enumerated in CODEBASE_PLAN section 2. This section describes the runtime architecture, the choice of each component, and the interfaces between them.
+
+### 14.1 Frontend
+
+- **Web (`apps/web`).** Next.js 15 App Router, TypeScript, React 18.3, Tailwind CSS 3.4, shadcn/ui (Radix-based primitives, hoisted to `packages/ui`), MapLibre GL or Mapbox GL JS for the satellite map (Q4), GSAP and Framer Motion for marketing-page animations only (not used inside the authenticated `(spray)` route group).
+- **iOS (`apps/mobile`, M2+).** React Native plus Expo SDK 51+, TypeScript, NativeWind or Tamagui for design-token sharing, React Navigation, `react-native-maps` (Apple Maps satellite layer) or `@rnmapbox/maps`, `expo-camera`, `expo-av`, `expo-notifications`, `expo-apple-authentication`, `expo-sqlite`, `expo-secure-store`, `react-native-fast-tflite` (or `onnxruntime-react-native`).
+
+### 14.2 Shared client code
+
+`packages/client-core` is a workspace package with three exports:
+
+- `api/`: TypeScript client generated from `services/api/openapi.yaml` on every API change.
+- `types/`: Domain types per entity in section 9.
+- `hooks/`: React hooks per entity (`useVineyards`, `useRecommendations`, `useCaptures`, etc.) used identically in `apps/web` and `apps/mobile`.
+
+### 14.3 Backend
+
+- **API service (`services/api`).** Django 5.2 plus Django REST Framework, Python 3.13. Auth via Clerk (custom DRF authentication class). PostGIS spatial extension for `Block.geom` and `Vineyard.centroid`. Hosted on Render (existing graft-api service, Pro tier).
+- **ML inference service (`services/ml`).** FastAPI (Python), GPU-backed. Hosts the cloud disease classifier. Models versioned via MLflow or DVC. Hosted on AWS or GCP GPU instance. Introduced in M1-10.
+- **Worker tier (`services/worker`).** Celery plus Redis. Hosts: weather pulls (`weather_pull.py`), SA-1 external risk-index aggregation (`external_risk_index.py`), local risk-index recomputes (`risk_index.py`), notification dispatch (`notification_dispatch.py`), data-lake ETL (`data_lake_etl.py`).
+
+### 14.4 Data layer
+
+- **Operational store.** Postgres 16 plus PostGIS 3.4 (Render-managed Postgres). Row-level security enforces tenant isolation.
+- **Object storage.** S3 (or Cloudflare R2 if cost demands). Server-side encryption with KMS. Private bucket; signed URLs only. Per-org prefix isolation: `s3://graft-spray/<env>/<org_id>/<resource>/...`.
+- **Data lake.** S3 plus Apache Iceberg or Delta Lake (decision in M0-04). Partitioned by `org_id / category / date`. Append-only; schema-registry enforced via CI.
+- **Feature store.** Feast or equivalent for ML training and online inference features. Introduced in M1-10.
+
+### 14.5 Auth and identity
+
+Clerk handles the signup, login, MFA, password reset, and Sign in with Apple flows. Same Clerk org powers the marketing site nav state and the authenticated Spray app for unified SSO. Section 20 details the lifecycle.
+
+### 14.6 Chatbot
+
+Gemini API behind an internal abstraction at `services/api/spray/chat/`. The abstraction is provider-agnostic so the model can be swapped (Claude, OpenAI, local) without changing call sites. RAG over `docs/research/` plus the user's own data; pesticide-recommendation safety guardrail per section 8.11.
+
+### 14.7 Observability
+
+- Sentry: web (`@sentry/nextjs`), iOS (`@sentry/react-native`), API (`sentry-sdk` Python), ML (`sentry-sdk` Python).
+- OpenTelemetry on the API and ML services with OTLP export to Datadog or Grafana Cloud.
+- Audit log: every auth, RLS-bypass, and consent-change event recorded immutably in `AuthEvent` and a parallel append-only S3 audit bucket.
+
+### 14.8 Hosting and deploy
+
+- **Frontend (web).** Vercel; deploys from `graft-spray/main` automatically; preview deploys per PR on `*.vercel.app`.
+- **Backend (API).** Render Pro tier; `services/api` rootDir; auto-deploy on `graft-spray/main`.
+- **ML service.** AWS or GCP GPU instance; introduced in M1-10; deployment via Docker image pushed to ECR or Artifact Registry; rolling deploys.
+- **Worker tier.** Render Background Worker plan (or AWS ECS) plus Render Redis. Auto-deploy.
+- **Mobile (iOS).** EAS Build for binaries; EAS Submit for App Store; EAS Update for OTA JavaScript-only updates. M2+.
+
+### 14.9 Repository layout (mirrors CODEBASE_PLAN section 2)
+
+The repository is a pnpm + Turborepo monorepo:
+
+```
+apps/
+  web/          # Next.js 15
+  mobile/       # React Native + Expo (M2+)
+services/
+  api/          # Django + DRF
+  ml/           # FastAPI inference
+  worker/       # Celery
+packages/
+  client-core/  # OpenAPI client + hooks
+  ui/           # Design tokens + primitives
+  eslint-config/
+  tsconfig/
+infra/
+  terraform/
+  docker/
+  eas/          # M2+
+docs/
+  spec/
+  research/
+.github/
+  workflows/
+```
+
+---
+
+## 15. App Store Compliance Checklist (Apple)
+
+This section enumerates every relevant App Review Guideline and the corresponding pass condition or action item.
+
+### 15.1 Privacy and data handling
+
+| Guideline | Requirement | Graft Spray status | Action item |
+|---|---|---|---|
+| 5.1.1 Data Collection and Storage | Privacy policy required; describe data collected and use | Privacy policy at `/legal/privacy`; per-category consent toggles (section 19) | Drafted in M0-02; reviewed by counsel before App Store submission |
+| 5.1.1(i) Data Minimization | Collect only data needed for the disclosed feature | Each capture, spray record, location is feature-relevant | Privacy review per release |
+| 5.1.1(iv) Permissions | Ask permission contextually, explain purpose | Camera, location, notifications, photo library each use Info.plist usage strings | Strings drafted in M2-app-shell; reviewed before submission |
+| 5.1.1(v) Account Sign-in | If account creation, must allow account deletion in-app | Account Deletion flow per section 20.1, two-step confirmation | M0-02 includes the in-app deletion path |
+| 5.1.1(vii) Apple Push Notification service | Don't use APNs to send marketing or advertising | Risk-window alerts only; no marketing pushes | Enforced by code review of every notification template |
+| 5.1.2 Developer Data | Don't sell or share data with third parties without consent | No third-party data sharing at launch | Re-review at every M-closeout |
+
+### 15.2 App Tracking Transparency
+
+Graft Spray does not track users across other apps and websites. The App Tracking Transparency (ATT) prompt is therefore not required at launch. This determination is documented in the App Privacy questionnaire submitted to App Store Connect.
+
+### 15.3 In-app purchases
+
+No in-app purchases at launch. Subscription billing (if introduced post-launch) routes through Apple's IAP system per Guideline 3.1.1; this is out of scope for M0-M2.
+
+### 15.4 Permissions and Info.plist usage strings
+
+Required keys with their default copy:
+
+```
+NSCameraUsageDescription = "Graft Spray uses the camera to photograph leaves and clusters for disease severity grading."
+NSLocationWhenInUseUsageDescription = "Graft Spray uses your location to identify the active vineyard block when you take a photo."
+NSLocationAlwaysAndWhenInUseUsageDescription = "(Optional, M3+) Graft Spray uses background location to log applicator-only entry to blocks during the REI window."
+NSPhotoLibraryUsageDescription = "Graft Spray needs access to your photo library so you can attach existing photos to a capture."
+NSPhotoLibraryAddUsageDescription = "Graft Spray saves disease-graded photos back to your library on request."
+NSUserTrackingUsageDescription = "(Reserved; not used at launch.)"
+```
+
+### 15.5 Pesticide-advice disclaimer (Guideline 1.4.1, Safety, Medical apps)
+
+The application surfaces a disclaimer on every recommendation card and at signup:
+
+> Graft Spray's recommendations are decision-support tools based on published peer-reviewed models and live regional risk indices. They do not replace consultation with your local extension service or a licensed pest control adviser. Always read and follow the product label, and consult your local pesticide regulatory authority for the current registered product list in your region.
+
+The disclaimer is also present in the privacy policy and terms of service.
+
+### 15.6 Sign in with Apple (Guideline 4.8)
+
+Sign in with Apple is offered alongside Clerk-managed email/password and Google OAuth. Implementation via `expo-apple-authentication` in M2-mobile-shell. The web app does not require Sign in with Apple at the App Store level (it is a separate distribution surface).
+
+### 15.7 Design (Guidelines 4.0, 4.2)
+
+- Uses standard iOS UI components via React Native and Expo where possible.
+- Custom components in `packages/ui` follow Apple Human Interface Guidelines (44x44 minimum tap targets per section 7.4).
+- The app does not duplicate Apple-system functionality (no custom keyboard, no system-replacement tools).
+
+### 15.8 Apple privacy nutrition label
+
+The App Store Connect privacy questionnaire declares:
+
+| Category | Data type | Purpose | Linked to user | Tracking |
+|---|---|---|---|---|
+| Account | Email, name | Authentication | Yes | No |
+| Contact info | Phone (optional) | SMS notifications | Yes | No |
+| Identifiers | User ID | Authentication | Yes | No |
+| User content | Photos, videos | Disease severity grading; ML training (with consent) | Yes | No |
+| Usage data | Product interaction | Product personalization, analytics | Yes | No |
+| Diagnostics | Crash data, performance | App functionality | No | No |
+
+### 15.9 Submission checklist
+
+| Step | Owner | Milestone |
+|---|---|---|
+| App Store Connect listing prepared (name, subtitle, description, keywords, support URL, marketing URL, privacy policy URL) | Builder | M2-app-store-prep |
+| App icon, screenshots (6.7", 6.5", 5.5"; iPad 12.9" if iPad supported), preview video | Creator | M2-app-store-prep |
+| Privacy questionnaire completed | Builder | M2-app-store-prep |
+| TestFlight beta with internal testers | Builder | M2-test-flight |
+| TestFlight beta with external testers (regional partners) | Liaison | M2-external-beta |
+| App Review submission | Builder | M2-launch |
+| Backup escalation contact at Apple Developer | Builder | M2-launch |
+
+---
+
+<!-- END OF DRAFT. Sections 16 through 25 to be added in subsequent commits on graft-spray/m0/spec-pdf. -->
