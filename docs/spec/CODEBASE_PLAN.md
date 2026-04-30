@@ -317,6 +317,7 @@ Every directory in the target tree mapped to the milestone (M0 / M1 / M2…) it 
 | `services/api/spray/views.py` (capture endpoint) | M1-09 | `graft-spray/m1/capture-upload-web` |
 | `services/ml/*` | M1-10 | `graft-spray/m1/ml-inference-cloud` |
 | `services/worker/tasks/weather_pull.py` | M0-06 | `graft-spray/m0/weather-adapter-napa` |
+| `services/worker/tasks/external_risk_index.py` | M0-06b | `graft-spray/m0/external-risk-index-feeds` |
 | `services/worker/tasks/risk_index.py` | M1-07 + M1-08 | `graft-spray/m1/risk-engine-*` |
 | `services/worker/tasks/notification_dispatch.py` | M1-16 | `graft-spray/m1/notifications-web-push` |
 | `services/worker/tasks/data_lake_etl.py` | M0-04 | `graft-spray/m0/data-lake-ingest` |
@@ -347,6 +348,7 @@ The ordered list of PRs against `graft-spray/main`, with estimated diff size and
 | 4 | `graft-spray/m0/data-lake-ingest` | M0-04: Data-lake ingest service | `graft-spray/main` | Pending | §19 | Large (new service) | M0-03 |
 | 5 | `graft-spray/m0/maps-polygon-draw` | M0-05: Satellite map + polygon draw | `graft-spray/main` | Pending | §8.12 | Medium | M0-03 + Q4 |
 | 6 | `graft-spray/m0/weather-adapter-napa` | M0-06: Weather adapter (Napa/Sonoma) | `graft-spray/main` | Pending | Weather Layer § | Medium | M0-03 |
+| 6b | `graft-spray/m0/external-risk-index-feeds` | M0-06b: External risk-index aggregator (UC IPM, uspest.org) | `graft-spray/main` | Pending | Weather Layer § + Appendix A SA-1 | Medium | M0-06 |
 | 7 | `graft-spray/m1/risk-engine-gubler-thomas` | M1-07: Gubler-Thomas risk engine | `graft-spray/main` | Pending | Forecasting Engine § | Small-Medium | M0-06 + 🔴 papers (06 P1, P2) |
 | 8 | `graft-spray/m1/risk-engine-dmcast` | M1-08: DMCast risk engine | `graft-spray/main` | Pending | Forecasting Engine § | Small-Medium | M0-06 + 🔴 papers (03 P3, 06 P5) |
 | 9 | `graft-spray/m1/capture-upload-web` | M1-09: Photo/video capture (web) | `graft-spray/main` | Pending | §8.5 | Medium | M0-04 |
@@ -585,6 +587,9 @@ Coverage targets: pytest ≥80% on `services/*`, vitest ≥70% on `apps/web` (ex
 | R15 | **No existing test infrastructure.** Audit found no test files in either frontend or backend. | Medium | Realized | Builder | M0-01: scaffold Vitest (web), pytest (api), Playwright (E2E). Coverage minimums per §"Coding Standards". |
 | R16 | **`.gitmodules` parent-pointer pushed without internal commit.** If Benson commits the dirty submodule pointer (`e671959`) and pushes the parent, but doesn't push the submodule's internal commits, anyone else cloning will see a missing-commit error. | High | Possible | Benson | Always push the submodule first, then bump the parent. Or revert per Q2. |
 | R17 | **Vercel root directory change** in M0-01 is a manual setting, not in repo. If forgotten, the post-monorepo deploy will fail. | High | Possible | Builder | Pre-flight checklist in the M0-01 PR description. Capture pre-existing settings before changes. Use `vercel.json` to make it explicit if possible. |
+| R18 | **External risk-index scraping etiquette** (M0-06b, Appendix A SA-1). UC IPM and uspest.org are public extension service sites; aggressive scraping could trigger rate limits or a block. | Medium | Possible | Builder | M0-06b: identifying user-agent (`Graft Spray External-Feeds Bot, contact: ...`), respect `robots.txt`, throttle to once per region per hour. Reach out to UC IPM (UC ANR) and OSU IPPC for an official API or partnership; cite per their TOS. |
+| R19 | **Source HTML changes break the parser** (M0-06b). UC IPM and uspest.org may redesign and break our scraper without notice. | Medium | Likely | Builder | M0-06b: parser-regression tests against captured HTML fixtures. Sentry alert on parse failure. Stale-flag fallback: serve last cached value for up to 24h before degrading the recommendation; after 24h, recommendation engine flags external feeds as unavailable. |
+| R20 | **TOS compliance for external sources** (M0-06b). Each source's terms must be reviewed: UC IPM (UC Cooperative Extension), OSU IPPC (OSU Extension). Both are public-funded extension services; data is generally permissive but verify. | Low | Possible | Strategist | M0-06b: explicit TOS review per source; document attribution language in app footer ("Live PM risk indices courtesy of UC IPM and OSU IPPC"); contact source maintainers proactively. |
 
 ---
 
@@ -612,6 +617,16 @@ Numbered questions that block specific milestones. Each must be answered before 
    - **RESOLVED 2026-04-30 by Benson:** Abandon. Do not preserve, do not merge. M0-01 leaves them untouched on origin; they remain as historical record only.
 13. **Q13 — App identity for Apple App Store.** What's the bundle ID, team ID, app name, primary category? Needed for EAS / App Store Connect setup in M2. **Blocks:** M2.
 14. **Q14 — Default region pricing tiers.** Spec says "API budget undetermined; for every external API list pricing tiers." Confirm preferred default tier per provider (weather, satellite tiles, Gemini, Sentry, Datadog) or keep all on free tiers until traffic warrants. **Blocks:** M0-06 (weather provider choice).
+
+---
+
+## Appendix A — Spec Amendments
+
+Amendments Benson has requested to the spec markdown after this plan was first drafted. These get folded into the spec PDF when it is regenerated.
+
+| ID | Date | Spec section affected | Change |
+|---|---|---|---|
+| **SA-1** | 2026-04-30 | §11 Disease Forecasting Engine + §12 Weather & External Data Integration Layer | **Live external-risk-index aggregator.** Periodically fetch authoritative grape powdery mildew risk indices from public extension services and feed them into the recommendation engine alongside the local Gubler-Thomas / DMCast computations. **Sources at launch:** UC IPM Grape PM Risk Assessment Index (https://ipm.ucanr.edu/weather/grape-powdery-mildew-risk-assessment-index/) and Oregon State USPest grape PM tool (https://uspest.org/risk/grape_powdery_app). **Architecture:** new Celery task `services/worker/tasks/external_risk_index.py` (M0-06b) scrapes hourly per region, writes to a new `ExternalRiskIndex` model in `services/api/spray/models.py`, lands in §19 data lake as an `external_risk_index.pulled` event. Recommendation engine cross-references local-vs-external on every block compute; flags divergence > threshold (e.g., 2 risk levels) for human review. Mobile chatbot can answer "what is UC IPM saying about my region?" by querying this table. **Risks:** R18 (rate limits / scraping etiquette), R19 (source HTML changes), R20 (TOS compliance). |
 
 ---
 
