@@ -1,6 +1,6 @@
 # Paywalled Sources Download Plan
 
-**Status:** 35 of 47 retrieved. **Updated 2026-04-30 per Scout report (end of file):** 4 effectively outstanding (2 quick wins, 2 ILL with 2-4 week turnaround), 1 dropped as misattribution. Spec PDF unblocks as soon as the 2 quick wins (A, C) are in.
+**Status:** 37 of 47 retrieved (effective denominator 46 with Mills 1999 ghost-citation dropped). **Updated 2026-04-30:** A (Thomas/Gubler 1999) and C (Rossi/Giosuè/Caffi 2009) both in. 2 ILL outstanding (B Strizyk, D Oh) on 2-4 week clock. **Spec PDF generation now UNBLOCKED.**
 **Owner:** Benson Klein (bensonn@umich.edu, University of Michigan library access).
 **Source of truth:** `paywalled_queue.md` (read-only). This file is the operational checklist generated from it.
 **Generated:** 2026-04-29.
@@ -38,14 +38,14 @@ Save to: `docs/research/assets/06_outbreak-prediction/paywalled/`
 
 | ✓ | Ref | Title (Author, Journal) | Year | DOI / Lookup | Filename |
 |---|---|---|---|---|---|
-| ☐ | P1 | Thomas CS et al. Original Gubler-Thomas model paper. *Plant Disease*. | 1994 | No DOI; search title in U-M | `P1_Thomas_1994_GublerThomas-original.pdf` |
+| ☑ | P1 | Thomas CS et al. Original Gubler-Thomas model paper. *Plant Disease*. | 1994 | No DOI; search title in U-M | `P1_Thomas_1994_GublerThomas-original.pdf` |
 | ☑ | P2 | Gubler WD et al. Revisions to UC Davis PM Risk Index. *Plant Disease* 97(7). | 2013 | 10.1094/PDIS-09-12-0871-RE | `P2_Gubler_2013_PM-risk-index-revisions.pdf` |
 | ☑ | P3 | Caffi T, Rossi V, Legler SE, Bugiani R. Mechanistic model for *Erysiphe necator*. *Plant Pathology* 60(3):522–531. | 2011 | 10.1111/j.1365-3059.2010.02395.x | `P3_Caffi_2011_E-necator-mechanistic.pdf` |
 | ☐ | P4 | Strizyk S. Modèle de comportement: état potentiel d'infection. *Phytoma* 347. | 1983 | AGRIS 64774d23a3fd11e4303868ef (likely ILL) | `P4_Strizyk_1983_etat-potentiel.pdf` |
 | ☑ | P5 | Park EW, Seem RC, Gadoury DM, Pearson RC. DMCast: prediction model for grape downy mildew. *Phytopathologia Mediterranea* 36:3–11. | 1997 | No DOI; search title | `P5_Park_1997_DMCast.pdf` |
 | ☑ | P6 | Magarey RD, Sutton TB, Thayer CL. Simple generic infection model. *Phytopathology* 95(1):92–100. | 2005 | 10.1094/PHYTO-95-0092 (also free via Semantic Scholar) | `P6_Magarey_2005_generic-infection-model.pdf` |
 | ☑ | P7 | Bendek CE et al. Risk assessment in grape PM control. *Spanish J Agric Research* 5(4):522–532. | 2007 | No DOI; search title | `P7_Bendek_2007_PM-risk-assessment.pdf` |
-| ☐ | P8 | Caffi T, Rossi V, Bugiani R. Evaluation of a mechanistic primary infection model. *J Plant Pathology* 91(3):615–627. | 2009 | No DOI; search title | `P8_Caffi_2009_primary-infection-eval.pdf` |
+| ☑ | P8 | Caffi T, Rossi V, Bugiani R. Evaluation of a mechanistic primary infection model. *J Plant Pathology* 91(3):615–627. | 2009 | No DOI; search title | `P8_Caffi_2009_primary-infection-eval.pdf` |
 | ☑ | P9 | Kennelly MM, Gadoury DM, Wilcox WF, Seem RC, Luby JJ, Ficke A. *P. viticola* primary infection and sporangia survival. *Phytopathology* 97:512–522. | 2007 | No DOI; search title | `P9_Kennelly_2007_P-viticola-survival.pdf` |
 | ☑ | P10 | Rossi V, Caffi T, Legler SE. Ascospore maturation in *Erysiphe necator*. *Phytopathology* 100(12):1321–1329. | 2010 | No DOI; search title | `P10_Rossi_2010_ascospore-maturation.pdf` |
 
@@ -77,7 +77,7 @@ Save to: `docs/research/assets/03_live-weather-feeds/paywalled/`
 |---|---|---|---|---|---|
 | ☑ | P1 | Gleason et al. Validation of leaf wetness duration estimation (Gleason CART). *Phytopathology*. | 1994 | 10.1094/Phyto-84-520 | `P1_Gleason_1994_leaf-wetness-CART.pdf` |
 | ☑ | P2 | Bois et al. Temperature-based zoning of Bordeaux. *OENO One*. | 2018 | 10.20870/oeno-one.2018.52.4.1580 | `P2_Bois_2018_bordeaux-T-zoning.pdf` |
-| ☐ | P3 | Mills et al. DMCAST: prediction model for grape downy mildew. *Viticulture and Enology Science*. | 1999 | No DOI; search title | `P3_Mills_1999_DMCAST.pdf` |
+| ✗ | P3 | Mills et al. DMCAST: prediction model for grape downy mildew. *Viticulture and Enology Science*. | 1999 | No DOI; search title | `P3_Mills_1999_DMCAST.pdf` |
 | ☑ | P4 | Willocquet et al. Forecasting model for *Uncinula necator* on grapevines. *EPPO Bulletin*. | 1996 | No DOI; search title | `P4_Willocquet_1996_U-necator-forecasting.pdf` |
 
 ---
