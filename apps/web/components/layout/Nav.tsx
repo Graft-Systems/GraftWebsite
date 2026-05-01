@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { UserButton, useAuth } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
@@ -14,6 +15,7 @@ const LINKS = [
 export function Nav() {
   const [scrolled, setScrolled] = useState(false);
   const [visible, setVisible] = useState(true);
+  const { isSignedIn, isLoaded } = useAuth();
 
   useEffect(() => {
     let lastY = window.scrollY;
@@ -84,6 +86,21 @@ export function Nav() {
               </Link>
             </li>
           ))}
+          <li className="flex h-5 items-center">
+            {isLoaded && isSignedIn ? (
+              <UserButton
+                appearance={{ variables: { colorPrimary: "#c08a3e" } }}
+                userProfileMode="modal"
+              />
+            ) : (
+              <Link
+                href="/sign-in"
+                className="frame text-[0.7rem] font-semibold leading-none text-foreground/80 transition-colors hover:text-amber"
+              >
+                Log in
+              </Link>
+            )}
+          </li>
         </ul>
       </nav>
     </header>

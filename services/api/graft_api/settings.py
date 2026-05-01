@@ -50,8 +50,32 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "corsheaders",
+    "rest_framework",
     "api",
+    "spray",
 ]
+
+# DRF config for the Spray app. The existing `api` app uses plain Django
+# views and is unaffected; only `spray` views opt into DRF.
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "spray.auth.clerk.ClerkJWTAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
+    "UNAUTHENTICATED_USER": None,
+}
+
+# Clerk configuration. Values come from environment variables (Render
+# secret store in prod, .env in dev). All optional at app-load time so
+# the service still boots without Clerk configured; the auth and webhook
+# code paths raise a clear error if a Clerk request lands without config.
+CLERK_PUBLISHABLE_KEY = os.environ.get("CLERK_PUBLISHABLE_KEY", "")
+CLERK_SECRET_KEY = os.environ.get("CLERK_SECRET_KEY", "")
+CLERK_WEBHOOK_SIGNING_SECRET = os.environ.get("CLERK_WEBHOOK_SIGNING_SECRET", "")
+CLERK_FRONTEND_API = os.environ.get("CLERK_FRONTEND_API", "")
+CLERK_JWKS_URL = os.environ.get("CLERK_JWKS_URL", "")
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
