@@ -31,6 +31,10 @@ PyJWT==2.10.1
 cryptography==45.0.7
 svix==1.45.1
 
+# Test runner for the spray app (M0-02 step 10).
+pytest==8.3.4
+pytest-django==4.9.0
+
 # CNN inference for v2 grape weight model (DINOv2 ViT-S/14 + HistGradientBoosting).
 # CPU-only torch wheels live on PyTorch's index (not PyPI).
 --extra-index-url https://download.pytorch.org/whl/cpu

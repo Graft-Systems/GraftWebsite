@@ -100,8 +100,13 @@ def clerk_webhook(request: HttpRequest) -> JsonResponse:
     try:
         wh = Webhook(secret)
         event = wh.verify(payload_bytes, headers)
-    except WebhookVerificationError as e:
+    except (WebhookVerificationError, ValueError) as e:
         logger.warning("Webhook signature verification failed: %s", e)
+        return JsonResponse({"error": "invalid signature"}, status=400)
+    except Exception as e:  # noqa: BLE001
+        # Malformed signature header (e.g. invalid base64) raises
+        # binascii.Error in some svix versions; treat as invalid signature.
+        logger.warning("Webhook signature parse error: %s", e)
         return JsonResponse({"error": "invalid signature"}, status=400)
 
     event_type = event.get("type", "")
