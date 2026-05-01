@@ -342,7 +342,7 @@ The ordered list of PRs against `graft-spray/main`, with estimated diff size and
 | 0a | `graft-spray/m0/research-import` | M0-00a: Import research dossier | `graft-spray/main` | **PR #2 open** (`76c0491`) | Benson addendum | ~76k LoC (mostly PDFs) | none |
 | 0 | `graft-spray/m0/codebase-plan` | M0-00: Whole-Codebase Plan | `graft-spray/main` | **THIS DRAFT** | Whole-Codebase Plan § | ~700 LoC (this file) | none |
 | 1 | `graft-spray/m0/repo-bootstrap` | M0-01: Monorepo bootstrap (pnpm + Turborepo) | `graft-spray/main` | Pending | Repo Layout § | Large (file moves) | M0-00 + Q1, Q9, Q12 |
-| 2 | `graft-spray/m0/auth-identity` | M0-02: Account & identity (Clerk) | `graft-spray/main` | Pending | §20 | Medium-Large | M0-01 + Q8 |
+| 2 | `graft-spray/m0/auth-identity` | M0-02: Account & identity (Clerk) | `graft-spray/main` | **PR #6 ready for merge** | §20 | Medium-Large | M0-01 + Q8 |
 | 2a | `graft-spray/m0/website-integration` | M0-02a: Website integration (`/spray` nav, app shell) | `graft-spray/main` | Pending | §21 | Medium | M0-02 + Q5, Q6 |
 | 3 | `graft-spray/m0/postgis-schema` | M0-03: Postgres + PostGIS schema | `graft-spray/main` | Pending | Data Model § | Medium-Large | M0-02 + Q3 |
 | 4 | `graft-spray/m0/data-lake-ingest` | M0-04: Data-lake ingest service | `graft-spray/main` | Pending | §19 | Large (new service) | M0-03 |
