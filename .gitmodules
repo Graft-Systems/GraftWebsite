@@ -1,0 +1,4 @@
+[submodule "services/api/PredictionTool"]
+	path = services/api/PredictionTool
+	url = https://github.com/Graft-Systems/GraftPredictionTool.git
+	branch = main

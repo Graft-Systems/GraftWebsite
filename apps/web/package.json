@@ -1,5 +1,5 @@
 {
-  "name": "graft-website-cinematic",
+  "name": "@graft/web",
   "version": "0.1.0",
   "private": true,
   "scripts": {
