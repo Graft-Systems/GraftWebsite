@@ -216,7 +216,16 @@ def _load_v2_runtime() -> dict[str, Any]:
 
         if backbone == "dinov2_vits14":
             try:
-                cnn = torch.hub.load("facebookresearch/dinov2", "dinov2_vits14", verbose=False)
+                # Render can hit GitHub API/rate-limit validation issues when
+                # torch.hub verifies repos. We trust this pinned upstream repo
+                # and skip validation to avoid spurious auth failures.
+                cnn = torch.hub.load(
+                    "facebookresearch/dinov2",
+                    "dinov2_vits14",
+                    verbose=False,
+                    trust_repo=True,
+                    skip_validation=True,
+                )
             except Exception as exc:
                 raise RuntimeError(
                     f"Failed to load DINOv2 from torch.hub: {exc}. "
