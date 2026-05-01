@@ -13,6 +13,7 @@ urlpatterns = [
     path("", healthcheck),
     path("admin/", admin.site.urls),
     path("api/", include("api.urls")),
+    path("api/spray/", include("spray.urls")),
 ]
 
 if settings.DEBUG:

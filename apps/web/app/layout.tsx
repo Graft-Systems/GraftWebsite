@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Fraunces, Inter, JetBrains_Mono, Titillium_Web } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
 import { LenisProvider } from "@/components/providers/LenisProvider";
 import { FilmGrain } from "@/components/effects/FilmGrain";
 import { Nav } from "@/components/layout/Nav";
@@ -53,18 +54,20 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html
-      lang="en"
-      className={`dark ${fraunces.variable} ${inter.variable} ${jetbrainsMono.variable} ${titillium.variable}`}
-    >
-      <body className="antialiased">
-        <LenisProvider>
-          <Nav />
-          {children}
-          <Footer />
-        </LenisProvider>
-        <FilmGrain />
-      </body>
-    </html>
+    <ClerkProvider>
+      <html
+        lang="en"
+        className={`dark ${fraunces.variable} ${inter.variable} ${jetbrainsMono.variable} ${titillium.variable}`}
+      >
+        <body className="antialiased">
+          <LenisProvider>
+            <Nav />
+            {children}
+            <Footer />
+          </LenisProvider>
+          <FilmGrain />
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }

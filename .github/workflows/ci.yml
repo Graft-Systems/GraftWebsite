@@ -26,9 +26,9 @@ jobs:
           fetch-depth: 0
 
       - name: Setup pnpm
+        # Version derives from `packageManager` in root package.json. Specifying
+        # `version:` here too triggers ERR_PNPM_BAD_PM_VERSION in action-setup v4.
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Setup Node 20
         uses: actions/setup-node@v4

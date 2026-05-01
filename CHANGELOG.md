@@ -6,6 +6,44 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), wit
 
 ## Unreleased
 
+### M0-02: Account & Identity (Clerk) — READY FOR MERGE
+
+PR #6 on `graft-spray/m0/auth-identity`. Stands up the foundation of Graft Spray's identity layer: Clerk hosts auth flows for `apps/web`, a new `spray` Django app under `services/api/` owns the multi-tenant data model, Clerk webhooks sync canonical User records, DRF authentication and permission classes enforce the four-role RBAC, and an in-app account-deletion endpoint satisfies Apple App Review Guideline 5.1.1(v).
+
+#### Added
+
+- `services/api/spray/` Django app with six models per spec section 9.1 / section 20: `Org`, `User`, `Membership` (4-role RBAC), `Session`, `AuthEvent` (immutable audit trail, 19 event types), `ConsentRecord` (4 categories per spec section 19.5).
+- `services/api/spray/auth/clerk.py` — `ClerkJWTAuthentication` DRF class. Validates `Authorization: Bearer` tokens against Clerk's JWKS via PyJWT + `RSAAlgorithm.from_jwk`. JWKS cached for one hour with single force-refresh on `kid` mismatch. Resolves the local `User` row by `clerk_user_id`.
+- `services/api/spray/permissions.py` — five DRF permission classes (`IsAuthenticatedSpray`, `IsOrgViewer`, `IsOrgMember`, `IsOrgAdmin`, `IsOrgOwner`). Org context resolves from `view.kwargs['org_id']`, request body, or `X-Org-Id` header.
+- Clerk webhook ingestion at `POST /api/spray/clerk/webhook`. Svix signature validation; dispatches `user.created`, `user.updated`, `user.deleted`, `session.created`, `session.removed`. Idempotent on replay.
+- Org and Membership endpoints (spec section 20.4): create / list-mine / get / patch / archive Orgs; list / invite / role-change / remove Memberships. Last-Owner protection on demote and remove paths. Each write emits an `AuthEvent`.
+- Account lifecycle endpoints: `POST /api/spray/account/delete` (two-step deletion with `confirm: true`), `POST /api/spray/account/export` (synchronous JSON dump at M0-02; full async + photo-zip lands in M0-04).
+- Per-category consent toggles at `POST /api/spray/account/consent` (upsert array of `{category, granted}`); GET endpoint returns the caller's records.
+- 66 pytest tests covering models, JWT validation, RBAC matrix, webhook signature + idempotency, every Org endpoint (happy path + denial), account delete (including last-Owner block), and consent toggles. `pytest.ini` wires `DJANGO_SETTINGS_MODULE`.
+- `apps/web/middleware.ts` (Clerk middleware protects `/spray/*` and `/onboarding/*`).
+- Clerk-hosted `/sign-in` and `/sign-up` pages with the brand amber primary color.
+- `<ClerkProvider>` wraps the root layout; `Nav` swaps to `<UserButton>` when signed in (uses `useAuth()` since `SignedIn`/`SignedOut` were dropped in `@clerk/nextjs` v7).
+- `apps/web/app/(spray)/onboarding/page.tsx` — minimal stub that renders the four consent toggles and calls the consent endpoint via the user's Clerk JWT. Surfaces non-2xx responses inline (caught the optimistic-UI bug during M0-02 manual E2E).
+- `apps/web/.env.example` documenting required Clerk env vars.
+
+#### Changed
+
+- `services/api/graft_api/settings.py` — registers `rest_framework` and `spray` apps, sets `ClerkJWTAuthentication` as the default DRF auth class, surfaces five Clerk env vars (`CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `CLERK_WEBHOOK_SIGNING_SECRET`, `CLERK_FRONTEND_API`, `CLERK_JWKS_URL`).
+- `services/api/requirements.txt` — adds `djangorestframework`, `PyJWT`, `cryptography`, `svix`, `pytest`, `pytest-django`.
+
+#### Manual step (Benson, at merge time)
+
+- **Render env vars** (already done 2026-04-30): `CLERK_SECRET_KEY`, `CLERK_WEBHOOK_SIGNING_SECRET`, `CLERK_FRONTEND_API`.
+- **Vercel env vars** (already done 2026-04-30): `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` across Production / Preview / Development.
+- **Vercel `BACKEND_URL`** (deferred to M0 closeout): set to the Render service URL once `graft-spray/main` merges into `main` and the spray endpoints go live on Render.
+
+#### Notes
+
+- Manual E2E verified on Vercel preview `graft-website-git-graft-spray-m0a-...vercel.app`: signup → email verify → onboarding land → sign out → middleware redirect on protected route. Consent roundtrip deferred until M0 closeout deploys the spray app to Render; the 8 consent unit tests cover the backend logic.
+- Two resolved Open Questions affect M0-02: Q5 (subpath routing `graftsystems.com/spray/*`), Q8 (Clerk over Auth0). Q14 free-tier resolution holds (Clerk free tier covers 10,000 MAU, sufficient through M2).
+- `AuthEvent` rows are insert-only by application convention at M0-02; database-trigger immutability lands in M0-03 alongside row-level security.
+- Sign in with Apple deferred to M2 per the dossier decision.
+
 ### M0-01: Monorepo bootstrap — IN PROGRESS
 
 PR #5 on `graft-spray/m0/repo-bootstrap`. Migrates the repo to a pnpm + Turborepo monorepo without disturbing existing production deploys.
