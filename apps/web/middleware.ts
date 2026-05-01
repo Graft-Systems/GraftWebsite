@@ -8,9 +8,20 @@
  */
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
+/**
+ * Protected routes — Clerk middleware redirects unauth'd visitors to
+ * /sign-in. The /spray landing is intentionally NOT protected (it is
+ * the public marketing page); only deeper /spray/<anything> requires
+ * a session.
+ */
 const isProtectedRoute = createRouteMatcher([
-  "/spray(.*)",
-  "/onboarding(.*)",
+  "/spray/dashboard(.*)",
+  "/spray/onboarding(.*)",
+  "/spray/post-login(.*)",
+  "/spray/vineyards(.*)",
+  "/spray/forecasts(.*)",
+  "/spray/spray-records(.*)",
+  "/spray/settings(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
