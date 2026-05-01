@@ -1,0 +1,23 @@
+{
+  "name": "@graft/ui",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Graft Systems shared UI primitives, design tokens, and Tailwind base config. Consumed by apps/web (marketing + Spray) and apps/mobile (M2+).",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tokens": "./src/tokens/index.ts",
+    "./tailwind.config": "./tailwind.config.ts"
+  },
+  "scripts": {
+    "lint": "echo '@graft/ui lint placeholder; real eslint config lands when components are added in M0-02'",
+    "type-check": "echo '@graft/ui type-check placeholder; real tsc lands when components are added in M0-02'",
+    "build": "echo '@graft/ui build placeholder; no compile step yet'"
+  },
+  "peerDependencies": {
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0"
+  }
+}
