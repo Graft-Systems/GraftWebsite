@@ -6,6 +6,39 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), wit
 
 ## Unreleased
 
+### M0-02a: Website Integration (`/spray` nav + app shell) — READY FOR MERGE
+
+PR #9 on `graft-spray/m0/website-integration`. Adds the first-class `/spray` surface to the marketing site per spec §21.
+
+#### Added
+
+- `/spray` marketing landing (public, indexed) with hero, three-bullet value prop, and an auth-aware CTA (`<SprayLandingCTA />`) that flips between sign-up + log-in for visitors and "Open dashboard" for signed-in users.
+- `/spray/dashboard` placeholder dashboard, rendered inside the new authenticated app shell.
+- `/spray/post-login` server-side router that branches the user based on Org membership: no Org → `/spray/onboarding`, any Org → `/spray/dashboard`. Falls through to onboarding when the API is unreachable so the flow does not dead-end while Render is on the pre-M0-closeout codebase.
+- `/spray/onboarding` (existing M0-02 stub, moved from `/onboarding` to its proper URL).
+- App shell components in `apps/web/components/spray/`:
+  - `SprayShell` — sidebar + topbar + main content area; sidebar nav links to Dashboard, Vineyards, Forecasts, Spray records, Settings (placeholders for routes that land later).
+  - `OrgSwitcher` — top-bar dropdown that pulls memberships from `GET /api/spray/orgs/me`; falls back to "Personal" placeholder when the API is unreachable.
+  - `SprayLandingCTA` — auth-aware marketing CTA.
+- `MarketingChromeGuard` — hides the marketing nav and footer on authenticated `/spray/<deeper>` routes; keeps them on the bare `/spray` landing and all marketing routes.
+- "Spray" link added to the marketing nav between "Tool" and "Contact"; the link target deep-links signed-in users straight to `/spray/dashboard`.
+- `apps/web/app/sitemap.ts` (Next.js `MetadataRoute.Sitemap`) covering the five marketing routes including `/spray`. Authenticated routes carry `metadata.robots.index = false`.
+- Vitest harness: `vitest.config.ts`, `vitest.setup.ts`, three test files (`marketing-chrome-guard.test.tsx`, `nav.test.tsx`, `spray-landing-cta.test.tsx`) — 11 tests, all green.
+- `pnpm test` and `pnpm test:watch` scripts in `apps/web/package.json`.
+
+#### Changed
+
+- `<ClerkProvider>` in the root layout now sets `afterSignOutUrl="/spray"` so logout returns the user to the Spray landing page (spec §21.4).
+- `apps/web/middleware.ts` protects only the deeper `/spray/<authenticated>` routes; the bare `/spray` landing stays public.
+- `/sign-in` and `/sign-up` Clerk pages now redirect to `/spray/post-login` after auth (replaced the M0-02 placeholder of `/onboarding`).
+- Old `apps/web/app/(spray)/` parens-group route directory removed; replaced by the real folder `apps/web/app/spray/` containing both the public landing (`page.tsx`) and the `(app)/` route group housing the authenticated shell.
+
+#### Notes
+
+- Lighthouse parity check is a manual step at PR-review time; bundle-size budget enforcement lands in M0-04 alongside `packages/ui`.
+- Org switcher placement is top bar center-right (the default from plan §9 question 2).
+- Logged-in users visiting `/spray` see the marketing page with a swapped "Open dashboard" CTA, not an auto-redirect (the default from plan §9 question 3) — keeps the URL meaningful and SEO-clean.
+
 ### M0-02: Account & Identity (Clerk) — READY FOR MERGE
 
 PR #6 on `graft-spray/m0/auth-identity`. Stands up the foundation of Graft Spray's identity layer: Clerk hosts auth flows for `apps/web`, a new `spray` Django app under `services/api/` owns the multi-tenant data model, Clerk webhooks sync canonical User records, DRF authentication and permission classes enforce the four-role RBAC, and an in-app account-deletion endpoint satisfies Apple App Review Guideline 5.1.1(v).

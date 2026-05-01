@@ -5,6 +5,7 @@ import { LenisProvider } from "@/components/providers/LenisProvider";
 import { FilmGrain } from "@/components/effects/FilmGrain";
 import { Nav } from "@/components/layout/Nav";
 import { Footer } from "@/components/layout/Footer";
+import { MarketingChromeGuard } from "@/components/layout/MarketingChromeGuard";
 import "./globals.css";
 
 const fraunces = Fraunces({
@@ -54,16 +55,20 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ClerkProvider>
+    <ClerkProvider afterSignOutUrl="/spray">
       <html
         lang="en"
         className={`dark ${fraunces.variable} ${inter.variable} ${jetbrainsMono.variable} ${titillium.variable}`}
       >
         <body className="antialiased">
           <LenisProvider>
-            <Nav />
+            <MarketingChromeGuard>
+              <Nav />
+            </MarketingChromeGuard>
             {children}
-            <Footer />
+            <MarketingChromeGuard>
+              <Footer />
+            </MarketingChromeGuard>
           </LenisProvider>
           <FilmGrain />
         </body>

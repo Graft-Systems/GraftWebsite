@@ -9,6 +9,7 @@ const LINKS = [
   { href: "/", label: "Home" },
   { href: "/about", label: "About" },
   { href: "/tool", label: "Tool" },
+  { href: "/spray", label: "Spray" },
   { href: "/contact", label: "Contact" },
 ];
 
@@ -76,16 +77,23 @@ export function Nav() {
         </Link>
 
         <ul className="flex items-center gap-8">
-          {LINKS.slice(1).map((link) => (
-            <li key={link.href}>
-              <Link
-                href={link.href}
-                className="frame text-[0.7rem] font-semibold text-foreground/80 transition-colors hover:text-amber"
-              >
-                {link.label}
-              </Link>
-            </li>
-          ))}
+          {LINKS.slice(1).map((link) => {
+            // Logged-in users deep-link straight into the Spray app shell.
+            const href =
+              link.href === "/spray" && isLoaded && isSignedIn
+                ? "/spray/dashboard"
+                : link.href;
+            return (
+              <li key={link.href}>
+                <Link
+                  href={href}
+                  className="frame text-[0.7rem] font-semibold text-foreground/80 transition-colors hover:text-amber"
+                >
+                  {link.label}
+                </Link>
+              </li>
+            );
+          })}
           <li className="flex h-5 items-center">
             {isLoaded && isSignedIn ? (
               <UserButton
