@@ -42,6 +42,7 @@ export default function OnboardingPage() {
   const [state, setState] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -70,9 +71,10 @@ export default function OnboardingPage() {
 
   async function toggle(category: string, granted: boolean) {
     setSaving(category);
+    setError(null);
     try {
       const token = await getToken();
-      await fetch("/api/spray/account/consent", {
+      const res = await fetch("/api/spray/account/consent", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -80,7 +82,14 @@ export default function OnboardingPage() {
         },
         body: JSON.stringify([{ category, granted }]),
       });
+      if (!res.ok) {
+        throw new Error(`save failed (${res.status})`);
+      }
       setState((s) => ({ ...s, [category]: granted }));
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "save failed"
+      );
     } finally {
       setSaving(null);
     }
@@ -95,6 +104,12 @@ export default function OnboardingPage() {
         A couple of preferences before you head into Graft Spray. You can change
         any of these later from Account Settings.
       </p>
+
+      {error && (
+        <p className="mt-6 rounded-md border border-red-500/50 bg-red-500/10 p-3 text-sm text-red-300">
+          Could not save: {error}
+        </p>
+      )}
 
       <section className="mt-12">
         <h2 className="frame text-xs font-semibold uppercase tracking-wider text-foreground/60">
