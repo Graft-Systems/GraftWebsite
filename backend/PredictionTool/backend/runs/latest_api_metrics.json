@@ -6,7 +6,7 @@
       "model": "grape-weight-v4g-dinov2_vits14-log-hgb",
       "unit": "kg",
       "depth_used": null,
-      "latency_ms": 326
+      "latency_ms": 215
     }
   ]
 }
