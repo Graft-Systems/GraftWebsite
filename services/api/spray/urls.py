@@ -19,4 +19,8 @@ app_name = "spray"
 #   - POST /api/spray/account/export      (step 7)
 #   - GET  /api/spray/account/export/<job_id>  (step 7)
 
-urlpatterns: list = []
+from spray import views
+
+urlpatterns = [
+    path("clerk/webhook", views.clerk_webhook, name="clerk_webhook"),
+]

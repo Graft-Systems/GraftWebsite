@@ -24,6 +24,13 @@ tzdata==2026.1
 urllib3==2.6.3
 whitenoise==6.12.0
 
+# DRF, JWT validation (Clerk), and webhook signature validation.
+# Added M0-02 step 3 + step 5 for the spray app's auth layer.
+djangorestframework==3.16.1
+PyJWT==2.10.1
+cryptography==45.0.7
+svix==1.45.1
+
 # CNN inference for v2 grape weight model (DINOv2 ViT-S/14 + HistGradientBoosting).
 # CPU-only torch wheels live on PyTorch's index (not PyPI).
 --extra-index-url https://download.pytorch.org/whl/cpu

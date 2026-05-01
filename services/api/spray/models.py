@@ -91,6 +91,17 @@ class User(models.Model):
     def __str__(self) -> str:
         return f"{self.email} ({self.clerk_user_id})"
 
+    # Properties below let DRF treat a `spray.User` as an authenticated user
+    # without inheriting from `django.contrib.auth.AbstractBaseUser` (Clerk
+    # owns authentication; we keep our own model lightweight).
+    @property
+    def is_authenticated(self) -> bool:
+        return self.deleted_at is None
+
+    @property
+    def is_anonymous(self) -> bool:
+        return False
+
 
 class Membership(models.Model):
     """Org-User-Role bridge.
