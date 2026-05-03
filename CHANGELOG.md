@@ -6,6 +6,51 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), wit
 
 ## Unreleased
 
+### M0-03: Postgres + PostGIS schema — READY FOR MERGE
+
+PR #10 on `graft-spray/m0/postgis-schema`. The database layer that lights up Vineyards, Blocks, and tenant isolation per spec §9, §17.2.
+
+#### Added
+
+- `Vineyard` model with optional EPSG:4326 `centroid` (Point) and GIST index. Tenant-scoped via `OrgScopedManager()`.
+- `Block` model with required EPSG:4326 `geom` (Polygon) and GIST index. Tenant-scoped via `OrgScopedManager(via="vineyard__org_id")` so the FK chain is the source of org context.
+- `DataLakeEvent` skeleton model — every Vineyard / Block write emits a row (categories `vineyard.created`, `vineyard.updated`, `vineyard.archived`, `block.created`, `block.updated`, `block.archived`). M0-04 picks these up and forwards to S3 + Iceberg; M0-03 just accumulates them so the schema-registry pattern is in place.
+- `spray.managers.OrgScopedManager` + `OrgScopedQuerySet` — every tenant-scoped read MUST call `.for_org(org)` before evaluation. Iterating an unscoped queryset raises `OrgScopeRequiredError` (loud failure, not silent leak). Explicit `.unscoped()` escape hatch for admin / migration / audit paths.
+- `spray.middleware.CurrentOrgMiddleware` — sets `app.current_org_id` Postgres session GUC per request via `set_config()`. Cleared in the `finally:` so connection-pool reuse cannot leak across requests. No-op on non-Postgres backends so dev sandboxes keep working.
+- Migration `0002_postgis_vineyard_block_datalake` — installs `postgis` + `postgis_topology` extensions (idempotent), creates the three new tables, adds GIST indexes via raw SQL.
+- Migration `0003_rls_policies` — enables `ROW LEVEL SECURITY` + `FORCE ROW LEVEL SECURITY` on Membership, Vineyard, Block, DataLakeEvent. Each policy filters by `app.current_org_id` GUC. Block's policy traverses through `spray_vineyard.org_id`. Fully reversible.
+- DRF endpoints (mounted at `/api/spray/`):
+  - `GET / POST /orgs/<org_id>/vineyards`
+  - `GET / PATCH / DELETE /orgs/<org_id>/vineyards/<vineyard_id>` (DELETE archives + cascades to child Blocks)
+  - `GET / POST /orgs/<org_id>/vineyards/<vineyard_id>/blocks`
+  - `GET / PATCH / DELETE /orgs/<org_id>/blocks/<block_id>`
+- `GeometryField` DRF serializer — accepts GeoJSON dict or WKT string on write, returns GeoJSON dict on read. EPSG:4326 enforced at SRID-set time.
+- `infra/dev/docker-compose.yml` — local-dev `postgis/postgis:16-3.4` service mapping `:5432`. Mirrors Render Postgres Pro 16 + PostGIS 3.4.
+- CI service container: `postgis/postgis:16-3.4` with `DATABASE_URL` set on the workflow. GDAL apt-installed for `django.contrib.gis`. New `pytest spray/tests/` step runs the full Django test suite against real Postgres + PostGIS.
+- `docs/runbooks/m0-03-render-postgis.md` — Render Pro upgrade steps, PostGIS extension verification, RLS smoke check, local-dev one-time setup, rollback path.
+- New tests:
+  - `test_org_scoped_manager.py` — unscoped iteration raises, `.for_org(...)` filters, `.unscoped()` escape hatch works, Block traverses through `vineyard__org_id`, DataLakeEvent enforces scope.
+  - `test_vineyard_block_endpoints.py` — happy path + RBAC denial across every route, GeoJSON round-trip, archived-row filtering, cascade-archive on Vineyard delete, DataLakeEvent emission per write.
+
+#### Changed
+
+- `DATABASES['default']` switched from SQLite default to Postgres + PostGIS (`postgis://graft:graft@localhost:5432/graft_spray`). SQLite is no longer supported because the spray app uses spatial fields.
+- `INSTALLED_APPS` adds `django.contrib.gis` (PostGIS-backed model fields).
+- `MIDDLEWARE` adds `spray.middleware.CurrentOrgMiddleware` after auth middleware.
+- Admin (`spray/admin.py`) registers Vineyard + Block with `gis_admin.GISModelAdmin` so the geom widgets render with a Leaflet OSM picker. DataLakeEvent is read-only in admin.
+- `services/api/db.sqlite3` removed from the repo (was only ever a local-dev artifact and is incompatible with the new spatial fields).
+
+#### Manual step (Benson, before merge)
+
+- **Render Postgres Pro upgrade** (~$20/month) — required for PostGIS extension. Per-spec §16.1, Q3 RESOLVED. Documented in `docs/runbooks/m0-03-render-postgis.md`.
+
+#### Notes
+
+- Existing M0-02 models (Org, User, Membership, Session, AuthEvent, ConsentRecord) keep their default manager. The tighter `OrgScopedManager` is opt-in for the new spatial models so the M0-02 test suite continues to pass without edits. Tightening Membership comes in a follow-up.
+- RLS policies use `current_setting('app.current_org_id', true)` with the `, true` flag (returns empty string when unset) so default-deny is the natural behavior for any request that lacks org context.
+- Block delete on the Vineyard archive endpoint is a cascade by default per plan §9 question 3.
+- Blocks honor archived state in list endpoints (`archived_at IS NULL` filter) so the UI can render only live blocks without extra parameters.
+
 ### M0-02a: Website Integration (`/spray` nav + app shell) — READY FOR MERGE
 
 PR #9 on `graft-spray/m0/website-integration`. Adds the first-class `/spray` surface to the marketing site per spec §21.

@@ -6,14 +6,18 @@ internal-staff-access controls are introduced (spec section 17.6).
 """
 
 from django.contrib import admin
+from django.contrib.gis import admin as gis_admin
 
 from spray.models import (
     AuthEvent,
+    Block,
     ConsentRecord,
+    DataLakeEvent,
     Membership,
     Org,
     Session,
     User,
+    Vineyard,
 )
 
 
@@ -89,3 +93,46 @@ class ConsentRecordAdmin(admin.ModelAdmin):
     list_filter = ("category", "granted")
     search_fields = ("user__email",)
     readonly_fields = ("id",)
+
+
+# M0-03: Vineyard / Block / DataLakeEvent. Vineyard + Block use the GIS
+# admin so the centroid / geom columns render with a Leaflet OSM widget.
+
+
+@admin.register(Vineyard)
+class VineyardAdmin(gis_admin.GISModelAdmin):
+    list_display = ("name", "org", "region", "created_at", "archived_at")
+    list_filter = ("region", "archived_at")
+    search_fields = ("name", "org__name")
+    readonly_fields = ("id", "created_at")
+
+
+@admin.register(Block)
+class BlockAdmin(gis_admin.GISModelAdmin):
+    list_display = ("name", "vineyard", "variety", "created_at", "archived_at")
+    list_filter = ("variety", "archived_at")
+    search_fields = ("name", "vineyard__name", "variety")
+    readonly_fields = ("id", "created_at")
+
+
+@admin.register(DataLakeEvent)
+class DataLakeEventAdmin(admin.ModelAdmin):
+    list_display = ("category", "schema_version", "org", "user", "created_at")
+    list_filter = ("category", "schema_version")
+    search_fields = ("category", "org__name")
+    readonly_fields = (
+        "id",
+        "org",
+        "user",
+        "category",
+        "schema_version",
+        "payload",
+        "created_at",
+    )
+
+    def has_add_permission(self, request) -> bool:
+        # Lake events are emitted by application code; admin is read-only.
+        return False
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False

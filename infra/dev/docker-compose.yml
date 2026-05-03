@@ -1,0 +1,36 @@
+# Local-dev Postgres + PostGIS for the spray app (M0-03).
+#
+# Usage:
+#   cd infra/dev
+#   docker compose up -d
+#
+# Then from services/api:
+#   python manage.py migrate
+#   python manage.py runserver 0.0.0.0:8080
+#
+# To wipe the db (start fresh):
+#   docker compose down -v
+#
+# Mirrors Render Postgres Pro 16 + PostGIS 3.4. Port 5432 is published so
+# `psql -h localhost -U graft graft_spray` works.
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: graft-spray-postgres-dev
+    environment:
+      POSTGRES_DB: graft_spray
+      POSTGRES_USER: graft
+      POSTGRES_PASSWORD: graft
+    ports:
+      - "5432:5432"
+    volumes:
+      - graft_spray_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U graft -d graft_spray"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  graft_spray_pgdata:

@@ -49,4 +49,25 @@ urlpatterns = [
         views.ConsentView.as_view(),
         name="account_consent",
     ),
+    # M0-03: Vineyards + Blocks.
+    path(
+        "orgs/<uuid:org_id>/vineyards",
+        views.VineyardListCreateView.as_view(),
+        name="vineyards_list_create",
+    ),
+    path(
+        "orgs/<uuid:org_id>/vineyards/<uuid:vineyard_id>",
+        views.VineyardDetailView.as_view(),
+        name="vineyard_detail",
+    ),
+    path(
+        "orgs/<uuid:org_id>/vineyards/<uuid:vineyard_id>/blocks",
+        views.BlockListCreateView.as_view(),
+        name="blocks_list_create",
+    ),
+    path(
+        "orgs/<uuid:org_id>/blocks/<uuid:block_id>",
+        views.BlockDetailView.as_view(),
+        name="block_detail",
+    ),
 ]

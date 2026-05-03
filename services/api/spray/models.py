@@ -20,7 +20,10 @@ from __future__ import annotations
 
 import uuid
 
+from django.contrib.gis.db import models as gis_models
 from django.db import models
+
+from spray.managers import OrgScopedManager
 
 
 class Org(models.Model):
@@ -308,3 +311,118 @@ class ConsentRecord(models.Model):
     def __str__(self) -> str:
         state = "granted" if self.granted else "withdrawn"
         return f"{self.user.email}: {self.category} = {state}"
+
+
+# =====================================================================
+# M0-03 step 4: Spatial entities + DataLakeEvent skeleton
+# =====================================================================
+
+
+class Vineyard(models.Model):
+    """A vineyard property owned by an Org (spec section 9.1).
+
+    Centroid is optional at create time (the M0-05 polygon-draw flow
+    typically sets blocks first, then we compute the centroid as the
+    union centroid of constituent block geoms).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    org = models.ForeignKey(
+        Org, on_delete=models.CASCADE, related_name="vineyards"
+    )
+    name = models.CharField(max_length=200)
+    region = models.CharField(
+        max_length=20, choices=Org.Region.choices, default=Org.Region.OTHER
+    )
+    address = models.CharField(max_length=400, blank=True)
+    centroid = gis_models.PointField(srid=4326, null=True, blank=True)
+    settings = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
+
+    objects = OrgScopedManager()
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["org"]),
+            models.Index(fields=["created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.region})"
+
+
+class Block(models.Model):
+    """Sub-vineyard block with PostGIS polygon geometry (spec section 9.1).
+
+    `vineyard__org_id` is the tenant scope. Cascade-deletes follow the
+    Vineyard; archive cascades through the API layer (see views.py
+    Vineyard archive endpoint).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    vineyard = models.ForeignKey(
+        Vineyard, on_delete=models.CASCADE, related_name="blocks"
+    )
+    name = models.CharField(max_length=120)
+    geom = gis_models.PolygonField(srid=4326)
+    variety = models.CharField(max_length=80, blank=True)
+    training_system = models.CharField(max_length=80, blank=True)
+    # Decimal(4,2) covers 0.01m to 99.99m. Spec section 9.1.
+    row_spacing_m = models.DecimalField(
+        max_digits=4, decimal_places=2, null=True, blank=True
+    )
+    settings = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
+
+    objects = OrgScopedManager(via="vineyard__org_id")
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["vineyard"]),
+            models.Index(fields=["created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.vineyard.name} / {self.name}"
+
+
+class DataLakeEvent(models.Model):
+    """Skeleton table for spec section 19 data-lake events.
+
+    M0-03 emits rows on Vineyard / Block writes so M0-04 can plug in the
+    S3 + Iceberg forwarding without retroactively backfilling. No
+    forwarding logic at M0-03; rows just accumulate.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    org = models.ForeignKey(
+        Org,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="data_lake_events",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="data_lake_events",
+    )
+    category = models.CharField(max_length=80)
+    schema_version = models.CharField(max_length=20)
+    payload = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    objects = OrgScopedManager()
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["org", "category", "created_at"]),
+            models.Index(fields=["created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.category} v{self.schema_version} @ {self.created_at}"

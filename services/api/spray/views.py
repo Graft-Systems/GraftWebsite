@@ -23,17 +23,22 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from spray.middleware import set_current_org_id
 from spray.models import (
     AuthEvent,
+    Block,
     ConsentRecord,
+    DataLakeEvent,
     Membership,
     Org,
     Session,
     User,
+    Vineyard,
 )
-from spray.permissions import IsOrgAdmin, IsOrgMember, IsOrgOwner
+from spray.permissions import IsOrgAdmin, IsOrgMember, IsOrgOwner, IsOrgViewer
 from spray.serializers import (
     AccountDeleteSerializer,
+    BlockSerializer,
     ConsentRecordSerializer,
     ConsentToggleSerializer,
     InviteSerializer,
@@ -41,6 +46,7 @@ from spray.serializers import (
     OrgSerializer,
     RoleChangeSerializer,
     UserSerializer,
+    VineyardSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -739,3 +745,230 @@ class ConsentView(APIView):
             results.append(ConsentRecordSerializer(record).data)
 
         return Response(results, status=status.HTTP_200_OK)
+
+
+# ---------------------------------------------------------------------
+# M0-03 step 9: Vineyard + Block CRUD
+# ---------------------------------------------------------------------
+
+
+def _emit_lake_event(*, org, user, category: str, payload: dict) -> None:
+    """Emit a DataLakeEvent skeleton row.
+
+    M0-04 picks these up and forwards to S3 + Iceberg. M0-03 just
+    accumulates them so the schema-registry pattern is in place.
+    """
+    DataLakeEvent.objects.unscoped().create(
+        org=org,
+        user=user,
+        category=category,
+        schema_version="0.1",
+        payload=payload,
+    )
+
+
+class VineyardListCreateView(APIView):
+    """GET / POST `/api/spray/orgs/<org_id>/vineyards`.
+
+    GET: list Vineyards in the Org (any membership role can read).
+    POST: create a Vineyard (Member or higher; not Viewer).
+    """
+
+    def get_permissions(self):
+        if self.request.method == "POST":
+            return [IsOrgMember()]
+        return [IsOrgViewer()]
+
+    def get(self, request, org_id):
+        # Set GUC explicitly because the URL kwarg already resolved here.
+        set_current_org_id(str(org_id))
+        vineyards = (
+            Vineyard.objects.for_org(org_id)
+            .filter(archived_at__isnull=True)
+            .order_by("created_at")
+        )
+        return Response(VineyardSerializer(vineyards, many=True).data)
+
+    @transaction.atomic
+    def post(self, request, org_id):
+        set_current_org_id(str(org_id))
+        org = get_object_or_404(Org, id=org_id, archived_at__isnull=True)
+        serializer = VineyardSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        vineyard = serializer.save(org=org)
+
+        _emit_lake_event(
+            org=org,
+            user=request.user,
+            category="vineyard.created",
+            payload={"vineyard_id": str(vineyard.id), "name": vineyard.name},
+        )
+        return Response(
+            VineyardSerializer(vineyard).data, status=status.HTTP_201_CREATED
+        )
+
+
+class VineyardDetailView(APIView):
+    """GET / PATCH / DELETE `/api/spray/orgs/<org_id>/vineyards/<vineyard_id>`."""
+
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [IsOrgViewer()]
+        if self.request.method == "PATCH":
+            return [IsOrgMember()]
+        if self.request.method == "DELETE":
+            return [IsOrgAdmin()]
+        return [IsAuthenticated()]
+
+    def _get(self, org_id, vineyard_id):
+        return get_object_or_404(
+            Vineyard.objects.for_org(org_id), id=vineyard_id
+        )
+
+    def get(self, request, org_id, vineyard_id):
+        set_current_org_id(str(org_id))
+        return Response(VineyardSerializer(self._get(org_id, vineyard_id)).data)
+
+    def patch(self, request, org_id, vineyard_id):
+        set_current_org_id(str(org_id))
+        vineyard = self._get(org_id, vineyard_id)
+        serializer = VineyardSerializer(vineyard, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        _emit_lake_event(
+            org=vineyard.org,
+            user=request.user,
+            category="vineyard.updated",
+            payload={
+                "vineyard_id": str(vineyard.id),
+                "fields": list(request.data.keys()),
+            },
+        )
+        return Response(serializer.data)
+
+    @transaction.atomic
+    def delete(self, request, org_id, vineyard_id):
+        set_current_org_id(str(org_id))
+        vineyard = self._get(org_id, vineyard_id)
+        if vineyard.archived_at is not None:
+            return Response(
+                {"detail": "already archived"},
+                status=status.HTTP_409_CONFLICT,
+            )
+        now = timezone.now()
+        vineyard.archived_at = now
+        vineyard.save(update_fields=["archived_at"])
+        # Cascade-archive child Blocks (default per plan §9 question 3).
+        Block.objects.unscoped().filter(
+            vineyard=vineyard, archived_at__isnull=True
+        ).update(archived_at=now)
+
+        _emit_lake_event(
+            org=vineyard.org,
+            user=request.user,
+            category="vineyard.archived",
+            payload={"vineyard_id": str(vineyard.id)},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class BlockListCreateView(APIView):
+    """GET / POST `/api/spray/orgs/<org_id>/vineyards/<vineyard_id>/blocks`."""
+
+    def get_permissions(self):
+        if self.request.method == "POST":
+            return [IsOrgMember()]
+        return [IsOrgViewer()]
+
+    def get(self, request, org_id, vineyard_id):
+        set_current_org_id(str(org_id))
+        # Ensure the vineyard belongs to the org before listing its blocks.
+        vineyard = get_object_or_404(
+            Vineyard.objects.for_org(org_id), id=vineyard_id
+        )
+        blocks = (
+            Block.objects.for_org(org_id)
+            .filter(vineyard=vineyard, archived_at__isnull=True)
+            .order_by("created_at")
+        )
+        return Response(BlockSerializer(blocks, many=True).data)
+
+    @transaction.atomic
+    def post(self, request, org_id, vineyard_id):
+        set_current_org_id(str(org_id))
+        vineyard = get_object_or_404(
+            Vineyard.objects.for_org(org_id), id=vineyard_id
+        )
+        serializer = BlockSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        block = serializer.save(vineyard=vineyard)
+
+        _emit_lake_event(
+            org=vineyard.org,
+            user=request.user,
+            category="block.created",
+            payload={
+                "block_id": str(block.id),
+                "vineyard_id": str(vineyard.id),
+                "name": block.name,
+            },
+        )
+        return Response(BlockSerializer(block).data, status=status.HTTP_201_CREATED)
+
+
+class BlockDetailView(APIView):
+    """GET / PATCH / DELETE `/api/spray/orgs/<org_id>/blocks/<block_id>`."""
+
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [IsOrgViewer()]
+        if self.request.method == "PATCH":
+            return [IsOrgMember()]
+        if self.request.method == "DELETE":
+            return [IsOrgAdmin()]
+        return [IsAuthenticated()]
+
+    def _get(self, org_id, block_id):
+        return get_object_or_404(
+            Block.objects.for_org(org_id), id=block_id
+        )
+
+    def get(self, request, org_id, block_id):
+        set_current_org_id(str(org_id))
+        return Response(BlockSerializer(self._get(org_id, block_id)).data)
+
+    def patch(self, request, org_id, block_id):
+        set_current_org_id(str(org_id))
+        block = self._get(org_id, block_id)
+        serializer = BlockSerializer(block, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        _emit_lake_event(
+            org=block.vineyard.org,
+            user=request.user,
+            category="block.updated",
+            payload={
+                "block_id": str(block.id),
+                "fields": list(request.data.keys()),
+            },
+        )
+        return Response(serializer.data)
+
+    @transaction.atomic
+    def delete(self, request, org_id, block_id):
+        set_current_org_id(str(org_id))
+        block = self._get(org_id, block_id)
+        if block.archived_at is not None:
+            return Response(
+                {"detail": "already archived"},
+                status=status.HTTP_409_CONFLICT,
+            )
+        block.archived_at = timezone.now()
+        block.save(update_fields=["archived_at"])
+        _emit_lake_event(
+            org=block.vineyard.org,
+            user=request.user,
+            category="block.archived",
+            payload={"block_id": str(block.id)},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
