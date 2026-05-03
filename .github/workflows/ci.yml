@@ -97,6 +97,9 @@ jobs:
         working-directory: services/api
         env:
           DJANGO_SECRET_KEY: ci-test-secret
+          # DEBUG=True so the test client doesn't get 301'd by
+          # SECURE_SSL_REDIRECT (production-only safeguard from settings.py).
+          DJANGO_DEBUG: "True"
           CLERK_WEBHOOK_SIGNING_SECRET: whsec_dGVzdC1zZWNyZXQtZm9yLXVuaXQtdGVzdHM=
         run: pytest spray/tests/ -q
 
