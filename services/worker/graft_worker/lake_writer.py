@@ -124,7 +124,10 @@ def forward_pending_events(*, batch_max: int | None = None) -> int:
                 Key=key,
                 Body=buf.getvalue(),
                 ContentType="application/x-parquet",
-                ServerSideEncryption="aws:kms",
+                # SSE-S3 (AES-256) at M0-04. Bucket default matches.
+                # M0-08 swaps to SSE-KMS with a dedicated CMK once we
+                # have a key-management story.
+                ServerSideEncryption="AES256",
             )
         except Exception:
             logger.exception(
