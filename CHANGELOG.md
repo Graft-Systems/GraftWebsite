@@ -6,6 +6,39 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), wit
 
 ## Unreleased
 
+### M0-05: Satellite Map + Polygon Draw — READY FOR MERGE
+
+PR #13 on `graft-spray/m0/maps-polygon-draw`. First milestone where the app actually shows something on a map (Spec §8.12).
+
+#### Added
+
+- `apps/web/components/spray/SprayMap.tsx` — MapLibre GL satellite map component. Esri World Imagery raster basemap (free with attribution). Block geoms render as a single GeoJSON source with fill (35% amber) and stroke (1.5px white) layers. Click-to-select wires through to the parent. Optional draw mode mounts `@mapbox/mapbox-gl-draw` for polygon-create / polygon-update interactions.
+- `apps/web/components/spray/CreateVineyardDialog.tsx` — minimal name + region modal.
+- `apps/web/app/spray/(app)/vineyards/page.tsx` — Vineyards list. Active Org = first Membership (matching the M0-02a OrgSwitcher heuristic). "Create vineyard" button opens the dialog and routes to the new detail page.
+- `apps/web/app/spray/(app)/vineyards/[vineyard_id]/page.tsx` — Vineyard detail with embedded map (~70%) plus a side panel (~30%) showing block list / block editor. Polygons round-trip through the M0-03 Block API: drawing POSTs, edits PATCH, archive DELETEs. "Export GeoJSON" downloads the active block's geom as a `.geojson` file.
+- `services/api/spray/signals.py` — Django `post_save` / `post_delete` signal that recomputes `Vineyard.centroid` as the centroid of the union of live (non-archived) child Block geoms. Wraps in `transaction.on_commit` so the new state is visible to the recompute. PostGIS-only (no-op on non-Postgres backends).
+- New tests:
+  - `apps/web/__tests__/spray-map.test.tsx` — verifies SprayMap mounts; mocks maplibre-gl wholesale (jsdom can't render WebGL).
+  - `apps/web/__tests__/create-vineyard-dialog.test.tsx` — submit, disabled-empty-name, backdrop-close.
+  - `services/api/spray/tests/test_centroid_recompute.py` — empty vineyard centroid is None; centroid set after first block; recomputes after archive; back to None when all blocks archived.
+- `maplibre-gl@5.x` and `@mapbox/mapbox-gl-draw@1.x` added to `apps/web` deps.
+
+#### Changed
+
+- `services/api/spray/apps.py` — `SprayConfig.ready()` imports `spray.signals` so the centroid signal attaches at app startup.
+- `apps/web/components/spray/SprayShell.tsx` — sidebar Vineyards link already pointed at `/spray/vineyards` (placeholder from M0-02a) and now resolves to a real page.
+
+#### Manual prerequisites
+
+**None.** No new env vars, Render, Vercel, or AWS changes. Esri World Imagery requires no API key; attribution is rendered automatically by MapLibre's attribution control.
+
+#### Notes
+
+- Vineyard detail page is 292 kB First Load JS (mostly MapLibre + draw); only loaded on that route. Marketing pages and other Spray pages stay at ~140 kB.
+- Block list endpoint already filters out archived rows in M0-03; the SprayMap reuses the same field on the client for symmetry.
+- Polygon validation is currently client-best-effort + server `GEOSGeometry` parser. Stricter `ST_IsValid` enforcement lands in M0-05a alongside parcel-snap and water-mask warnings.
+- `Vineyard.centroid` recompute uses PostGIS `ST_Union` aggregate → centroid; runs at most once per write via `transaction.on_commit`.
+
 ### M0-04: Data Lake Ingest — READY FOR MERGE
 
 PR #11 on `graft-spray/m0/data-lake-ingest`. Stands up the worker tier and forwards `DataLakeEvent` rows to S3 as Parquet on a 15-minute Celery beat schedule (Spec §19).
