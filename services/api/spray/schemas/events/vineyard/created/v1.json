@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "vineyard.created.v1",
+  "title": "vineyard.created",
+  "description": "Emitted when a Vineyard row is created via the Spray API.",
+  "type": "object",
+  "required": ["vineyard_id", "name"],
+  "properties": {
+    "vineyard_id": { "type": "string", "format": "uuid" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "region": { "type": "string", "maxLength": 20 }
+  },
+  "additionalProperties": false
+}

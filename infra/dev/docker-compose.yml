@@ -32,5 +32,18 @@ services:
       timeout: 3s
       retries: 10
 
+  # M0-04: Celery broker for the data-lake worker tier.
+  # The worker consumes this URL via CELERY_BROKER_URL=redis://localhost:6379/0.
+  redis:
+    image: redis:7-alpine
+    container_name: graft-spray-redis-dev
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
 volumes:
   graft_spray_pgdata:

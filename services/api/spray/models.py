@@ -415,6 +415,9 @@ class DataLakeEvent(models.Model):
     schema_version = models.CharField(max_length=20)
     payload = models.JSONField(default=dict)
     created_at = models.DateTimeField(auto_now_add=True)
+    # Set by the worker after a successful S3 PUT. NULL means the row
+    # is still pending forwarding.
+    forwarded_at = models.DateTimeField(null=True, blank=True)
 
     objects = OrgScopedManager()
 
