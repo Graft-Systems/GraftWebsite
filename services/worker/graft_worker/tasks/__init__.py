@@ -6,4 +6,8 @@ find tasks defined as subpackages and the beat schedule's task lookup
 fails at fire time with `Received unregistered task`.
 """
 
-from graft_worker.tasks import data_lake_etl  # noqa: F401
+from graft_worker.tasks import (  # noqa: F401
+    data_lake_etl,
+    external_risk_index,
+    weather_pull,
+)

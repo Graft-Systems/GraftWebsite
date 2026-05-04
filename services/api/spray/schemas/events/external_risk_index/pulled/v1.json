@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "external_risk_index.pulled.v1",
+  "title": "external_risk_index.pulled",
+  "description": "Emitted after a UC IPM / uspest.org pull writes an ExternalRiskIndex row.",
+  "type": "object",
+  "required": ["region", "source", "risk_level", "pulled_at_hour"],
+  "properties": {
+    "region": { "type": "string", "minLength": 1, "maxLength": 40 },
+    "source": { "type": "string", "enum": ["uc_ipm_grape_pm", "uspest_grape_pm"] },
+    "risk_index_value": { "type": ["number", "null"] },
+    "risk_level": { "type": "string", "enum": ["low", "moderate", "high"] },
+    "pulled_at_hour": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

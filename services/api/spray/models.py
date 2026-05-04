@@ -429,3 +429,140 @@ class DataLakeEvent(models.Model):
 
     def __str__(self) -> str:
         return f"{self.category} v{self.schema_version} @ {self.created_at}"
+
+
+# =====================================================================
+# M0-06 step 2: Weather + External risk index
+# =====================================================================
+
+
+class WeatherStation(models.Model):
+    """A weather data source — physical or virtual (gridded provider).
+
+    Regional-default stations have `org=None` and `is_regional_default=True`;
+    user-connected stations carry `org=...`. View layer combines both via
+    `Q(org=request_org) | Q(is_regional_default=True)`. RLS is intentionally
+    NOT applied to this table because allowing null org rows to be globally
+    readable is incompatible with policy-based filtering.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    org = models.ForeignKey(
+        Org,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="weather_stations",
+    )
+    provider = models.CharField(max_length=40)
+    station_id = models.CharField(max_length=120)
+    name = models.CharField(max_length=200, blank=True)
+    location = gis_models.PointField(srid=4326)
+    is_regional_default = models.BooleanField(default=False)
+    region = models.CharField(
+        max_length=20, choices=Org.Region.choices, default=Org.Region.OTHER
+    )
+    settings = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_pull_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["provider", "station_id"],
+                name="unique_provider_station",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["org"]),
+            models.Index(fields=["region", "is_regional_default"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.provider}:{self.station_id} ({self.name or self.region})"
+
+
+class WeatherObservation(models.Model):
+    """Hourly weather reading — historical or forecast."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    station = models.ForeignKey(
+        WeatherStation, on_delete=models.CASCADE, related_name="observations"
+    )
+    ts = models.DateTimeField()
+    temp_c = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    rh_pct = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    leaf_wetness_min = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True
+    )
+    wind_speed_ms = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True
+    )
+    precip_mm = models.DecimalField(
+        max_digits=7, decimal_places=2, null=True, blank=True
+    )
+    is_forecast = models.BooleanField(default=False)
+    raw = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["station", "ts"], name="unique_station_ts"
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["station", "-ts"]),
+        ]
+
+    def __str__(self) -> str:
+        kind = "forecast" if self.is_forecast else "obs"
+        return f"{kind} {self.station_id} @ {self.ts}"
+
+
+class ExternalRiskIndex(models.Model):
+    """SA-1 hourly aggregation of public extension-service risk indices.
+
+    Spec amendment SA-1 (Appendix A): a parallel layer to the local
+    forecasting engines that pulls authoritative regional indices
+    (UC IPM Grape PM RAI, uspest.org Grape PM) for cross-reference and
+    recommendation confidence.
+    """
+
+    class Source(models.TextChoices):
+        UC_IPM_GRAPE_PM = "uc_ipm_grape_pm", "UC IPM Grape PM RAI"
+        USPEST_GRAPE_PM = "uspest_grape_pm", "uspest.org Grape PM"
+
+    class RiskLevel(models.TextChoices):
+        LOW = "low", "Low"
+        MODERATE = "moderate", "Moderate"
+        HIGH = "high", "High"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    region = models.CharField(max_length=40)  # AVA cluster name or state code
+    source = models.CharField(max_length=40, choices=Source.choices)
+    risk_index_value = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True
+    )
+    risk_level = models.CharField(
+        max_length=10, choices=RiskLevel.choices, default=RiskLevel.LOW
+    )
+    pulled_at = models.DateTimeField(auto_now_add=True)
+    pulled_at_hour = models.DateTimeField(
+        help_text="pulled_at truncated to the hour; primary dedup field."
+    )
+    raw_payload = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["region", "source", "pulled_at_hour"],
+                name="unique_region_source_hour",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["region", "source", "-pulled_at_hour"]),
+            models.Index(fields=["pulled_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.source} {self.region}: {self.risk_level} @ {self.pulled_at_hour}"

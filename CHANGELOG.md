@@ -6,6 +6,52 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), wit
 
 ## Unreleased
 
+### M0-06: Weather adapter (Napa/Sonoma) + SA-1 Risk Indices — READY FOR MERGE
+
+PR #14 on `graft-spray/m0/weather-and-risk-feeds`. Combines original M0-06 (weather adapter) and M0-06b (SA-1 external risk index aggregator) per Strategist's call (same worker tier, same provider abstraction). Spec §11-12 + Appendix A SA-1.
+
+#### Added
+
+- `services/api/spray/providers/` package with two Protocols (`WeatherProvider`, `ExternalRiskIndexProvider`) plus four concrete adapters:
+  - **Visual Crossing** (primary weather, free tier permits commercial with attribution, only consumer API with leaf wetness pre-computed)
+  - **Generic CSV** (escape hatch for any unsupported station)
+  - **UC IPM Grape PM RAI scraper** (SA-1, defensive HTML regex)
+  - **uspest.org Grape PM scraper** (SA-1, defensive HTML regex)
+- `WeatherStation`, `WeatherObservation`, `ExternalRiskIndex` models on `services/api/spray/models.py`. Unique constraints `(provider, station_id)`, `(station, ts)`, `(region, source, pulled_at_hour)` enforce idempotency.
+- Migration `0005_weather_models` creates the three tables and seeds one regional-default `WeatherStation` row per supported AVA cluster (Napa, Sonoma, Burgundy, Bordeaux, Mendoza, other) using Visual Crossing as the provider.
+- Celery beat schedule additions (`services/worker/graft_worker/celery.py`):
+  - `weather-pull` every 3,600s — fans out one `pull_station.delay(...)` per active WeatherStation
+  - `external-risk-index-pull` every 3,600s — fans out one `pull_external_index.delay(region, source)` per (region, source) pair
+- Async backfill task (`backfill_vineyard_weather`) fires on Vineyard create, pulls 14 days of hourly observations from the region-default station so M1-07 (Gubler-Thomas) has an initial baseline. Best-effort: failure does NOT block vineyard creation.
+- Three new schema-registry entries: `weather/observation_pulled/v1.json`, `weather/forecast_pulled/v1.json`, `external_risk_index/pulled/v1.json`. CI's `check_event_schemas.py` validates them at PR time.
+- `GET /api/spray/admin/provider-health` admin endpoint returning liveness + latency for every registered provider. Authenticated-only; M0-08 will wrap it in Sentry alerting.
+- Provider-shared exception hierarchy: `ProviderError` → `ProviderRateLimitError` (worker retries with exponential backoff), `ProviderAuthError` (no retry, ops fixes the env var), `ProviderResponseError` (worker retries once). Network errors degrade to ProviderResponseError.
+- `VISUAL_CROSSING_API_KEY` env var surfaced in `graft_api/settings.py`.
+- `docs/runbooks/m0-06-weather.md` covering Visual Crossing signup, env-var setup on both Render services, smoke-test commands, free-tier quota math, monitoring stub, rollback path.
+- New tests:
+  - `test_weather_models.py` — unique-constraint enforcement on all three new models.
+  - `test_provider_registry.py` — known slugs, unknown raises, region defaults.
+  - `test_visual_crossing.py` — happy path, 429 → rate-limit, 5xx → response error, missing key → auth error, partial data response, km/h to m/s wind conversion.
+  - `test_external_risk_providers.py` — UC IPM happy path + parse-failure fallthrough + risk-level mapping; uspest happy path + 5xx; both `health()` paths.
+
+#### Changed
+
+- `services/api/spray/views.py` Vineyard create now enqueues `backfill_vineyard_weather.delay(...)` after the lake event emit; failure is logged but does not affect the response.
+- `services/worker/graft_worker/tasks/__init__.py` eagerly imports the two new task modules so `@shared_task` registers at worker startup (M0-04 autoload pattern).
+
+#### Manual prerequisites (Benson, before milestone-closeout merge)
+
+- Visual Crossing API key signup (free, ~10 min). Add `VISUAL_CROSSING_API_KEY` to BOTH the API and worker Render services.
+- No new AWS / Render Redis / Render worker provisioning. Reuses M0-04 worker tier.
+
+#### Notes
+
+- Tomorrow.io is **dropped** from the spec's provider catalog: leaf wetness sits behind sales-gated agriculture-premium pricing with no published rate card. Open-Meteo will replace it as the M0-06a paid alternate.
+- CIMIS adapter (Scout flagged as Napa-optimal) is **deferred to M0-06a**. Visual Crossing's gridded data is sufficient for the M0 launch.
+- The HTML scrapers are defensive: when the page reflows, they fail gracefully (write a row with `risk_level=low` and `raw_payload.parse_error=...`). M0-06a adds snapshot regression tests.
+- `WeatherStation` does NOT use `OrgScopedManager` because regional-default rows have `org=None` and must be readable by every authenticated user; the view layer applies `Q(org=request_org) | Q(is_regional_default=True)` instead. RLS would require a policy exception for null-org rows.
+- `WeatherObservation` does NOT carry an `org_id` column (highest-volume table); tenancy is resolved by joining through `station.org`.
+
 ### M0-05: Satellite Map + Polygon Draw — READY FOR MERGE
 
 PR #13 on `graft-spray/m0/maps-polygon-draw`. First milestone where the app actually shows something on a map (Spec §8.12).
