@@ -10,7 +10,14 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from spray.models import ConsentRecord, Membership, Org, User
+from spray.models import (
+    Block,
+    ConsentRecord,
+    Membership,
+    Org,
+    User,
+    Vineyard,
+)
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -105,3 +112,84 @@ class AccountDeleteSerializer(serializers.Serializer):
     """
 
     confirm = serializers.BooleanField()
+
+
+# ---------------------------------------------------------------------
+# M0-03: Vineyard + Block (spatial)
+# ---------------------------------------------------------------------
+
+
+class GeometryField(serializers.Field):
+    """Serialize PostGIS geometry to GeoJSON dict; deserialize from GeoJSON or WKT.
+
+    Reads:  returns the geometry as a GeoJSON-compatible dict (parsed
+    from GEOSGeometry.geojson). None if the field is null.
+
+    Writes: accepts either a GeoJSON dict ({"type": "Polygon",
+    "coordinates": [...]}) or a WKT string ("POLYGON((..))"). GeoDjango
+    parses both via GEOSGeometry.
+    """
+
+    def to_representation(self, value):
+        if value is None:
+            return None
+        import json
+        return json.loads(value.geojson)
+
+    def to_internal_value(self, data):
+        from django.contrib.gis.geos import GEOSGeometry, GEOSException
+        import json
+
+        if data in (None, ""):
+            return None
+        try:
+            if isinstance(data, dict):
+                return GEOSGeometry(json.dumps(data), srid=4326)
+            return GEOSGeometry(data, srid=4326)
+        except (GEOSException, ValueError, TypeError) as e:
+            raise serializers.ValidationError(f"invalid geometry: {e}")
+
+
+class VineyardSerializer(serializers.ModelSerializer):
+    """Vineyard read/write. Centroid is optional GeoJSON Point in EPSG:4326."""
+
+    centroid = GeometryField(required=False, allow_null=True)
+    org_id = serializers.UUIDField(write_only=True, required=False)
+
+    class Meta:
+        model = Vineyard
+        fields = [
+            "id",
+            "org_id",
+            "name",
+            "region",
+            "address",
+            "centroid",
+            "settings",
+            "created_at",
+            "archived_at",
+        ]
+        read_only_fields = ["id", "created_at", "archived_at"]
+
+
+class BlockSerializer(serializers.ModelSerializer):
+    """Block read/write. Geom is required GeoJSON Polygon in EPSG:4326."""
+
+    geom = GeometryField()
+    vineyard_id = serializers.UUIDField(write_only=True, required=False)
+
+    class Meta:
+        model = Block
+        fields = [
+            "id",
+            "vineyard_id",
+            "name",
+            "geom",
+            "variety",
+            "training_system",
+            "row_spacing_m",
+            "settings",
+            "created_at",
+            "archived_at",
+        ]
+        read_only_fields = ["id", "created_at", "archived_at"]

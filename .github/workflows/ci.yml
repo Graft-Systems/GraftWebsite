@@ -17,6 +17,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
+    services:
+      # M0-03: Postgres + PostGIS for spray app tests. Mirrors the local
+      # docker-compose at infra/dev/. Tests connect via DATABASE_URL.
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: graft_spray_test
+          POSTGRES_USER: graft
+          POSTGRES_PASSWORD: graft
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U graft -d graft_spray_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: "postgis://graft:graft@localhost:5432/graft_spray_test"
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,6 +44,11 @@ jobs:
           submodules: recursive
           lfs: true
           fetch-depth: 0
+
+      - name: Install GDAL (django.contrib.gis runtime dep)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gdal-bin libgdal-dev
 
       - name: Setup pnpm
         # Version derives from `packageManager` in root package.json. Specifying
@@ -67,6 +92,16 @@ jobs:
       - name: Django check (services/api)
         working-directory: services/api
         run: python manage.py check
+
+      - name: pytest spray (services/api)
+        working-directory: services/api
+        env:
+          DJANGO_SECRET_KEY: ci-test-secret
+          # DEBUG=True so the test client doesn't get 301'd by
+          # SECURE_SSL_REDIRECT (production-only safeguard from settings.py).
+          DJANGO_DEBUG: "True"
+          CLERK_WEBHOOK_SIGNING_SECRET: whsec_dGVzdC1zZWNyZXQtZm9yLXVuaXQtdGVzdHM=
+        run: pytest spray/tests/ -q
 
 # Notes for future expansion (M0-02 onwards):
 # - Drop continue-on-error from lint/type-check/test once real rule sets land

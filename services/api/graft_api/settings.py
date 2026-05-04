@@ -49,6 +49,10 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    # M0-03: PostGIS spatial fields require django.contrib.gis. Postgres is
+    # now the only supported database for the spray app; the legacy `api`
+    # app continues to work because gis is additive.
+    "django.contrib.gis",
     "corsheaders",
     "rest_framework",
     "api",
@@ -87,6 +91,10 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # M0-03: sets app.current_org_id GUC per request so RLS policies can
+    # filter rows by tenant. Must come AFTER auth middleware so request.user
+    # is resolved.
+    "spray.middleware.CurrentOrgMiddleware",
 ]
 
 ROOT_URLCONF = "graft_api.urls"
@@ -109,12 +117,21 @@ TEMPLATES = [
 WSGI_APPLICATION = "graft_api.wsgi.application"
 
 
-# Database — Postgres in prod (via DATABASE_URL), SQLite in dev.
+# Database — Postgres + PostGIS, always. M0-03 dropped SQLite because the
+# spray app uses spatial fields (`Vineyard.centroid`, `Block.geom`) that
+# require PostGIS. Local dev uses the docker-compose Postgres in
+# `infra/dev/`; CI uses a postgres+postgis service container; prod is
+# Render Postgres Pro.
+#
+# DATABASE_URL takes precedence; the local default points at the docker
+# compose service so `python manage.py runserver` works out of the box
+# after `docker compose up -d`.
 DATABASES = {
     "default": dj_database_url.config(
-        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
+        default="postgis://graft:graft@localhost:5432/graft_spray",
         conn_max_age=600,
         conn_health_checks=True,
+        engine="django.contrib.gis.db.backends.postgis",
     )
 }
 
