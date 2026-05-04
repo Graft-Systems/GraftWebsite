@@ -37,6 +37,12 @@ def find_emit_categories() -> set[str]:
         # Skip the helper definitions themselves.
         if py.name in ("lake.py", "registry.py"):
             continue
+        # Skip test files: tests legitimately use fake categories
+        # (e.g. `vineyard.haunted`) to exercise the SchemaValidationError
+        # path. Production callers must register their schemas.
+        rel = py.relative_to(SOURCE_ROOT).as_posix()
+        if rel.startswith("tests/") or py.name.startswith("test_"):
+            continue
         text = py.read_text(encoding="utf-8")
         for match in CATEGORY_RE.finditer(text):
             found.add(match.group(1))
