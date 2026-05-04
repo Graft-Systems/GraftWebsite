@@ -13,3 +13,9 @@ class SprayConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "spray"
     verbose_name = "Graft Spray"
+
+    def ready(self) -> None:
+        # Wire signals (M0-05 centroid recompute, etc.) at startup.
+        # Import is local so Django's app-loading sequence sees the models
+        # before the signal handlers reference them.
+        from spray import signals  # noqa: F401

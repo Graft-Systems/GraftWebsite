@@ -346,7 +346,7 @@ The ordered list of PRs against `graft-spray/main`, with estimated diff size and
 | 2a | `graft-spray/m0/website-integration` | M0-02a: Website integration (`/spray` nav, app shell) | `graft-spray/main` | **PR #9 ready for merge** | §21 | Medium | M0-02 + Q5, Q6 |
 | 3 | `graft-spray/m0/postgis-schema` | M0-03: Postgres + PostGIS schema | `graft-spray/main` | **PR #10 ready for merge** | Data Model § | Medium-Large | M0-02 + Q3 |
 | 4 | `graft-spray/m0/data-lake-ingest` | M0-04: Data-lake ingest service | `graft-spray/main` | **PR #11 ready for merge** | §19 | Large (new service) | M0-03 |
-| 5 | `graft-spray/m0/maps-polygon-draw` | M0-05: Satellite map + polygon draw | `graft-spray/main` | Pending | §8.12 | Medium | M0-03 + Q4 |
+| 5 | `graft-spray/m0/maps-polygon-draw` | M0-05: Satellite map + polygon draw | `graft-spray/main` | **PR #13 ready for merge** | §8.12 | Medium | M0-03 + Q4 |
 | 6 | `graft-spray/m0/weather-adapter-napa` | M0-06: Weather adapter (Napa/Sonoma) | `graft-spray/main` | Pending | Weather Layer § | Medium | M0-03 |
 | 6b | `graft-spray/m0/external-risk-index-feeds` | M0-06b: External risk-index aggregator (UC IPM, uspest.org) | `graft-spray/main` | Pending | Weather Layer § + Appendix A SA-1 | Medium | M0-06 |
 | 7 | `graft-spray/m1/risk-engine-gubler-thomas` | M1-07: Gubler-Thomas risk engine | `graft-spray/main` | Pending | Forecasting Engine § | Small-Medium | M0-06 + 🔴 papers (06 P1, P2) |
