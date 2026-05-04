@@ -6,6 +6,59 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), wit
 
 ## Unreleased
 
+### M0-04: Data Lake Ingest — READY FOR MERGE
+
+PR #11 on `graft-spray/m0/data-lake-ingest`. Stands up the worker tier and forwards `DataLakeEvent` rows to S3 as Parquet on a 15-minute Celery beat schedule (Spec §19).
+
+#### Added
+
+- New `services/worker/` package: Celery 5.x app, Redis broker config, beat schedule, `manage.py forward_now` ops triage entrypoint, Render `Procfile`. The worker shares the Django ORM with `services/api` by importing `spray.models` directly; no separate database client.
+- `services/api/spray/schemas/registry.py` — JSON Schema registry with `validate(category, payload, version)`. Caches schemas per process, raises `SchemaValidationError` on miss or invalid payload.
+- Six initial event schemas (M0-03 emit sites): `vineyard.created`, `vineyard.updated`, `vineyard.archived`, `block.created`, `block.updated`, `block.archived`. Every schema sets `additionalProperties: false` so unknown keys fail validation.
+- `services/api/spray/lake.py` — `emit_event(category, payload, org, user, schema_version)` helper. Validates against the registry, then creates the `DataLakeEvent` row. M0-03's `_emit_lake_event` is now a thin wrapper around this so every emit site goes through validation.
+- `services/worker/graft_worker/lake_writer.py` — pulls unforwarded `DataLakeEvent` rows, groups by `(org_id, category, date)`, writes one Parquet file per group to `s3://<LAKE_BUCKET>/<org_id>/<category>/<yyyy-mm-dd>/<batch_uuid>.parquet` with SSE-KMS, then atomically marks the rows as forwarded. Idempotent on retry: rows are claimed by `id IN [...] AND forwarded_at IS NULL`.
+- `services/worker/graft_worker/tasks/data_lake_etl.py` — Celery task wrapper with exponential-backoff retry (3 attempts).
+- Migration `0004_datalakeevent_forwarded_at` — adds the column plus a partial index on `(category, created_at) WHERE forwarded_at IS NULL` so the worker's hot-path query stays fast as the lake grows.
+- `scripts/check_event_schemas.py` — CI guard that greps the codebase for `emit_event(category=...)` call sites and confirms each has a registered schema. Hard CI step (no `continue-on-error`).
+- `docs/runbooks/m0-04-data-lake.md` — AWS bucket + IAM creation, Render Redis + worker provisioning, smoke-test commands, prod bucket migration steps, monitoring + rollback.
+- `services/worker/README.md` — local-dev recipe, Render deploy steps, "adding a new event" checklist for future contributors.
+- `infra/dev/docker-compose.yml` gains a `redis` service so local dev runs the full stack with one `docker compose up -d`.
+- New tests:
+  - `test_schema_registry.py` — registry loads, validates, rejects missing fields, rejects unknown categories, rejects unknown versions, enforces `additionalProperties: false`.
+  - `test_emit_event.py` — well-formed payload creates row; invalid payload raises and creates no row; unknown category raises.
+  - `test_lake_writer.py` — uses `moto` to mock S3. Forwards pending events, skips zero-pending, idempotent re-runs do not duplicate, two orgs land under separate prefixes, Parquet payload round-trips through `pyarrow.parquet.read_table`.
+
+#### Changed
+
+- `services/api/requirements.txt` adds the worker's runtime deps (`celery[redis]`, `redis`, `boto3`, `pyarrow`, `jsonschema`) and test deps (`moto[s3]`) so pytest from `services/api` can import `graft_worker.lake_writer`.
+- `services/api/pytest.ini` adds `pythonpath = . ../worker` so test files in `services/api/spray/tests/` can import the worker module.
+- `.github/workflows/ci.yml` gains a "Schema registry check" step that runs `scripts/check_event_schemas.py` against every PR.
+- `services/api/spray/views.py`'s `_emit_lake_event` is now a thin wrapper around `spray.lake.emit_event` so every M0-03 emit site goes through schema validation. No behavioural change for valid payloads.
+
+#### Manual prerequisites (Benson, before milestone-closeout merge)
+
+- AWS account + S3 bucket `graft-spray-lake-dev` in `us-west-2` (free tier covers M0).
+- IAM user `graft-spray-worker` with bucket-scoped S3 access; Access Key + Secret captured.
+- Render Redis instance (~$10/mo).
+- Render Background Worker service for `services/worker/` (~$7/mo) with eight env vars set.
+
+Total new monthly infra cost: ~$17-25/mo. All steps documented in `docs/runbooks/m0-04-data-lake.md`.
+
+#### Defaults locked from plan §7
+
+1. Raw Parquet at M0-04, Iceberg metadata in M0-04a if needed.
+2. AWS region `us-west-2`.
+3. 15-min batching cadence via Celery beat.
+4. Bucket name `graft-spray-lake-<env>`.
+5. AWS free tier through M1; flag billing at 50% utilization.
+
+#### Notes
+
+- M0-03 emit payloads were checked against the new schemas before refactor; all six categories validate without payload edits.
+- DataLakeEvent rows continue to land via the M0-03 RLS-protected `objects.unscoped().create(...)` path; the worker is the sole writer once they exist.
+- Long-lived AWS credentials are a known wart (R34); IAM-role assumption via Render OIDC swaps in at M0-08.
+- No Iceberg metadata layer at M0-04. Downstream readers parse partitioned Parquet directly via `pyarrow.dataset` or DuckDB. Iceberg lands in M0-04a once we have multiple readers.
+
 ### M0-03: Postgres + PostGIS schema — READY FOR MERGE
 
 PR #10 on `graft-spray/m0/postgis-schema`. The database layer that lights up Vineyards, Blocks, and tenant isolation per spec §9, §17.2.

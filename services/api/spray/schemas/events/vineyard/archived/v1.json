@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "vineyard.archived.v1",
+  "title": "vineyard.archived",
+  "description": "Emitted on DELETE of a Vineyard (soft delete via archived_at).",
+  "type": "object",
+  "required": ["vineyard_id"],
+  "properties": {
+    "vineyard_id": { "type": "string", "format": "uuid" }
+  },
+  "additionalProperties": false
+}

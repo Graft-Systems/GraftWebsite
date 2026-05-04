@@ -35,6 +35,15 @@ svix==1.45.1
 pytest==8.3.4
 pytest-django==4.9.0
 
+# M0-04: data-lake worker dependencies. The API tests import
+# `graft_worker.lake_writer` to round-trip Parquet through moto-mocked S3.
+celery[redis]==5.4.0
+redis==5.2.1
+boto3==1.35.84
+pyarrow==18.1.0
+jsonschema==4.23.0
+moto[s3]==5.0.28
+
 # CNN inference for v2 grape weight model (DINOv2 ViT-S/14 + HistGradientBoosting).
 # CPU-only torch wheels live on PyTorch's index (not PyPI).
 --extra-index-url https://download.pytorch.org/whl/cpu

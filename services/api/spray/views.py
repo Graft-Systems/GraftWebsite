@@ -753,18 +753,14 @@ class ConsentView(APIView):
 
 
 def _emit_lake_event(*, org, user, category: str, payload: dict) -> None:
-    """Emit a DataLakeEvent skeleton row.
+    """Emit a DataLakeEvent through the schema-validated registry.
 
-    M0-04 picks these up and forwards to S3 + Iceberg. M0-03 just
-    accumulates them so the schema-registry pattern is in place.
+    Thin wrapper around `spray.lake.emit_event` so existing M0-03
+    callsites keep working while M0-04's validation kicks in.
     """
-    DataLakeEvent.objects.unscoped().create(
-        org=org,
-        user=user,
-        category=category,
-        schema_version="0.1",
-        payload=payload,
-    )
+    from spray.lake import emit_event
+
+    emit_event(category=category, payload=payload, org=org, user=user)
 
 
 class VineyardListCreateView(APIView):

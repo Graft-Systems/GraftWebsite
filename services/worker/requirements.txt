@@ -1,0 +1,11 @@
+# Worker tier (M0-04). Shares Django + spray ORM via PYTHONPATH; pulls
+# the API requirements transitively because services/worker imports
+# `spray.models` from services/api.
+
+-r ../api/requirements.txt
+
+celery[redis]==5.4.0
+redis==5.2.1
+boto3==1.35.84
+pyarrow==18.1.0
+jsonschema==4.23.0

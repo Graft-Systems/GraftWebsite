@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "vineyard.updated.v1",
+  "title": "vineyard.updated",
+  "description": "Emitted on PATCH of a Vineyard row.",
+  "type": "object",
+  "required": ["vineyard_id", "fields"],
+  "properties": {
+    "vineyard_id": { "type": "string", "format": "uuid" },
+    "fields": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "block.created.v1",
+  "title": "block.created",
+  "type": "object",
+  "required": ["block_id", "vineyard_id", "name"],
+  "properties": {
+    "block_id": { "type": "string", "format": "uuid" },
+    "vineyard_id": { "type": "string", "format": "uuid" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 120 }
+  },
+  "additionalProperties": false
+}

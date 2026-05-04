@@ -93,6 +93,9 @@ jobs:
         working-directory: services/api
         run: python manage.py check
 
+      - name: Schema registry check (M0-04)
+        run: python scripts/check_event_schemas.py
+
       - name: pytest spray (services/api)
         working-directory: services/api
         env:
