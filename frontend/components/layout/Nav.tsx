@@ -9,6 +9,7 @@ const LINKS = [
   { href: "/about", label: "About" },
   { href: "/tool", label: "Tool" },
   { href: "/contact", label: "Contact" },
+  { href: "/login", label: "Login" },
 ];
 
 export function Nav() {
@@ -78,7 +79,11 @@ export function Nav() {
             <li key={link.href}>
               <Link
                 href={link.href}
-                className="frame text-[0.7rem] font-semibold text-foreground/80 transition-colors hover:text-amber"
+                className={
+                  link.href === "/login"
+                    ? "inline-flex items-center gap-2 rounded-full border border-foreground/10 bg-foreground/5 px-3 py-1 text-[0.7rem] font-semibold text-foreground transition-colors hover:bg-foreground/10"
+                    : "frame text-[0.7rem] font-semibold text-foreground/80 transition-colors hover:text-amber"
+                }
               >
                 {link.label}
               </Link>
