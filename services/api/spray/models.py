@@ -566,3 +566,61 @@ class ExternalRiskIndex(models.Model):
 
     def __str__(self) -> str:
         return f"{self.source} {self.region}: {self.risk_level} @ {self.pulled_at_hour}"
+
+
+# =====================================================================
+# M1-09 step 2: Capture upload
+# =====================================================================
+
+
+class Capture(models.Model):
+    """Photo or video upload tied to a Block (spec §8.5).
+
+    Lifecycle: pending (init created, presigned PUT URL minted but no S3
+    confirmation yet) -> uploaded (finalize endpoint confirmed via S3
+    HEAD) -> failed (init aged out >1 hour without finalize; reaped in
+    M1-10 alongside the ML inference dispatch sweeper).
+    """
+
+    class Kind(models.TextChoices):
+        PHOTO = "photo", "Photo"
+        VIDEO = "video", "Video"
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        UPLOADED = "uploaded", "Uploaded"
+        FAILED = "failed", "Failed"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    block = models.ForeignKey(
+        Block, on_delete=models.CASCADE, related_name="captures"
+    )
+    uploader = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="captures",
+    )
+    kind = models.CharField(max_length=10, choices=Kind.choices)
+    s3_key = models.CharField(max_length=400, unique=True)
+    size_bytes = models.BigIntegerField(null=True, blank=True)
+    mime_type = models.CharField(max_length=80, blank=True)
+    taken_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    uploaded_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(
+        max_length=10, choices=Status.choices, default=Status.PENDING
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
+
+    objects = OrgScopedManager(via="block__vineyard__org_id")
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["block", "-uploaded_at"]),
+            models.Index(fields=["status", "created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.kind} {self.s3_key} ({self.status})"
