@@ -86,6 +86,13 @@ CLERK_JWKS_URL = os.environ.get("CLERK_JWKS_URL", "")
 # moves on (no row written, retry on next beat tick).
 VISUAL_CROSSING_API_KEY = os.environ.get("VISUAL_CROSSING_API_KEY", "")
 
+# M1-09: Imagery bucket (separate from M0-04's data-lake bucket so
+# retention rules + KMS-CMK swaps can diverge per spec §17.1).
+AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "")
+AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
+AWS_REGION = os.environ.get("AWS_REGION", "us-west-2")
+IMAGERY_BUCKET = os.environ.get("IMAGERY_BUCKET", "graft-spray-imagery-dev")
+
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",

@@ -9,6 +9,7 @@ See docs/spec/_plans/M0-02-plan.md.
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import Any
 
 from django.conf import settings
@@ -1031,3 +1032,203 @@ class ProviderHealthView(APIView):
                 }
 
         return Response({"weather": weather, "external_risk_index": external})
+
+
+# ---------------------------------------------------------------------
+# M1-09 step 6: Capture upload endpoints
+# ---------------------------------------------------------------------
+
+
+class CaptureInitView(APIView):
+    """POST /api/spray/orgs/<org_id>/blocks/<block_id>/captures/init.
+
+    Mints a presigned S3 POST policy + creates a `pending` Capture row.
+    """
+
+    permission_classes = [IsOrgMember]
+
+    @transaction.atomic
+    def post(self, request, org_id, block_id):
+        from spray.imagery import (
+            ALLOWED_MIME,
+            EXT_BY_MIME,
+            MAX_SIZE_BYTES,
+            presigned_post,
+            s3_key_for,
+        )
+        from spray.models import Block, Capture
+        from spray.serializers import CaptureInitSerializer, CaptureSerializer
+
+        set_current_org_id(str(org_id))
+        block = get_object_or_404(
+            Block.objects.for_org(org_id), id=block_id
+        )
+        serializer = CaptureInitSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        mime = serializer.validated_data["mime_type"]
+        if mime not in ALLOWED_MIME:
+            return Response(
+                {"detail": f"unsupported mime type: {mime}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        ext = EXT_BY_MIME[mime]
+        capture_id = uuid.uuid4()
+        s3_key = s3_key_for(
+            org_id=org_id, block_id=block_id, capture_id=capture_id, ext=ext
+        )
+        capture = Capture.objects.create(
+            id=capture_id,
+            block=block,
+            uploader=request.user,
+            kind=serializer.validated_data["kind"],
+            mime_type=mime,
+            size_bytes=serializer.validated_data["size_bytes"],
+            taken_at=serializer.validated_data.get("taken_at"),
+            s3_key=s3_key,
+        )
+
+        try:
+            post_data = presigned_post(
+                s3_key, mime_type=mime, max_size=MAX_SIZE_BYTES
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.exception("presigned_post failed for %s: %s", s3_key, e)
+            return Response(
+                {"detail": "could not mint upload URL"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        return Response(
+            {
+                "capture": CaptureSerializer(capture).data,
+                "upload": post_data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class CaptureFinalizeView(APIView):
+    """POST /api/spray/orgs/<org_id>/captures/<capture_id>/finalize.
+
+    Verifies the S3 object exists then flips status to `uploaded` and
+    emits the `capture.uploaded` lake event.
+    """
+
+    permission_classes = [IsOrgMember]
+
+    @transaction.atomic
+    def post(self, request, org_id, capture_id):
+        import uuid as _uuid
+
+        from spray.imagery import head_object
+        from spray.lake import emit_event
+        from spray.models import Capture
+        from spray.serializers import CaptureSerializer
+
+        set_current_org_id(str(org_id))
+        capture = get_object_or_404(
+            Capture.objects.for_org(org_id), id=capture_id
+        )
+        if capture.status == Capture.Status.UPLOADED:
+            return Response(CaptureSerializer(capture).data)
+
+        head = head_object(capture.s3_key)
+        if head is None:
+            return Response(
+                {"detail": "S3 object not found; upload incomplete"},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        capture.status = Capture.Status.UPLOADED
+        capture.uploaded_at = timezone.now()
+        capture.size_bytes = head.get("ContentLength", capture.size_bytes)
+        capture.save(update_fields=["status", "uploaded_at", "size_bytes"])
+
+        emit_event(
+            category="capture.uploaded",
+            payload={
+                "capture_id": str(capture.id),
+                "block_id": str(capture.block_id),
+                "kind": capture.kind,
+                "s3_key": capture.s3_key,
+                "size_bytes": capture.size_bytes,
+                "mime_type": capture.mime_type,
+                "taken_at": (
+                    capture.taken_at.isoformat() if capture.taken_at else None
+                ),
+            },
+            org=capture.block.vineyard.org,
+            user=request.user,
+        )
+
+        return Response(CaptureSerializer(capture).data)
+
+
+class CaptureListView(APIView):
+    """GET /api/spray/orgs/<org_id>/captures.
+
+    Filters: ?block_id=<uuid> (optional), ?status=uploaded (default).
+    """
+
+    permission_classes = [IsOrgViewer]
+
+    def get(self, request, org_id):
+        from spray.models import Capture
+        from spray.serializers import CaptureSerializer
+
+        set_current_org_id(str(org_id))
+        qs = (
+            Capture.objects.for_org(org_id)
+            .filter(archived_at__isnull=True)
+            .select_related("block", "block__vineyard")
+        )
+
+        block_id = request.query_params.get("block_id")
+        if block_id:
+            qs = qs.filter(block_id=block_id)
+
+        status_filter = request.query_params.get("status", "uploaded")
+        if status_filter and status_filter != "all":
+            qs = qs.filter(status=status_filter)
+
+        qs = qs.order_by("-created_at")[:200]
+        return Response(CaptureSerializer(qs, many=True).data)
+
+
+class CaptureDetailView(APIView):
+    """GET / DELETE /api/spray/orgs/<org_id>/captures/<id>.
+
+    DELETE archives (sets archived_at); the S3 object stays around for
+    the data-lake retention window per spec §17.1.
+    """
+
+    permission_classes = [IsOrgViewer]
+
+    def get(self, request, org_id, capture_id):
+        from spray.models import Capture
+        from spray.serializers import CaptureSerializer
+
+        set_current_org_id(str(org_id))
+        capture = get_object_or_404(
+            Capture.objects.for_org(org_id), id=capture_id
+        )
+        return Response(CaptureSerializer(capture).data)
+
+    @transaction.atomic
+    def delete(self, request, org_id, capture_id):
+        from spray.models import Capture
+
+        set_current_org_id(str(org_id))
+        capture = get_object_or_404(
+            Capture.objects.for_org(org_id), id=capture_id
+        )
+        if capture.archived_at is not None:
+            return Response(
+                {"detail": "already archived"},
+                status=status.HTTP_409_CONFLICT,
+            )
+        capture.archived_at = timezone.now()
+        capture.save(update_fields=["archived_at"])
+        return Response(status=status.HTTP_204_NO_CONTENT)

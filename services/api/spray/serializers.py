@@ -193,3 +193,57 @@ class BlockSerializer(serializers.ModelSerializer):
             "archived_at",
         ]
         read_only_fields = ["id", "created_at", "archived_at"]
+
+
+# ---------------------------------------------------------------------
+# M1-09: Capture upload
+# ---------------------------------------------------------------------
+
+
+class CaptureInitSerializer(serializers.Serializer):
+    """Body for POST /captures/init."""
+
+    kind = serializers.ChoiceField(choices=[("photo", "Photo"), ("video", "Video")])
+    mime_type = serializers.CharField(max_length=80)
+    size_bytes = serializers.IntegerField(min_value=1, max_value=25 * 1024 * 1024)
+    taken_at = serializers.DateTimeField(required=False, allow_null=True)
+
+
+class CaptureSerializer(serializers.ModelSerializer):
+    """Read-side; embeds a fresh presigned GET URL on each serialization.
+
+    Imports inside `get_download_url` are local to break a circular
+    import (imagery -> models -> serializers).
+    """
+
+    download_url = serializers.SerializerMethodField()
+    block_id = serializers.UUIDField(source="block.id", read_only=True)
+
+    def get_download_url(self, obj):
+        from spray.models import Capture as _Capture
+
+        if obj.status != _Capture.Status.UPLOADED:
+            return None
+        from spray.imagery import presigned_get_url
+        try:
+            return presigned_get_url(obj.s3_key)
+        except Exception:  # noqa: BLE001
+            return None
+
+    class Meta:
+        from spray.models import Capture as _Capture
+
+        model = _Capture
+        fields = [
+            "id",
+            "block_id",
+            "kind",
+            "size_bytes",
+            "mime_type",
+            "taken_at",
+            "uploaded_at",
+            "status",
+            "download_url",
+            "created_at",
+        ]
+        read_only_fields = fields

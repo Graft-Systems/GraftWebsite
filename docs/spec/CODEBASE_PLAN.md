@@ -350,7 +350,7 @@ The ordered list of PRs against `graft-spray/main`, with estimated diff size and
 | 6 | `graft-spray/m0/weather-and-risk-feeds` | M0-06: Weather adapter + SA-1 risk indices (combined) | `graft-spray/main` | **PR #14 ready for merge** | Weather Layer § + Appendix A SA-1 | Large | M0-03, M0-04 |
 | 7 | `graft-spray/m1/risk-engine-gubler-thomas` | M1-07: Gubler-Thomas risk engine | `graft-spray/main` | Pending | Forecasting Engine § | Small-Medium | M0-06 + 🔴 papers (06 P1, P2) |
 | 8 | `graft-spray/m1/risk-engine-dmcast` | M1-08: DMCast risk engine | `graft-spray/main` | Pending | Forecasting Engine § | Small-Medium | M0-06 + 🔴 papers (03 P3, 06 P5) |
-| 9 | `graft-spray/m1/capture-upload-web` | M1-09: Photo/video capture (web) | `graft-spray/main` | Pending | §8.5 | Medium | M0-04 |
+| 9 | `graft-spray/m1/capture-upload-web` | M1-09: Photo/video capture (web) | `graft-spray/main` | **PR #16 ready for merge** | §8.5 | Medium | M0-04 |
 | 10 | `graft-spray/m1/ml-inference-cloud` | M1-10: Cloud ML inference (FastAPI) | `graft-spray/main` | Pending | ML Pipeline § | Large (new service) | M1-09 |
 | 11 | `graft-spray/m1/ml-correction-loop` | M1-11: ML correction loop | `graft-spray/main` | Pending | ML Pipeline § | Small-Medium | M1-10 |
 | 12 | `graft-spray/m1/recommendation-engine-v1` | M1-12: Recommendation engine v1 | `graft-spray/main` | Pending | §8.7-8 | Medium-Large | M1-07, M1-08, M1-10 |

@@ -6,6 +6,52 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), wit
 
 ## Unreleased
 
+### M1-09: Photo/video capture upload (web) — READY FOR MERGE
+
+PR #16 on `graft-spray/m1/capture-upload-web`. The first user-visible feature in the M1 layer (Spec §8.5). Step 2 of the M0-06 → M1-09 → M1-10 → M1-12 triad that gives a Napa beta grower the visible loop before Moelis blackout.
+
+#### Added
+
+- `Capture` model on `services/api/spray/models.py`. Tenant-scoped via `OrgScopedManager(via="block__vineyard__org_id")`. Lifecycle: `pending` → `uploaded` → optional `archived_at`. M1-09 ships only the photo path; video defers to M1-10.
+- Migration `0006_capture` creates the table and adds the RLS policy that traverses `block → vineyard → org_id` for tenant isolation.
+- `services/api/spray/imagery.py` — boto3 helpers for presigned POST policies, presigned GET URLs, and S3 HEAD verification. `ALLOWED_MIME` enforces `image/jpeg|heic|heif|video/mp4`. `MAX_SIZE_BYTES = 25 MB` per spec §8.5.
+- Four new endpoints in `services/api/spray/views.py`:
+  - `POST /api/spray/orgs/<org>/blocks/<block>/captures/init` — IsOrgMember; mints presigned POST policy + creates `pending` Capture row
+  - `POST /api/spray/orgs/<org>/captures/<id>/finalize` — IsOrgMember; verifies S3 HEAD, flips to `uploaded`, emits `capture.uploaded` lake event
+  - `GET /api/spray/orgs/<org>/captures` — IsOrgViewer; filters by `block_id` and `status`
+  - `GET / DELETE /api/spray/orgs/<org>/captures/<id>` — detail + soft-archive
+- New schema registry entry `services/api/spray/schemas/events/capture/uploaded/v1.json`. CI validates at PR time.
+- `apps/web/components/spray/CaptureUploader.tsx` — drag-drop + file-pick uploader. Per-file flow: init → S3 PUT (XHR with progress) → finalize. Up to 10 files at once.
+- `apps/web/app/spray/(app)/captures/page.tsx` — grid of thumbnails, filterable by block, click-to-modal.
+- `apps/web/components/spray/SprayShell.tsx` sidebar gains a **Captures** entry between Vineyards and Forecasts.
+- New `IMAGERY_BUCKET` Django setting (defaults to `graft-spray-imagery-dev`).
+- `docs/runbooks/m1-09-imagery-bucket.md` covers AWS bucket creation, CORS policy, IAM extension, env vars, smoke test, rollback.
+- Tests:
+  - `test_capture_models.py` — defaults, S3 key uniqueness, OrgScopedManager via block→vineyard→org traversal, archive.
+  - `test_capture_endpoints.py` — moto-mocked S3 round-trip; init creates pending; rejects unsupported MIME and oversize; viewer denied on init; finalize 409 when S3 missing; finalize idempotent on re-call; list filters by block; archive on detail DELETE; emits exactly one `capture.uploaded` event per finalize.
+  - `apps/web/__tests__/capture-uploader.test.tsx` — file-pick triggers init → S3 PUT (mocked XHR) → finalize.
+
+#### Changed
+
+- `apps/web/app/spray/(app)/vineyards/[vineyard_id]/page.tsx` — `BlockEditor` side panel embeds the new `<CaptureUploader />` below the existing fields. The orgId is passed through from the parent state.
+
+#### Manual prerequisites (Benson, before milestone-closeout merge)
+
+- Create AWS S3 bucket `graft-spray-imagery-dev` in `us-west-2` with CORS + Block Public Access + SSE-S3
+- Extend `graft-spray-lake-rw` IAM policy to include the new bucket
+- Add `IMAGERY_BUCKET=graft-spray-imagery-dev` env var to BOTH `graftwebsite` and `graft-spray-worker` Render services
+- Confirm `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` already set (from M0-04)
+
+All steps documented in `docs/runbooks/m1-09-imagery-bucket.md`.
+
+#### Notes
+
+- M1-09 ships the upload pipeline ONLY. No ML inference (M1-10), no severity grading, no correction loop. Captures sit in S3 and Postgres until M1-10 wires the cloud classifier.
+- Browser uploads bypass Django entirely — direct PUT to S3 via presigned POST policy. Saves Render bandwidth + cuts upload latency. Server validates the `Content-Type` and size at the policy level so the browser can't lie about what it's uploading.
+- Default consent at M1-09: respect whatever the user toggled in onboarding (`photo_for_training` flag from M0-02). M1-10 will tag the lake event payload with the consent flag at training time.
+- Single-part upload only at M1-09 (max 25 MB). iOS multipart for files >5 MB lands in M2.
+- HEIC photos upload fine but display falls back to "tap to download" outside Safari. M1-10 generates a JPEG thumbnail for cross-browser preview.
+
 ### M0-06: Weather adapter (Napa/Sonoma) + SA-1 Risk Indices — READY FOR MERGE
 
 PR #14 on `graft-spray/m0/weather-and-risk-feeds`. Combines original M0-06 (weather adapter) and M0-06b (SA-1 external risk index aggregator) per Strategist's call (same worker tier, same provider abstraction). Spec §11-12 + Appendix A SA-1.

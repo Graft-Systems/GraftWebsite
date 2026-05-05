@@ -17,6 +17,7 @@ import {
   Map,
   CloudSun,
   ClipboardList,
+  ImageIcon,
   Settings as SettingsIcon,
 } from "lucide-react";
 import { UserButton } from "@clerk/nextjs";
@@ -26,6 +27,7 @@ import { cn } from "@/lib/utils";
 const NAV = [
   { href: "/spray/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/spray/vineyards", label: "Vineyards", icon: Map },
+  { href: "/spray/captures", label: "Captures", icon: ImageIcon },
   { href: "/spray/forecasts", label: "Forecasts", icon: CloudSun },
   { href: "/spray/spray-records", label: "Spray records", icon: ClipboardList },
   { href: "/spray/settings", label: "Settings", icon: SettingsIcon },

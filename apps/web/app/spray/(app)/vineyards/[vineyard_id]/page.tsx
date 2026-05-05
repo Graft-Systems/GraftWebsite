@@ -14,6 +14,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import { SprayMap, type BlockFeature } from "@/components/spray/SprayMap";
+import { CaptureUploader } from "@/components/spray/CaptureUploader";
 
 type Vineyard = {
   id: string;
@@ -270,13 +271,14 @@ export default function VineyardDetailPage() {
             </>
           )}
 
-          {selectedBlock && (
+          {selectedBlock && orgId && (
             <BlockEditor
               block={selectedBlock}
               onClose={() => setSelectedId(null)}
               onSave={(patch) => patchBlock(selectedBlock.id, patch)}
               onArchive={() => archiveBlock(selectedBlock.id)}
               onExport={() => exportGeoJSON(selectedBlock)}
+              orgId={orgId}
             />
           )}
         </aside>
@@ -292,12 +294,14 @@ function BlockEditor({
   onSave,
   onArchive,
   onExport,
+  orgId,
 }: {
   block: Block;
   onClose: () => void;
   onSave: (patch: Partial<Block>) => Promise<void>;
   onArchive: () => Promise<void>;
   onExport: () => void;
+  orgId: string;
 }) {
   const [name, setName] = useState(block.name);
   const [variety, setVariety] = useState(block.variety);
@@ -360,6 +364,21 @@ function BlockEditor({
         >
           Archive
         </button>
+      </div>
+
+      <div className="mt-8">
+        <h3 className="frame text-xs font-semibold uppercase tracking-wider text-foreground/60">
+          Captures
+        </h3>
+        <CaptureUploader
+          orgId={orgId}
+          blockId={block.id}
+          onCaptureUploaded={() => {
+            // M1-09 doesn't auto-refresh the block list — captures
+            // are visible from the /spray/captures page. M1-10 wires
+            // the per-block thumbnail strip alongside ML predictions.
+          }}
+        />
       </div>
     </>
   );

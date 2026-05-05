@@ -76,4 +76,25 @@ urlpatterns = [
         views.ProviderHealthView.as_view(),
         name="provider_health",
     ),
+    # M1-09: Capture upload.
+    path(
+        "orgs/<uuid:org_id>/blocks/<uuid:block_id>/captures/init",
+        views.CaptureInitView.as_view(),
+        name="capture_init",
+    ),
+    path(
+        "orgs/<uuid:org_id>/captures/<uuid:capture_id>/finalize",
+        views.CaptureFinalizeView.as_view(),
+        name="capture_finalize",
+    ),
+    path(
+        "orgs/<uuid:org_id>/captures",
+        views.CaptureListView.as_view(),
+        name="capture_list",
+    ),
+    path(
+        "orgs/<uuid:org_id>/captures/<uuid:capture_id>",
+        views.CaptureDetailView.as_view(),
+        name="capture_detail",
+    ),
 ]
