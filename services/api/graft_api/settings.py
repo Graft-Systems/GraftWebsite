@@ -81,6 +81,11 @@ CLERK_WEBHOOK_SIGNING_SECRET = os.environ.get("CLERK_WEBHOOK_SIGNING_SECRET", ""
 CLERK_FRONTEND_API = os.environ.get("CLERK_FRONTEND_API", "")
 CLERK_JWKS_URL = os.environ.get("CLERK_JWKS_URL", "")
 
+# M0-06: Visual Crossing weather provider. Free tier covers M0; the
+# adapter raises ProviderAuthError if unset, which the worker logs and
+# moves on (no row written, retry on next beat tick).
+VISUAL_CROSSING_API_KEY = os.environ.get("VISUAL_CROSSING_API_KEY", "")
+
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",

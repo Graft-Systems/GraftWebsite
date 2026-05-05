@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "weather.observation_pulled.v1",
+  "title": "weather.observation_pulled",
+  "description": "Emitted after a successful WeatherStation pull writes obs to Postgres.",
+  "type": "object",
+  "required": ["station_id", "provider", "obs_count", "earliest_ts", "latest_ts", "is_backfill"],
+  "properties": {
+    "station_id": { "type": "string", "format": "uuid" },
+    "provider": { "type": "string", "minLength": 1, "maxLength": 40 },
+    "obs_count": { "type": "integer", "minimum": 0 },
+    "earliest_ts": { "type": "string", "format": "date-time" },
+    "latest_ts": { "type": "string", "format": "date-time" },
+    "is_backfill": { "type": "boolean" }
+  },
+  "additionalProperties": false
+}

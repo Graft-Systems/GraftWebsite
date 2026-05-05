@@ -46,6 +46,17 @@ app.conf.beat_schedule = {
         "task": "graft_worker.tasks.data_lake_etl.forward_pending_events",
         "schedule": schedule(900.0),
     },
+    # M0-06: weather + SA-1 external risk indices, hourly.
+    "weather-pull": {
+        "task": "graft_worker.tasks.weather_pull.pull_all_active_stations",
+        "schedule": schedule(3600.0),
+    },
+    "external-risk-index-pull": {
+        "task": (
+            "graft_worker.tasks.external_risk_index.pull_all_external_indices"
+        ),
+        "schedule": schedule(3600.0),
+    },
 }
 
 app.conf.timezone = "UTC"

@@ -70,4 +70,10 @@ urlpatterns = [
         views.BlockDetailView.as_view(),
         name="block_detail",
     ),
+    # M0-06: provider-health admin endpoint.
+    path(
+        "admin/provider-health",
+        views.ProviderHealthView.as_view(),
+        name="provider_health",
+    ),
 ]

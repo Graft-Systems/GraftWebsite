@@ -799,6 +799,16 @@ class VineyardListCreateView(APIView):
             category="vineyard.created",
             payload={"vineyard_id": str(vineyard.id), "name": vineyard.name},
         )
+
+        # M0-06 step 9: kick off async 14-day weather backfill so M1-07
+        # (Gubler-Thomas) has a baseline. Best-effort — vineyard creation
+        # response is unaffected if Celery is unreachable in dev sandboxes.
+        try:
+            from graft_worker.tasks.weather_pull import backfill_vineyard_weather
+            backfill_vineyard_weather.delay(str(vineyard.id))
+        except Exception:  # noqa: BLE001
+            logger.exception("backfill enqueue failed; vineyard saved anyway")
+
         return Response(
             VineyardSerializer(vineyard).data, status=status.HTTP_201_CREATED
         )
@@ -968,3 +978,56 @@ class BlockDetailView(APIView):
             payload={"block_id": str(block.id)},
         )
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------------
+# M0-06 step 11: Provider-health admin endpoint
+# ---------------------------------------------------------------------
+
+
+class ProviderHealthView(APIView):
+    """GET /api/spray/admin/provider-health.
+
+    Returns liveness + latency for every registered weather and
+    external-risk-index provider. Authenticated-only; ops triage tool.
+    Sentry / Render alerting wraps this in M0-08.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from spray.providers import registry
+
+        weather: dict[str, dict] = {}
+        for slug in registry.known_weather_slugs():
+            try:
+                health = registry.get_weather(slug).health()
+                weather[slug] = {
+                    "ok": health.ok,
+                    "latency_ms": health.latency_ms,
+                    "detail": health.detail,
+                }
+            except Exception as e:  # noqa: BLE001
+                weather[slug] = {
+                    "ok": False,
+                    "latency_ms": None,
+                    "detail": f"health probe raised: {e}",
+                }
+
+        external: dict[str, dict] = {}
+        for slug in registry.known_external_risk_slugs():
+            try:
+                health = registry.get_external_risk(slug).health()
+                external[slug] = {
+                    "ok": health.ok,
+                    "latency_ms": health.latency_ms,
+                    "detail": health.detail,
+                }
+            except Exception as e:  # noqa: BLE001
+                external[slug] = {
+                    "ok": False,
+                    "latency_ms": None,
+                    "detail": f"health probe raised: {e}",
+                }
+
+        return Response({"weather": weather, "external_risk_index": external})
