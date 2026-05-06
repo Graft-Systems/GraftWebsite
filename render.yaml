@@ -2,7 +2,7 @@ services:
   - type: web
     name: graft-api
     runtime: python
-    rootDir: backend
+    rootDir: services/api
     plan: pro
     autoDeploy: true
     healthCheckPath: /

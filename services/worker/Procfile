@@ -1,0 +1,1 @@
+worker: celery -A graft_worker worker -B -l info --concurrency=2

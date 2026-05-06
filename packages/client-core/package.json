@@ -1,0 +1,24 @@
+{
+  "name": "@graft/client-core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "OpenAPI-generated TypeScript client, domain types, and React hooks for the Graft Spray API. Consumed by apps/web (Spray app shell, M0-02+) and apps/mobile (M2+). Generated from services/api/openapi.yaml in M0-04.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./api": "./src/api/index.ts",
+    "./types": "./src/types/index.ts",
+    "./hooks": "./src/hooks/index.ts"
+  },
+  "scripts": {
+    "lint": "echo '@graft/client-core lint placeholder; real lint lands when generated client lands in M0-04'",
+    "type-check": "echo '@graft/client-core type-check placeholder'",
+    "build": "echo '@graft/client-core build placeholder; no compile step yet'",
+    "generate": "echo '@graft/client-core generate placeholder; openapi-typescript-codegen runs in M0-04 against services/api/openapi.yaml'"
+  },
+  "peerDependencies": {
+    "react": "^18.3.0"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "_comment": "Extends base for React Native apps (apps/mobile, M2+).",
+  "extends": "./base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "jsx": "react-native",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "allowJs": true,
+    "noEmit": true,
+    "isolatedModules": true
+  }
+}

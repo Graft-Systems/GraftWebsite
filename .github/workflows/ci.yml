@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "graft-spray/main"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  workspace:
+    name: Lint, type-check, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      # M0-03: Postgres + PostGIS for spray app tests. Mirrors the local
+      # docker-compose at infra/dev/. Tests connect via DATABASE_URL.
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: graft_spray_test
+          POSTGRES_USER: graft
+          POSTGRES_PASSWORD: graft
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U graft -d graft_spray_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: "postgis://graft:graft@localhost:5432/graft_spray_test"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          lfs: true
+          fetch-depth: 0
+
+      - name: Install GDAL (django.contrib.gis runtime dep)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gdal-bin libgdal-dev
+
+      - name: Setup pnpm
+        # Version derives from `packageManager` in root package.json. Specifying
+        # `version:` here too triggers ERR_PNPM_BAD_PM_VERSION in action-setup v4.
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Python dependencies (services/api)
+        working-directory: services/api
+        run: pip install -r requirements.txt
+
+      - name: Lint workspace
+        run: pnpm turbo run lint --continue
+        continue-on-error: true
+
+      - name: Type-check workspace
+        run: pnpm turbo run type-check --continue
+        continue-on-error: true
+
+      - name: Build workspace
+        run: pnpm turbo run build
+
+      - name: Test workspace
+        run: pnpm turbo run test --continue
+        continue-on-error: true
+
+      - name: Django check (services/api)
+        working-directory: services/api
+        run: python manage.py check
+
+      - name: Schema registry check (M0-04)
+        run: python scripts/check_event_schemas.py
+
+      - name: pytest spray (services/api)
+        working-directory: services/api
+        env:
+          DJANGO_SECRET_KEY: ci-test-secret
+          # DEBUG=True so the test client doesn't get 301'd by
+          # SECURE_SSL_REDIRECT (production-only safeguard from settings.py).
+          DJANGO_DEBUG: "True"
+          CLERK_WEBHOOK_SIGNING_SECRET: whsec_dGVzdC1zZWNyZXQtZm9yLXVuaXQtdGVzdHM=
+        run: pytest spray/tests/ -q
+
+# Notes for future expansion (M0-02 onwards):
+# - Drop continue-on-error from lint/type-check/test once real rule sets land
+#   in @graft/eslint-config and Vitest/pytest suites are populated.
+# - Add coverage upload (Codecov) when test suites cover meaningful surface area.
+# - Add Playwright E2E job (separate, on a Vercel preview URL or local server)
+#   when the Spray app shell is testable end-to-end (M0-02a).
+# - Add schema-registry-check job (M0-04+) per spec section 19.4.

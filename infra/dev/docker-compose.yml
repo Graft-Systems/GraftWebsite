@@ -1,0 +1,49 @@
+# Local-dev Postgres + PostGIS for the spray app (M0-03).
+#
+# Usage:
+#   cd infra/dev
+#   docker compose up -d
+#
+# Then from services/api:
+#   python manage.py migrate
+#   python manage.py runserver 0.0.0.0:8080
+#
+# To wipe the db (start fresh):
+#   docker compose down -v
+#
+# Mirrors Render Postgres Pro 16 + PostGIS 3.4. Port 5432 is published so
+# `psql -h localhost -U graft graft_spray` works.
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: graft-spray-postgres-dev
+    environment:
+      POSTGRES_DB: graft_spray
+      POSTGRES_USER: graft
+      POSTGRES_PASSWORD: graft
+    ports:
+      - "5432:5432"
+    volumes:
+      - graft_spray_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U graft -d graft_spray"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # M0-04: Celery broker for the data-lake worker tier.
+  # The worker consumes this URL via CELERY_BROKER_URL=redis://localhost:6379/0.
+  redis:
+    image: redis:7-alpine
+    container_name: graft-spray-redis-dev
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  graft_spray_pgdata:

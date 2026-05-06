@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "block.updated.v1",
+  "title": "block.updated",
+  "type": "object",
+  "required": ["block_id", "fields"],
+  "properties": {
+    "block_id": { "type": "string", "format": "uuid" },
+    "fields": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    }
+  },
+  "additionalProperties": false
+}

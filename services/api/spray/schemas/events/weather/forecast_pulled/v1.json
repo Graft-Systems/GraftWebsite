@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "weather.forecast_pulled.v1",
+  "title": "weather.forecast_pulled",
+  "description": "Emitted after a forecast fetch writes forecast rows to Postgres.",
+  "type": "object",
+  "required": ["station_id", "provider", "obs_count", "horizon_days", "latest_ts"],
+  "properties": {
+    "station_id": { "type": "string", "format": "uuid" },
+    "provider": { "type": "string", "minLength": 1, "maxLength": 40 },
+    "obs_count": { "type": "integer", "minimum": 0 },
+    "horizon_days": { "type": "integer", "minimum": 1, "maximum": 16 },
+    "latest_ts": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

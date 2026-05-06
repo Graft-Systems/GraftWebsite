@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "block.archived.v1",
+  "title": "block.archived",
+  "type": "object",
+  "required": ["block_id"],
+  "properties": {
+    "block_id": { "type": "string", "format": "uuid" }
+  },
+  "additionalProperties": false
+}
