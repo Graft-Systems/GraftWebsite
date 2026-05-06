@@ -108,16 +108,16 @@ def _get_cached_prediction_runtime() -> tuple[Any, Any]:
     train_or_load_model, build_feature_vector = _load_prediction_modules()
 
     train_dir = Path(settings.PREDICTION_TRAIN_DIR)
-    if not train_dir.exists():
-        raise FileNotFoundError(
-            f"PREDICTION_TRAIN_DIR does not exist: {train_dir}. "
-            "Set it in backend .env."
-        )
-
     train_csv = Path(settings.PREDICTION_TRAIN_CSV) if settings.PREDICTION_TRAIN_CSV else None
     model_path = (
         Path(settings.PREDICTION_MODEL_PATH) if settings.PREDICTION_MODEL_PATH else None
     )
+
+    if not model_path and not train_dir.exists():
+        raise FileNotFoundError(
+            f"PREDICTION_TRAIN_DIR does not exist: {train_dir}. "
+            "Set it in backend .env."
+        )
     output_dir = Path(settings.PREDICTION_RUNS_DIR)
     output_dir.mkdir(parents=True, exist_ok=True)
 

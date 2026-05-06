@@ -1,7 +1,7 @@
 SHELL := /bin/sh
 
-BACKEND_DIR := backend
-FRONTEND_DIR := frontend
+BACKEND_DIR := services/api
+FRONTEND_DIR := apps/web
 BACKEND_HOST ?= 127.0.0.1
 BACKEND_PORT ?= 8080
 BACKEND_ADDR := $(BACKEND_HOST):$(BACKEND_PORT)
@@ -27,14 +27,14 @@ setup-backend:
 	.venv/bin/pip install -r requirements.txt
 
 setup-frontend:
-	@cd $(FRONTEND_DIR) && npm install
+	@pnpm install
 
 migrate:
 	@cd $(BACKEND_DIR) && \
 	if [ -x ".venv/bin/python" ]; then \
 		PYTHON_BIN=".venv/bin/python"; \
-	elif [ -x "../env/bin/python" ]; then \
-		PYTHON_BIN="../env/bin/python"; \
+	elif [ -x "../../env/bin/python" ]; then \
+		PYTHON_BIN="../../env/bin/python"; \
 	else \
 		PYTHON_BIN="python3"; \
 	fi; \
@@ -44,20 +44,19 @@ backend:
 	@cd $(BACKEND_DIR) && \
 	if [ -x ".venv/bin/python" ]; then \
 		PYTHON_BIN=".venv/bin/python"; \
-	elif [ -x "../env/bin/python" ]; then \
-		PYTHON_BIN="../env/bin/python"; \
+	elif [ -x "../../env/bin/python" ]; then \
+		PYTHON_BIN="../../env/bin/python"; \
 	else \
 		PYTHON_BIN="python3"; \
 	fi; \
 	$$PYTHON_BIN manage.py runserver $(BACKEND_ADDR)
 
 frontend:
-	@cd $(FRONTEND_DIR) && \
-	if [ ! -x "node_modules/.bin/next" ]; then \
-		echo "Frontend dependencies missing. Running npm install..."; \
-		npm install; \
+	@if [ ! -d "node_modules" ]; then \
+		echo "Frontend dependencies missing. Running pnpm install..."; \
+		pnpm install; \
 	fi && \
-	npm run dev
+	cd $(FRONTEND_DIR) && pnpm run dev
 
 dev:
 	@trap 'kill 0' INT TERM EXIT; \

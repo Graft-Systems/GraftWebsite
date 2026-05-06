@@ -252,6 +252,11 @@ PREDICTION_VAL_FRACTION = float(os.environ.get("PREDICTION_VAL_FRACTION", "0.2")
 PREDICTION_USE_RAW_DEPTH = _env_bool("PREDICTION_USE_RAW_DEPTH", True)
 PREDICTION_BACKBONE = os.environ.get("PREDICTION_BACKBONE", "hand").strip().lower()
 
+# ───── PostGIS / GDAL Configuration ─────
+import sys
+if sys.platform == "darwin":
+    GDAL_LIBRARY_PATH = "/opt/homebrew/opt/gdal/lib/libgdal.dylib"
+    GEOS_LIBRARY_PATH = "/opt/homebrew/opt/geos/lib/libgeos_c.dylib"
 
 # ───── Production hardening ─────
 # These only activate when DEBUG=False so local dev isn't affected.

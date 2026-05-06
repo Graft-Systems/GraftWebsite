@@ -2,7 +2,7 @@
 
 Python/Django backend for the Graft Systems website. Serves two endpoints used by the Next.js frontend.
 
-If you are new to this repo, read `backend/PredictionTool/HANDOFF.md` first for end-to-end setup.
+If you are new to this repo, read `PredictionTool/HANDOFF.md` first for end-to-end setup.
 
 ## Endpoints
 
