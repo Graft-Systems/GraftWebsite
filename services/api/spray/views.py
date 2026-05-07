@@ -1315,3 +1315,48 @@ class BlockVerdictListView(APIView):
                 "results": BlockVerdictSerializer(qs[:200], many=True).data,
             }
         )
+
+
+# ---------------------------------------------------------------------
+# M1.5 PR-F: Daily brief renderer endpoint (SA-2)
+# ---------------------------------------------------------------------
+
+
+class BlockVerdictBriefView(APIView):
+    """GET /api/spray/orgs/<org_id>/blocks/<block_id>/verdicts/<verdict_id>/brief
+
+    Returns a deterministic narrative brief for one BlockVerdict — headline,
+    paragraphs, drivers, and resolved citations from `sources_master.csv`.
+
+    LLM-authored prose lands in PR-F.5; until then this returns the
+    template-rendered output.
+    """
+
+    permission_classes = [IsOrgViewer]
+
+    def get(self, request, org_id, block_id, verdict_id):
+        from spray.models import Block, BlockVerdict
+        from spray.recommendation.daily_brief import render_brief
+        from spray.serializers import BlockVerdictSerializer
+
+        set_current_org_id(str(org_id))
+        get_object_or_404(Block.objects.for_org(org_id), id=block_id)
+        verdict = get_object_or_404(
+            BlockVerdict.objects.for_org(org_id),
+            id=verdict_id,
+            block_id=block_id,
+        )
+
+        verdict_dict = BlockVerdictSerializer(verdict).data
+        # Coerce DRF Decimal -> float for the renderer.
+        for key in (
+            "powdery_severity_1_10",
+            "downy_severity_1_10",
+            "powdery_confidence",
+            "downy_confidence",
+        ):
+            value = verdict_dict.get(key)
+            if value is not None:
+                verdict_dict[key] = float(value)
+
+        return Response(render_brief(verdict_dict))

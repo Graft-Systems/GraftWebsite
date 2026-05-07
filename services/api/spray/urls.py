@@ -108,4 +108,11 @@ urlpatterns = [
         views.BlockVerdictListView.as_view(),
         name="block_verdict_list",
     ),
+    # M1.5 PR-F: Daily brief renderer.
+    path(
+        "orgs/<uuid:org_id>/blocks/<uuid:block_id>/verdicts/"
+        "<uuid:verdict_id>/brief",
+        views.BlockVerdictBriefView.as_view(),
+        name="block_verdict_brief",
+    ),
 ]
