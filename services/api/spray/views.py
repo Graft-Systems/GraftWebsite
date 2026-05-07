@@ -1360,3 +1360,321 @@ class BlockVerdictBriefView(APIView):
                 verdict_dict[key] = float(value)
 
         return Response(render_brief(verdict_dict))
+
+
+# ---------------------------------------------------------------------
+# M1.5 PR-D: Sensor connector integrations (SA-2 §12A)
+# ---------------------------------------------------------------------
+
+
+def _new_oauth_state(org_id, vendor: str, ttl_minutes: int = 10):
+    """Create + persist an opaque OAuth state token. The state is a
+    URL-safe random string; we bind it to the Org by storing the row.
+    Tampering is impossible (the row is the source of truth) and replay
+    is bounded by the TTL.
+    """
+    import secrets
+    from datetime import timedelta as _td
+
+    from spray.models import OAuthState
+
+    token = secrets.token_urlsafe(32)
+    return OAuthState.objects.create(
+        state=token,
+        org_id=org_id,
+        vendor=vendor,
+        expires_at=timezone.now() + _td(minutes=ttl_minutes),
+    )
+
+
+class IntegrationListView(APIView):
+    """GET /api/spray/orgs/<org_id>/integrations
+    Returns the org's connections (any vendor). Tokens never serialized.
+    """
+
+    permission_classes = [IsOrgViewer]
+
+    def get(self, request, org_id):
+        from spray.models import IntegrationConnection
+        from spray.serializers import IntegrationConnectionSerializer
+
+        set_current_org_id(str(org_id))
+        qs = (
+            IntegrationConnection.objects.for_org(org_id)
+            .order_by("-connected_at")
+        )
+        return Response(
+            {"results": IntegrationConnectionSerializer(qs, many=True).data}
+        )
+
+
+class PesslOAuthStartView(APIView):
+    """POST /api/spray/orgs/<org_id>/integrations/pessl/oauth/start
+    Returns `{authorize_url}` for the frontend to redirect to.
+    """
+
+    permission_classes = [IsOrgAdmin]
+
+    def post(self, request, org_id):
+        from spray.connectors.sensors.pessl.oauth import build_authorize_url
+
+        set_current_org_id(str(org_id))
+        state_row = _new_oauth_state(org_id, vendor="pessl")
+        try:
+            url = build_authorize_url(state=state_row.state)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("PesslOAuthStartView: build_authorize_url failed")
+            return Response(
+                {"detail": f"oauth start failed: {exc}"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        return Response({"authorize_url": url, "state": state_row.state})
+
+
+class PesslOAuthCallbackView(APIView):
+    """GET /api/spray/integrations/pessl/oauth/callback?code=&state=
+
+    No org in the URL — derived from `state`. Redirects on success;
+    returns JSON error on failure (frontend handles via query param).
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from django.shortcuts import redirect
+
+        from spray.connectors import credentials as creds
+        from spray.connectors.base import (
+            ConnectorAuthError,
+            ConnectorRateLimitError,
+            ConnectorResponseError,
+        )
+        from spray.connectors.sensors.pessl.oauth import exchange_code
+        from spray.models import IntegrationConnection, OAuthState
+
+        code = request.query_params.get("code", "")
+        state = request.query_params.get("state", "")
+        error = request.query_params.get("error", "")
+
+        if error:
+            return Response(
+                {"detail": f"pessl returned error: {error}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not code or not state:
+            return Response(
+                {"detail": "missing code or state"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            state_row = OAuthState.objects.get(state=state, vendor="pessl")
+        except OAuthState.DoesNotExist:
+            return Response(
+                {"detail": "invalid or unknown state"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if state_row.consumed_at is not None:
+            return Response(
+                {"detail": "state already consumed"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if state_row.expires_at < timezone.now():
+            return Response(
+                {"detail": "state expired"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            token_blob = exchange_code(code)
+        except ConnectorAuthError as exc:
+            return Response(
+                {"detail": f"oauth code rejected: {exc}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except (ConnectorRateLimitError, ConnectorResponseError) as exc:
+            return Response(
+                {"detail": f"pessl unavailable: {exc}"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        vendor_account_id = token_blob.pop("vendor_account_id")
+        ciphertext = creds.encrypt_token_blob(token_blob)
+
+        with transaction.atomic():
+            set_current_org_id(str(state_row.org_id))
+            connection, created = IntegrationConnection.objects.unscoped().update_or_create(
+                org_id=state_row.org_id,
+                vendor=IntegrationConnection.Vendor.PESSL,
+                vendor_account_id=vendor_account_id,
+                defaults={
+                    "token_ciphertext": ciphertext,
+                    "status": IntegrationConnection.Status.ACTIVE,
+                    "disconnected_at": None,
+                },
+            )
+            state_row.consumed_at = timezone.now()
+            state_row.save(update_fields=["consumed_at"])
+
+        try:
+            _emit_lake_event(
+                org=state_row.org,
+                user=getattr(request, "spray_user", None),
+                category="integration.connected",
+                payload={
+                    "org_id": str(state_row.org_id),
+                    "connection_id": str(connection.id),
+                    "vendor": "pessl",
+                    "vendor_account_id": vendor_account_id,
+                    "created": created,
+                },
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("emit integration.connected failed")
+
+        # Redirect back to the spray app integrations page.
+        frontend_base = getattr(settings, "SPRAY_FRONTEND_BASE_URL", "")
+        if frontend_base:
+            return redirect(
+                f"{frontend_base}/spray/integrations?connected=pessl"
+            )
+        return Response(
+            {
+                "ok": True,
+                "connection_id": str(connection.id),
+                "vendor": "pessl",
+                "created": created,
+            }
+        )
+
+
+class IntegrationStationListView(APIView):
+    """GET /api/spray/orgs/<org_id>/integrations/<conn_id>/stations
+    Live-fetches the vendor's stations + upserts SensorStation rows.
+    """
+
+    permission_classes = [IsOrgMember]
+
+    def get(self, request, org_id, conn_id):
+        from spray.connectors.base import (
+            ConnectorAuthError,
+            ConnectorRateLimitError,
+            ConnectorResponseError,
+        )
+        from spray.connectors.registry import get_connector
+        from spray.models import IntegrationConnection, SensorStation
+        from spray.serializers import SensorStationSerializer
+
+        set_current_org_id(str(org_id))
+        connection = get_object_or_404(
+            IntegrationConnection.objects.for_org(org_id), id=conn_id
+        )
+        connector = get_connector(connection.vendor)
+        try:
+            vendor_stations = connector.list_stations(connection)
+        except ConnectorAuthError as exc:
+            return Response(
+                {"detail": f"reauth required: {exc}"},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        except (ConnectorRateLimitError, ConnectorResponseError) as exc:
+            return Response(
+                {"detail": f"vendor unavailable: {exc}"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        with transaction.atomic():
+            for vs in vendor_stations:
+                SensorStation.objects.unscoped().update_or_create(
+                    connection=connection,
+                    vendor_station_id=vs.vendor_station_id,
+                    defaults={
+                        "name": vs.name or "",
+                        "lat": vs.lat,
+                        "lon": vs.lon,
+                    },
+                )
+
+        qs = (
+            SensorStation.objects.for_org(org_id)
+            .filter(connection=connection, archived_at__isnull=True)
+            .order_by("name")
+            .prefetch_related("linked_blocks")
+        )
+        return Response({"results": SensorStationSerializer(qs, many=True).data})
+
+
+class IntegrationStationLinkBlockView(APIView):
+    """POST /api/spray/orgs/<org_id>/integrations/<conn_id>/stations/<station_id>/link-block
+    Body: {"block_id": "uuid"}.
+    """
+
+    permission_classes = [IsOrgMember]
+
+    def post(self, request, org_id, conn_id, station_id):
+        from spray.models import (
+            Block,
+            IntegrationConnection,
+            SensorStation,
+            SensorStationBlock,
+        )
+
+        set_current_org_id(str(org_id))
+        get_object_or_404(
+            IntegrationConnection.objects.for_org(org_id), id=conn_id
+        )
+        station = get_object_or_404(
+            SensorStation.objects.for_org(org_id),
+            id=station_id,
+            connection_id=conn_id,
+        )
+        block_id = request.data.get("block_id")
+        if not block_id:
+            return Response(
+                {"detail": "block_id required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        block = get_object_or_404(Block.objects.for_org(org_id), id=block_id)
+
+        SensorStationBlock.objects.get_or_create(
+            station=station,
+            block=block,
+            defaults={"linked_by": getattr(request, "spray_user", None)},
+        )
+        return Response({"ok": True}, status=status.HTTP_201_CREATED)
+
+
+class IntegrationDisconnectView(APIView):
+    """DELETE /api/spray/orgs/<org_id>/integrations/<conn_id>
+    Soft-delete: sets status=disconnected. Historical readings preserved.
+    """
+
+    permission_classes = [IsOrgAdmin]
+
+    def delete(self, request, org_id, conn_id):
+        from spray.models import IntegrationConnection
+
+        set_current_org_id(str(org_id))
+        connection = get_object_or_404(
+            IntegrationConnection.objects.for_org(org_id), id=conn_id
+        )
+        connection.status = IntegrationConnection.Status.DISCONNECTED
+        connection.disconnected_at = timezone.now()
+        connection.save(update_fields=["status", "disconnected_at"])
+
+        try:
+            _emit_lake_event(
+                org=connection.org,
+                user=getattr(request, "spray_user", None),
+                category="integration.disconnected",
+                payload={
+                    "org_id": str(org_id),
+                    "connection_id": str(connection.id),
+                    "vendor": connection.vendor,
+                },
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("emit integration.disconnected failed")
+
+        return Response({"ok": True})
