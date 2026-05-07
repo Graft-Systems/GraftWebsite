@@ -12,7 +12,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 
@@ -40,6 +40,14 @@ const STATUS_STYLES: Record<Connection["status"], string> = {
 };
 
 export default function IntegrationsPage() {
+  return (
+    <Suspense fallback={<p className="mt-12 text-foreground/50">Loading…</p>}>
+      <IntegrationsPageInner />
+    </Suspense>
+  );
+}
+
+function IntegrationsPageInner() {
   const { getToken, isSignedIn } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
