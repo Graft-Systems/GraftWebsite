@@ -19,6 +19,28 @@ import MapboxDraw from "@mapbox/mapbox-gl-draw";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
 
+// MapLibre vs Mapbox class-name compatibility shim. @mapbox/mapbox-gl-draw
+// targets Mapbox GL's `mapboxgl-*` CSS classes; MapLibre uses
+// `maplibregl-*`. Without this remap the draw control's DOM never
+// receives the styles MapboxDraw expects, and a draw.create event
+// never fires when the user clicks the canvas.
+//
+// Reference: https://github.com/mapbox/mapbox-gl-draw/issues/1019
+//            https://github.com/maplibre/maplibre-gl-js/issues/1018
+//
+// Safe to call once at module load — MapboxDraw.constants is a single
+// shared object, not per-instance.
+//
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const _drawConstants: any = (MapboxDraw as any).constants;
+if (_drawConstants?.classes) {
+  _drawConstants.classes.CANVAS = "maplibregl-canvas";
+  _drawConstants.classes.CONTROL_BASE = "maplibregl-ctrl";
+  _drawConstants.classes.CONTROL_PREFIX = "maplibregl-ctrl-";
+  _drawConstants.classes.CONTROL_BUTTON = "maplibregl-ctrl-icon";
+  _drawConstants.classes.ATTRIBUTION = "maplibregl-ctrl-attrib";
+}
+
 export type BlockFeature = {
   id: string;
   name: string;
