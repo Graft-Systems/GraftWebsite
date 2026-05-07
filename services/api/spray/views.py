@@ -298,6 +298,12 @@ class OrgCreateView(APIView):
         serializer.is_valid(raise_exception=True)
         org = serializer.save()
 
+        # Set the RLS GUC to the new Org's id so the Membership INSERT
+        # passes the `org_id = current_setting('app.current_org_id')`
+        # policy. Without this, the very first Membership for a fresh
+        # Org gets denied at the DB layer because no GUC is set yet.
+        set_current_org_id(str(org.id))
+
         Membership.objects.create(
             org=org,
             user=request.user,
