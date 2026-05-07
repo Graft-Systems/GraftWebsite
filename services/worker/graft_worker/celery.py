@@ -71,6 +71,19 @@ app.conf.beat_schedule = {
             )
         ),
     },
+    # M1.5 PR-D: Pessl FieldClimate sensor polling (15 min default).
+    # The task short-circuits when no active Pessl connections exist,
+    # so this is safe to fire even before any user has connected.
+    "pessl-pull": {
+        "task": "graft_worker.tasks.pessl_pull.pull_all_pessl_stations",
+        "schedule": schedule(
+            float(
+                __import__("os").environ.get(
+                    "GRAFT_SPRAY_PESSL_CADENCE_SEC", "900"
+                )
+            )
+        ),
+    },
 }
 
 app.conf.timezone = "UTC"

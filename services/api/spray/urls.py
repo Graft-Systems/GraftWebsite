@@ -115,4 +115,36 @@ urlpatterns = [
         views.BlockVerdictBriefView.as_view(),
         name="block_verdict_brief",
     ),
+    # M1.5 PR-D: Sensor connector integrations (Pessl FieldClimate).
+    path(
+        "orgs/<uuid:org_id>/integrations",
+        views.IntegrationListView.as_view(),
+        name="integration_list",
+    ),
+    path(
+        "orgs/<uuid:org_id>/integrations/pessl/oauth/start",
+        views.PesslOAuthStartView.as_view(),
+        name="pessl_oauth_start",
+    ),
+    path(
+        "integrations/pessl/oauth/callback",
+        views.PesslOAuthCallbackView.as_view(),
+        name="pessl_oauth_callback",
+    ),
+    path(
+        "orgs/<uuid:org_id>/integrations/<uuid:conn_id>/stations",
+        views.IntegrationStationListView.as_view(),
+        name="integration_station_list",
+    ),
+    path(
+        "orgs/<uuid:org_id>/integrations/<uuid:conn_id>/stations/"
+        "<uuid:station_id>/link-block",
+        views.IntegrationStationLinkBlockView.as_view(),
+        name="integration_station_link_block",
+    ),
+    path(
+        "orgs/<uuid:org_id>/integrations/<uuid:conn_id>",
+        views.IntegrationDisconnectView.as_view(),
+        name="integration_disconnect",
+    ),
 ]

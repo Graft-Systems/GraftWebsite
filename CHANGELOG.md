@@ -6,6 +6,73 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), wit
 
 ## Unreleased
 
+### M1.5 PR-D: Pessl FieldClimate sensor connector (OAuth 2.0)
+
+PR on `graft-spray/m1.5/sensor-pessl`. First real customer-authenticated sensor adapter. Establishes the `services/api/spray/connectors/` namespace (per CODEBASE_PLAN.md §300 — connectors are vendor APIs the customer authenticates against; providers are read-only feeds we own the auth on) and the vendor-agnostic `SensorConnector` Protocol that PR-E (Davis + METER) will reuse without API churn. OAuth flow runs end to end against `responses`-mocked Pessl fixtures; live-smoke awaits Pessl's manual partner-app approval (D1 in plan).
+
+#### Added
+
+- **`services/api/spray/connectors/`** package.
+  - `base.py` — `SensorConnector` Protocol + `VendorStation` / `ConnectorHealth` DTOs + parallel exception classes (`ConnectorAuthError`, `ConnectorRateLimitError`, `ConnectorResponseError`) so the worker's retry policy can target the right class (mirrors `spray.providers.base`).
+  - `credentials.py` — Fernet wrapper over the OAuth/refresh token blob. `encrypt_token_blob` / `decrypt_token_blob` round-trip `dict` ↔ `bytes` for `BinaryField`. `redact()` for safe-to-log dumps. Plaintext NEVER appears in logs, Sentry, `__repr__`, or any serializer field. Key sourced from `SPRAY_INTEGRATION_FERNET_KEY` env var.
+  - `registry.py` — slug→class lookup, `@register("pessl")` decorator, eager-imports for the Pessl module.
+- **`services/api/spray/connectors/sensors/pessl/`** package.
+  - `oauth.py` — partner-app OAuth 2.0 flow: `build_authorize_url(state)`, `exchange_code(code)` (returns `{access_token, refresh_token, expires_in, vendor_account_id}`), `refresh_access_token(refresh_token)`. Maps Pessl status codes to connector exception classes; never logs response bodies (could contain secrets).
+  - `client.py` — `PesslClient` HTTP wrapper. Auto-refreshes on 401 via the `on_token_refresh` callback (caller persists the rotated blob in a single `transaction.atomic()`). Endpoints: `/user`, `/user/stations`, `/data/{station}/raw/from/.../to/...`. Second 401 after refresh → `ConnectorAuthError` (refresh-token itself dead).
+  - `normalizer.py` — Pessl payload → canonical-schema rows per spec §12A.3. Channel mapping by `ch` substring match (handles air_temp, humidity, leaf_wetness, precip, wind_speed across station model variants). Aggregator pick: `sum` for cumulative fields (LW + precip), `avg` for everything else. Forgiving on missing channels + malformed timestamps.
+  - `connector.py` — `PesslConnector` implements the Protocol. Wraps client + normalizer; persists rotated tokens; marks the connection `needs_reauth` on auth failure.
+- **Django models** (`services/api/spray/models.py`):
+  - `IntegrationConnection` — org-scoped, vendor-agnostic. `(org, vendor, vendor_account_id)` unique. `BinaryField` token ciphertext + status enum (active / needs_reauth / disconnected).
+  - `SensorStation` — vendor's station tied to one connection, optionally linked to many `Block`s via `SensorStationBlock` through-table (audit trail of who linked when).
+  - `SensorReading` — canonical sensor schema per spec §12A.3 (air_temp_c, rh_pct, leaf_wetness_min in MINUTES, precip_mm, wind_speed_ms). `(station, ts)` unique upsert. `quality_flag` enum.
+  - `OAuthState` — short-lived CSRF/state row, TTL 10 min, consumed-once at callback.
+- **Migration `0009_sensor_models`** — five tables + RLS policies on the three tenant-scoped ones (`IntegrationConnection`, `SensorStation`, `SensorReading`). Reversible.
+- **Celery polling** (`services/worker/graft_worker/tasks/pessl_pull.py`):
+  - `pull_all_pessl_stations` (beat fires every 15 min, env-overridable via `GRAFT_SPRAY_PESSL_CADENCE_SEC`) fans out per active SensorStation linked to ≥1 Block.
+  - `pull_pessl_station(station_id)` pulls readings since `station.last_seen_at` (or now-14d on first pull), `bulk_create(update_conflicts=True)` upserts, advances watermark, emits one `sensor.reading_pulled` lake event per reading. Marks readings `quality_flag = "gap_filled"` when station has been silent >4h (spec §12A.4).
+- **API endpoints** (`spray/views.py` + `urls.py`):
+  - `GET  /api/spray/orgs/<org>/integrations` — list connections (token blob never serialized).
+  - `POST /api/spray/orgs/<org>/integrations/pessl/oauth/start` — returns `{authorize_url, state}`.
+  - `GET  /api/spray/integrations/pessl/oauth/callback` — verifies state, exchanges code, encrypts blob, upserts connection, redirects to `/spray/integrations?connected=pessl` (or returns JSON when `SPRAY_FRONTEND_BASE_URL` unset).
+  - `GET  /api/spray/orgs/<org>/integrations/<conn>/stations` — live-fetches + caches SensorStations.
+  - `POST /api/spray/orgs/<org>/integrations/<conn>/stations/<station>/link-block` — body `{block_id}`.
+  - `DELETE /api/spray/orgs/<org>/integrations/<conn>` — soft-delete (status=disconnected, historical readings preserved).
+  - Permission gates: `IsOrgViewer` for list, `IsOrgAdmin` for OAuth start + disconnect, `IsOrgMember` for station ops.
+- **Lake event schemas**:
+  - `sensor.reading_pulled.v1.json` — per-station-pull transition (distinct from the existing `sensor_reading.ingested.v1.json` which is the per-block downstream form).
+  - `integration.connected.v1.json`, `integration.disconnected.v1.json` — connection-lifecycle events. All `additionalProperties: false`.
+- **Frontend** (`apps/web/`):
+  - `app/spray/(app)/integrations/page.tsx` — replaces placeholder. Lists active connections with status chips, "Connect Pessl" button kicks off the OAuth start → redirect dance, soft-disconnect with confirm.
+  - `app/spray/(app)/integrations/[conn_id]/page.tsx` — vendor-station list with per-station "Link to block" picker (org's vineyards × blocks).
+- **Settings** (`graft_api/settings.py`):
+  - `SPRAY_INTEGRATION_FERNET_KEY`, `PESSL_CLIENT_ID`, `PESSL_CLIENT_SECRET`, `PESSL_REDIRECT_URI`, `PESSL_API_BASE`, `SPRAY_FRONTEND_BASE_URL` (all env-driven, all default-empty so dev + CI run without secrets).
+- **Tests** (~30 new):
+  - `test_credentials.py` — Fernet round-trip, memoryview support, missing/invalid key, wrong-key decrypt failure, redact.
+  - `test_pessl_normalizer.py` — full + partial + null + unknown-channel + malformed-timestamp paths.
+  - `test_pessl_oauth.py` — authorize-URL shape, code exchange happy path, 400/429 mapping, refresh, missing-creds bail.
+  - `test_pessl_client.py` — list_stations happy, 401→refresh→retry, double-401 fails, 429, fetch_raw_data.
+  - `test_pessl_pull_task.py` — persists + emits events, idempotent on retry, gap-fill flag, skips disconnected connections.
+  - `test_integration_endpoints.py` — list, OAuth start, OAuth callback (mocked exchange), expired/unknown state rejection, station list (mocked connector + upsert), link-block, disconnect, cross-org isolation.
+
+#### Beat schedule
+
+`pessl-pull` registered at `services/worker/graft_worker/celery.py`, default 15 min cadence.
+
+#### Scope cuts (deferred)
+
+- Davis WeatherLink polling adapter (PR-E).
+- METER ZENTRA push webhook (PR-E).
+- Sencrop OAuth (Phase 2 per spec §12A.2).
+- HMAC-SHA256 single-account fallback for Pessl (lower priority; partner-app OAuth is the MVP path).
+- Sensor-fed `WeatherWindow` enrichment for ensemble runners (PR-D.5 or rolled into PR-E).
+- KMS-backed credential rotation (post-MVP).
+
+#### Pre-flight (Benson, deferred)
+
+- Pessl partner-app outreach to api@metos.at + support@fieldclimate.com to receive `client_id` + `client_secret`.
+- Generate `SPRAY_INTEGRATION_FERNET_KEY` via `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
+- Add to Render API + Worker env: `PESSL_CLIENT_ID`, `PESSL_CLIENT_SECRET`, `PESSL_REDIRECT_URI`, `SPRAY_INTEGRATION_FERNET_KEY`, `SPRAY_FRONTEND_BASE_URL`.
+
 ### M1.5 PR-F: recommendation card UI + deterministic daily brief
 
 PR on `graft-spray/m1.5/recommendation-card`. Closes the loop from PR-C (verdicts persisted) to grower-visible UI: every BlockVerdict now renders as a `VerdictCard` on the dashboard, and a deterministic daily-brief endpoint surfaces a citation-anchored narrative built from the same schema-validated numbers. Per spec §13B.1, BlockVerdict IS the daily card; UI never originates or paraphrases numbers. The LLM-authored brief with hallucination guard ships in PR-F.5; this PR establishes the deterministic fallback path that PR-F.5 will fall back to on guard failure.

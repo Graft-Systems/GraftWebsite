@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "sensor.reading_pulled.v1",
+  "title": "sensor.reading_pulled",
+  "description": "One canonical-schema reading just persisted from a vendor sensor pull (Pessl/Davis/METER/Sencrop). Distinct from sensor_reading.ingested.v1, which describes the per-block downstream form. This event captures the per-station pull transition (spec §12A.3, §12A.4).",
+  "type": "object",
+  "required": [
+    "org_id",
+    "connection_id",
+    "station_id",
+    "vendor",
+    "vendor_station_id",
+    "ts",
+    "quality_flag",
+    "source",
+    "device_id"
+  ],
+  "properties": {
+    "org_id": { "type": "string", "format": "uuid" },
+    "connection_id": { "type": "string", "format": "uuid" },
+    "station_id": { "type": "string", "format": "uuid" },
+    "vendor": {
+      "type": "string",
+      "enum": ["davis", "pessl", "meter", "sencrop"]
+    },
+    "vendor_station_id": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "ts": { "type": "string", "format": "date-time" },
+    "air_temp_c": { "type": ["number", "null"] },
+    "rh_pct": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "maximum": 100
+    },
+    "leaf_wetness_min": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "maximum": 60
+    },
+    "precip_mm": {
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "wind_speed_ms": {
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "quality_flag": {
+      "type": "string",
+      "enum": ["ok", "estimated", "gap_filled", "stale", "bad"]
+    },
+    "source": {
+      "type": "string",
+      "enum": ["davis", "pessl", "meter", "sencrop"]
+    },
+    "device_id": { "type": "string", "minLength": 1, "maxLength": 120 }
+  },
+  "additionalProperties": false
+}

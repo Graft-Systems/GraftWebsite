@@ -14,9 +14,11 @@ from spray.models import (
     Block,
     BlockVerdict,
     ConsentRecord,
+    IntegrationConnection,
     Membership,
     Org,
     RiskRecord,
+    SensorStation,
     User,
     Vineyard,
 )
@@ -305,3 +307,50 @@ class BlockVerdictSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = fields
+
+
+# ---------------------------------------------------------------------
+# M1.5 PR-D: Sensor connector serializers
+# ---------------------------------------------------------------------
+
+
+class IntegrationConnectionSerializer(serializers.ModelSerializer):
+    """Read-only view of an IntegrationConnection. Token blob NEVER serialized."""
+
+    class Meta:
+        model = IntegrationConnection
+        fields = [
+            "id",
+            "vendor",
+            "vendor_account_id",
+            "status",
+            "connected_at",
+            "disconnected_at",
+            "last_health_at",
+            "last_health_detail",
+        ]
+        read_only_fields = fields
+
+
+class SensorStationSerializer(serializers.ModelSerializer):
+    """Read-only view of a SensorStation, with linked block IDs."""
+
+    linked_block_ids = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SensorStation
+        fields = [
+            "id",
+            "connection",
+            "vendor_station_id",
+            "name",
+            "lat",
+            "lon",
+            "last_seen_at",
+            "linked_block_ids",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    def get_linked_block_ids(self, obj) -> list[str]:
+        return [str(b.id) for b in obj.linked_blocks.all()]

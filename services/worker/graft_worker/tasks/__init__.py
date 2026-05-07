@@ -10,5 +10,6 @@ from graft_worker.tasks import (  # noqa: F401
     aggregation_run,
     data_lake_etl,
     external_risk_index,
+    pessl_pull,
     weather_pull,
 )

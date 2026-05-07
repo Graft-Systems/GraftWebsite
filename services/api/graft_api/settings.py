@@ -86,6 +86,25 @@ CLERK_JWKS_URL = os.environ.get("CLERK_JWKS_URL", "")
 # moves on (no row written, retry on next beat tick).
 VISUAL_CROSSING_API_KEY = os.environ.get("VISUAL_CROSSING_API_KEY", "")
 
+# M1.5 PR-D: sensor-connector credential encryption (Fernet) + Pessl
+# FieldClimate OAuth 2.0 partner-app credentials. Generate the Fernet key
+# via:
+#     python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# Tests override this via `override_settings` with a throwaway key; the
+# production key MUST NOT be committed to the repo or used in tests.
+SPRAY_INTEGRATION_FERNET_KEY = os.environ.get("SPRAY_INTEGRATION_FERNET_KEY", "")
+PESSL_CLIENT_ID = os.environ.get("PESSL_CLIENT_ID", "")
+PESSL_CLIENT_SECRET = os.environ.get("PESSL_CLIENT_SECRET", "")
+PESSL_REDIRECT_URI = os.environ.get(
+    "PESSL_REDIRECT_URI",
+    "https://api.graft-systems.app/api/spray/integrations/pessl/oauth/callback",
+)
+PESSL_API_BASE = os.environ.get(
+    "PESSL_API_BASE", "https://api.fieldclimate.com/v2"
+)
+# Frontend origin used for OAuth callback redirects (set in Render env).
+SPRAY_FRONTEND_BASE_URL = os.environ.get("SPRAY_FRONTEND_BASE_URL", "")
+
 # M1-09: Imagery bucket (separate from M0-04's data-lake bucket so
 # retention rules + KMS-CMK swaps can diverge per spec §17.1).
 AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "")

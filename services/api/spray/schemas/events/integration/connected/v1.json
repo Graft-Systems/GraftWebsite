@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "integration.connected.v1",
+  "title": "integration.connected",
+  "description": "Emitted when a sensor-vendor IntegrationConnection is created or refreshed via OAuth. Captures the connection identity but never the token blob. Spec §12A.5.",
+  "type": "object",
+  "required": ["org_id", "connection_id", "vendor", "vendor_account_id", "created"],
+  "properties": {
+    "org_id": { "type": "string", "format": "uuid" },
+    "connection_id": { "type": "string", "format": "uuid" },
+    "vendor": {
+      "type": "string",
+      "enum": ["davis", "pessl", "meter", "sencrop"]
+    },
+    "vendor_account_id": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "created": { "type": "boolean" }
+  },
+  "additionalProperties": false
+}
