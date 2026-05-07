@@ -1,45 +1,19 @@
 /**
- * SprayMap — MapLibre GL satellite map with polygon draw (M0-05).
+ * SprayMap — MapLibre GL satellite map with NATIVE polygon draw (M0-05).
  *
  * Rendered inside `apps/web/app/spray/(app)/vineyards/[vineyard_id]/`.
- * Uses Esri World Imagery as the basemap (free with attribution); the
- * draw control is @mapbox/mapbox-gl-draw which is API-compatible with
- * MapLibre.
+ * Uses Esri World Imagery as the basemap (free with attribution).
  *
  * Block geoms render as a single GeoJSON source with two layers (fill
- * + stroke). Active selection bumps the opacity. The MapboxDraw
- * instance manages a separate layer for the polygon currently being
- * edited.
+ * + stroke). Drawing is a hand-rolled click-to-add-vertex /
+ * double-click-to-close interaction wired straight to MapLibre events
+ * — no external draw library, no Mapbox-vs-MapLibre compat layer.
  */
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import maplibregl, { Map as MaplibreMap, MapLibreEvent } from "maplibre-gl";
-import MapboxDraw from "@mapbox/mapbox-gl-draw";
+import maplibregl, { Map as MaplibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
-
-// MapLibre vs Mapbox class-name compatibility shim. @mapbox/mapbox-gl-draw
-// targets Mapbox GL's `mapboxgl-*` CSS classes; MapLibre uses
-// `maplibregl-*`. Without this remap the draw control's DOM never
-// receives the styles MapboxDraw expects, and a draw.create event
-// never fires when the user clicks the canvas.
-//
-// Reference: https://github.com/mapbox/mapbox-gl-draw/issues/1019
-//            https://github.com/maplibre/maplibre-gl-js/issues/1018
-//
-// Safe to call once at module load — MapboxDraw.constants is a single
-// shared object, not per-instance.
-//
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const _drawConstants: any = (MapboxDraw as any).constants;
-if (_drawConstants?.classes) {
-  _drawConstants.classes.CANVAS = "maplibregl-canvas";
-  _drawConstants.classes.CONTROL_BASE = "maplibregl-ctrl";
-  _drawConstants.classes.CONTROL_PREFIX = "maplibregl-ctrl-";
-  _drawConstants.classes.CONTROL_BUTTON = "maplibregl-ctrl-icon";
-  _drawConstants.classes.ATTRIBUTION = "maplibregl-ctrl-attrib";
-}
 
 export type BlockFeature = {
   id: string;
@@ -75,17 +49,13 @@ const ESRI_STYLE: maplibregl.StyleSpecification = {
     },
   },
   layers: [
-    {
-      id: "esri-imagery",
-      type: "raster",
-      source: "esri-imagery",
-      minzoom: 0,
-      maxzoom: 19,
-    },
+    { id: "esri-imagery", type: "raster", source: "esri-imagery", minzoom: 0, maxzoom: 19 },
   ],
 };
 
-const BLOCK_FILL_COLOR = "#c08a3e"; // Spray brand amber.
+const BLOCK_FILL_COLOR = "#c08a3e";
+const DRAW_FILL_COLOR = "#c08a3e";
+const DRAW_STROKE_COLOR = "#ffffff";
 
 function blocksToFeatureCollection(
   blocks: BlockFeature[]
@@ -103,6 +73,38 @@ function blocksToFeatureCollection(
   };
 }
 
+function vertsToDrawFeatureCollection(
+  verts: [number, number][]
+): GeoJSON.FeatureCollection {
+  // While drawing, render two layers:
+  //   - a LineString through the live vertices (so the user sees the
+  //     polygon perimeter forming click-by-click)
+  //   - a Point per vertex
+  const features: GeoJSON.Feature[] = [];
+  if (verts.length >= 2) {
+    features.push({
+      type: "Feature",
+      properties: { kind: "edge" },
+      geometry: { type: "LineString", coordinates: verts },
+    });
+  }
+  for (const v of verts) {
+    features.push({
+      type: "Feature",
+      properties: { kind: "vertex" },
+      geometry: { type: "Point", coordinates: v },
+    });
+  }
+  return { type: "FeatureCollection", features };
+}
+
+function vertsToPolygon(verts: [number, number][]): GeoJSON.Polygon | null {
+  // Need at least 3 unique vertices to close into a polygon.
+  if (verts.length < 3) return null;
+  const ring = [...verts, verts[0]] as GeoJSON.Position[];
+  return { type: "Polygon", coordinates: [ring] };
+}
+
 export function SprayMap({
   centroid,
   blocks,
@@ -115,8 +117,9 @@ export function SprayMap({
 }: SprayMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MaplibreMap | null>(null);
-  const drawRef = useRef<MapboxDraw | null>(null);
   const [ready, setReady] = useState(false);
+  const [drawingVerts, setDrawingVerts] = useState<[number, number][]>([]);
+  const drawingVertsRef = useRef<[number, number][]>([]);
 
   // Mount + unmount the map exactly once.
   useEffect(() => {
@@ -129,59 +132,72 @@ export function SprayMap({
       center: initialCenter,
       zoom: 14,
       attributionControl: { compact: true },
+      doubleClickZoom: false, // we want double-click to close polygons
     });
 
     map.on("load", () => {
-      // Block geom source + layers.
-      map.addSource("blocks", {
-        type: "geojson",
-        data: blocksToFeatureCollection([]),
-      });
+      // Saved blocks.
+      map.addSource("blocks", { type: "geojson", data: blocksToFeatureCollection([]) });
       map.addLayer({
         id: "blocks-fill",
         type: "fill",
         source: "blocks",
-        paint: {
-          "fill-color": BLOCK_FILL_COLOR,
-          "fill-opacity": 0.35,
-        },
+        paint: { "fill-color": BLOCK_FILL_COLOR, "fill-opacity": 0.35 },
       });
       map.addLayer({
         id: "blocks-stroke",
         type: "line",
         source: "blocks",
-        paint: {
-          "line-color": "#ffffff",
-          "line-width": 1.5,
-        },
+        paint: { "line-color": DRAW_STROKE_COLOR, "line-width": 1.5 },
       });
+
+      // Polygon being drawn right now.
+      map.addSource("drawing", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+      map.addLayer({
+        id: "drawing-edge",
+        type: "line",
+        source: "drawing",
+        filter: ["==", ["get", "kind"], "edge"],
+        paint: { "line-color": DRAW_FILL_COLOR, "line-width": 2 },
+      });
+      map.addLayer({
+        id: "drawing-vertex-halo",
+        type: "circle",
+        source: "drawing",
+        filter: ["==", ["get", "kind"], "vertex"],
+        paint: { "circle-radius": 6, "circle-color": "#ffffff" },
+      });
+      map.addLayer({
+        id: "drawing-vertex",
+        type: "circle",
+        source: "drawing",
+        filter: ["==", ["get", "kind"], "vertex"],
+        paint: { "circle-radius": 4, "circle-color": DRAW_FILL_COLOR },
+      });
+
       setReady(true);
     });
 
-    // Click-to-select.
+    // Click-to-select existing block.
     map.on("click", "blocks-fill", (e) => {
+      if (drawingVertsRef.current.length > 0) return; // mid-draw, ignore
       const f = e.features?.[0];
       if (f && f.id != null) onBlockSelect(String(f.id));
-    });
-    map.on("click", (e) => {
-      // Click outside any feature deselects.
-      const features = map.queryRenderedFeatures(e.point, {
-        layers: ["blocks-fill"],
-      });
-      if (features.length === 0) onBlockSelect(null);
     });
 
     mapRef.current = map;
 
     return () => {
-      drawRef.current = null;
       map.remove();
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Update blocks data when props change.
+  // Refresh saved-blocks layer.
   useEffect(() => {
     if (!ready || !mapRef.current) return;
     const src = mapRef.current.getSource("blocks") as
@@ -190,130 +206,87 @@ export function SprayMap({
     if (src) src.setData(blocksToFeatureCollection(blocks));
   }, [blocks, ready]);
 
-  // Recenter when the vineyard's centroid changes (rare).
+  // Recenter when centroid arrives.
   useEffect(() => {
     if (!ready || !mapRef.current || !centroid) return;
     mapRef.current.flyTo({ center: centroid, zoom: 14, duration: 0 });
   }, [centroid, ready]);
 
-  // Mount / unmount the draw control when editable flips.
+  // Refresh drawing-in-progress layer when verts change.
+  useEffect(() => {
+    drawingVertsRef.current = drawingVerts;
+    if (!ready || !mapRef.current) return;
+    const src = mapRef.current.getSource("drawing") as
+      | maplibregl.GeoJSONSource
+      | undefined;
+    if (src) src.setData(vertsToDrawFeatureCollection(drawingVerts));
+  }, [drawingVerts, ready]);
+
+  // Wire / unwire click handlers when editable toggles.
   useEffect(() => {
     if (!ready || !mapRef.current) return;
     const map = mapRef.current;
 
-    if (editable && !drawRef.current) {
-      // MapboxDraw's DEFAULT styles use Mapbox-GL-specific expression
-      // syntax (numeric dasharray arrays without a "literal" wrapper)
-      // that MapLibre rejects. Pass our own MapLibre-safe minimal
-      // styles so the layer adds cleanly.
-      // Reference style ids must include "gl-draw-*" prefixes that
-      // mapbox-gl-draw expects when filtering its own layers.
-      const draw = new MapboxDraw({
-        displayControlsDefault: false,
-        controls: { polygon: true, trash: true },
-        styles: [
-          // Polygon fill (active = selected, inactive = saved/idle)
-          {
-            id: "gl-draw-polygon-fill-inactive",
-            type: "fill",
-            filter: [
-              "all",
-              ["==", "active", "false"],
-              ["==", "$type", "Polygon"],
-              ["!=", "mode", "static"],
-            ],
-            paint: { "fill-color": "#c08a3e", "fill-opacity": 0.25 },
-          },
-          {
-            id: "gl-draw-polygon-fill-active",
-            type: "fill",
-            filter: ["all", ["==", "active", "true"], ["==", "$type", "Polygon"]],
-            paint: { "fill-color": "#c08a3e", "fill-opacity": 0.4 },
-          },
-          // Polygon stroke
-          {
-            id: "gl-draw-polygon-stroke-inactive",
-            type: "line",
-            filter: [
-              "all",
-              ["==", "active", "false"],
-              ["==", "$type", "Polygon"],
-              ["!=", "mode", "static"],
-            ],
-            layout: { "line-cap": "round", "line-join": "round" },
-            paint: { "line-color": "#ffffff", "line-width": 1.5 },
-          },
-          {
-            id: "gl-draw-polygon-stroke-active",
-            type: "line",
-            filter: ["all", ["==", "active", "true"], ["==", "$type", "Polygon"]],
-            layout: { "line-cap": "round", "line-join": "round" },
-            paint: { "line-color": "#c08a3e", "line-width": 2 },
-          },
-          // Mid-line for the polygon currently being drawn (LineString
-          // is what MapboxDraw uses while waiting for the user to close)
-          {
-            id: "gl-draw-line-active",
-            type: "line",
-            filter: ["all", ["==", "$type", "LineString"], ["==", "active", "true"]],
-            layout: { "line-cap": "round", "line-join": "round" },
-            paint: { "line-color": "#c08a3e", "line-width": 2 },
-          },
-          // Vertex points (the dots on every polygon corner)
-          {
-            id: "gl-draw-polygon-and-line-vertex-stroke-inactive",
-            type: "circle",
-            filter: ["all", ["==", "meta", "vertex"], ["==", "$type", "Point"]],
-            paint: { "circle-radius": 5, "circle-color": "#ffffff" },
-          },
-          {
-            id: "gl-draw-polygon-and-line-vertex-inactive",
-            type: "circle",
-            filter: ["all", ["==", "meta", "vertex"], ["==", "$type", "Point"]],
-            paint: { "circle-radius": 3, "circle-color": "#c08a3e" },
-          },
-        ],
-      });
-      // MapboxDraw's typing assumes mapbox-gl, but it works at runtime
-      // with maplibre-gl.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      map.addControl(draw as any, "top-right");
-      drawRef.current = draw;
-
-      map.on("draw.create", (e: { features: GeoJSON.Feature[] }) => {
-        const f = e.features[0];
-        if (f && f.geometry.type === "Polygon") {
-          onBlockCreate(f.geometry);
-          // Clear the draw layer so the saved polygon takes over.
-          if (drawRef.current) drawRef.current.deleteAll();
-        }
-      });
-      map.on(
-        "draw.update",
-        (e: { features: GeoJSON.Feature[]; action: string }) => {
-          const f = e.features[0];
-          if (
-            f &&
-            f.geometry.type === "Polygon" &&
-            selectedBlockId &&
-            f.id === selectedBlockId
-          ) {
-            onBlockUpdate(selectedBlockId, f.geometry);
-          }
-        }
-      );
-    } else if (!editable && drawRef.current) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      map.removeControl(drawRef.current as any);
-      drawRef.current = null;
+    if (!editable) {
+      // Reset draw state when leaving edit mode.
+      setDrawingVerts([]);
+      map.getCanvas().style.cursor = "";
+      return;
     }
-  }, [editable, ready, selectedBlockId, onBlockCreate, onBlockUpdate]);
+
+    map.getCanvas().style.cursor = "crosshair";
+
+    const onClick = (e: maplibregl.MapMouseEvent) => {
+      // Add a vertex at click point.
+      const { lng, lat } = e.lngLat;
+      setDrawingVerts((vs) => [...vs, [lng, lat]]);
+    };
+
+    const onDblClick = (e: maplibregl.MapMouseEvent) => {
+      // Close the polygon.
+      e.preventDefault();
+      const verts = drawingVertsRef.current;
+      const polygon = vertsToPolygon(verts);
+      if (polygon) {
+        onBlockCreate(polygon);
+      }
+      setDrawingVerts([]);
+    };
+
+    const onContextMenu = (e: maplibregl.MapMouseEvent) => {
+      // Right-click cancels.
+      e.preventDefault();
+      setDrawingVerts([]);
+    };
+
+    map.on("click", onClick);
+    map.on("dblclick", onDblClick);
+    map.on("contextmenu", onContextMenu);
+
+    return () => {
+      map.off("click", onClick);
+      map.off("dblclick", onDblClick);
+      map.off("contextmenu", onContextMenu);
+      map.getCanvas().style.cursor = "";
+    };
+  }, [editable, ready, onBlockCreate]);
+
+  // void-suppress unused props until edit-mode (drag vertex) lands.
+  void onBlockUpdate;
+  void selectedBlockId;
 
   return (
-    <div
-      ref={containerRef}
-      className={className ?? "h-full w-full"}
-      data-testid="spray-map"
-    />
+    <div className="relative h-full w-full">
+      <div
+        ref={containerRef}
+        className={className ?? "h-full w-full"}
+        data-testid="spray-map"
+      />
+      {editable && (
+        <div className="pointer-events-none absolute left-3 top-3 rounded-md bg-background/85 px-3 py-2 text-xs text-foreground/80 shadow-md">
+          Click to add vertices · double-click to close · right-click to cancel
+        </div>
+      )}
+    </div>
   );
 }
