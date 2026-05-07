@@ -624,3 +624,113 @@ class Capture(models.Model):
 
     def __str__(self) -> str:
         return f"{self.kind} {self.s3_key} ({self.status})"
+
+
+# =====================================================================
+# M1.5 PR-C: Aggregation engine — RiskRecord + BlockVerdict (SA-2)
+# =====================================================================
+
+
+class RiskRecord(models.Model):
+    """Single mechanistic-model output for one block per pathogen per window.
+
+    Mirrors the `risk_record.emitted.v1` event schema. Persisted so the
+    ensemble engine can audit-trail every input that fed a verdict, and
+    so future Year-1 weighted ensembles can train against historical
+    runner outputs.
+    """
+
+    class Pathogen(models.TextChoices):
+        POWDERY = "powdery", "Powdery"
+        DOWNY = "downy", "Downy"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    block = models.ForeignKey(
+        Block, on_delete=models.CASCADE, related_name="risk_records"
+    )
+    model_id = models.CharField(max_length=80)
+    model_version = models.CharField(max_length=32)
+    valid_from = models.DateTimeField()
+    valid_to = models.DateTimeField()
+    pathogen = models.CharField(max_length=10, choices=Pathogen.choices)
+    severity_1_10 = models.DecimalField(max_digits=4, decimal_places=2)
+    raw_score = models.JSONField(default=dict)
+    thresholds_fired = models.JSONField(default=list)
+    input_snapshot_id = models.CharField(max_length=80)
+    confidence = models.DecimalField(max_digits=5, decimal_places=4)
+    citation_id = models.CharField(max_length=40)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    objects = OrgScopedManager(via="block__vineyard__org_id")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["block", "model_id", "valid_from"],
+                name="unique_block_model_window",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["block", "-valid_from"]),
+            models.Index(fields=["pathogen", "-valid_from"]),
+            models.Index(fields=["model_id", "-valid_from"]),
+        ]
+
+    def __str__(self) -> str:
+        return (
+            f"{self.model_id} {self.pathogen} sev={self.severity_1_10} "
+            f"@ {self.valid_from.date()}"
+        )
+
+
+class BlockVerdict(models.Model):
+    """Daily ensemble verdict — the single decision-intelligence output
+    surfaced to growers. Mirrors `block_verdict.generated.v1`.
+    """
+
+    class Action(models.TextChoices):
+        SPRAY = "spray", "Spray"
+        HOLD = "hold", "Hold"
+        SCOUT = "scout", "Scout"
+
+    class Urgency(models.TextChoices):
+        NOW = "now", "Now"
+        H24 = "24h", "24h"
+        H72 = "72h", "72h"
+        NONE = "none", "None"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    block = models.ForeignKey(
+        Block, on_delete=models.CASCADE, related_name="verdicts"
+    )
+    date = models.DateField()
+    powdery_severity_1_10 = models.DecimalField(max_digits=4, decimal_places=2)
+    downy_severity_1_10 = models.DecimalField(max_digits=4, decimal_places=2)
+    powdery_confidence = models.DecimalField(max_digits=5, decimal_places=4)
+    downy_confidence = models.DecimalField(max_digits=5, decimal_places=4)
+    action = models.CharField(max_length=10, choices=Action.choices)
+    urgency = models.CharField(max_length=10, choices=Urgency.choices)
+    drivers = models.JSONField(default=list)
+    split_summary = models.TextField(blank=True)
+    forecast_7d = models.JSONField(default=list)
+    advisory_events = models.JSONField(default=list)
+    model_versions = models.JSONField(default=dict)
+    generated_at = models.DateTimeField()
+    audit_hash = models.CharField(max_length=80)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    objects = OrgScopedManager(via="block__vineyard__org_id")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["block", "date"], name="unique_block_date_verdict"
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["block", "-date"]),
+            models.Index(fields=["action", "-date"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.block_id} {self.date} {self.action} ({self.urgency})"

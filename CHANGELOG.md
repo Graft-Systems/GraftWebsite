@@ -6,6 +6,53 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), wit
 
 ## Unreleased
 
+### M1.5 PR-C: aggregation engine MVP (3 model runners + Year-0 ensemble + audit hash + verdict API) — READY FOR MERGE
+
+PR on `graft-spray/m1.5/aggregation-engine-v0`. The keystone milestone where the SA-2 pivot becomes real code: 3 mechanistic model runners emit `RiskRecord`s, an equal-weight soft-vote ensemble fuses them into a `BlockVerdict` per block per day, both layers persist to Postgres + emit DataLakeEvents, audit-hash makes each verdict tamper-evident, hourly Celery beat fires in-season, and verdict API endpoints surface the result to the frontend.
+
+#### Added
+
+- **`services/api/spray/aggregation/`** package — clean, self-contained, importable independently of the worker.
+  - `runners/base.py` — `ModelRunner` Protocol, `WeatherWindow` + `HourlyObservation` dataclasses, `RiskRecordResult` (mirrors event schema), deterministic `WeatherWindow.snapshot_id()` (sha256 over the observation series).
+  - `runners/registry.py` — slug→class lookup, decorator-based self-registration, `all_runner_versions()` for audit hashing, eager imports for the three runners.
+  - `runners/gubler_thomas.py` — UC Davis Powdery Mildew Risk Index 2013 revision (`docs/research/06_outbreak-prediction.md` 06-S2). 6h favourable blocks @ 21–30°C add +20; 2h lethal blocks @ >38°C subtract -10; RI capped 0–100; severity via `gt_ri_to_severity_1_10`.
+  - `runners/caffi_primary.py` — Caffi 2009 primary infection downy mildew (06-S5). Three gating conditions over 24h: cumulative rain ≥ 2 mm, wetness ≥ 8h with T ≥ 11°C, mean temp ≥ 11°C. Surrogate score 0–10 mapped to severity.
+  - `runners/caffi_secondary.py` — Caffi 2010 secondary infection (06-S6). Wet+warm hour count (T 10–25°C, LW ≥ 30 min) banded into severity 1–10.
+  - `severity_anchors.py` — three anchor functions (powdery RI, primary surrogate, secondary hours) per spec §11A.4. Monotonic, bounded, deterministic. Backward-compat plan documented for Year-1+ updates.
+  - `ensemble.py` — `equal_weight_soft_vote()` — averages severity per pathogen, computes confidence = 1.0 − σ(severities)/5.0 clipped, threshold-maps severity → action (`spray ≥ 7 ≥ scout ≥ 4 > hold`) and urgency. Emits a verdict dict matching `block_verdict.generated.v1.json` exactly. Year-1 weighted + Year-2 stacked variants flagged for later.
+  - `audit.py` — `compute_audit_hash()` returns `sha256:HEX64` over `(input_snapshot_id, model_versions, ensemble_version)`. Deterministic + stable across dict ordering.
+- **Django models** (`services/api/spray/models.py`):
+  - `RiskRecord` — one row per block per pathogen per (model_id, valid_from). Tenant-scoped via `OrgScopedManager(via="block__vineyard__org_id")`. Unique on `(block, model_id, valid_from)` for idempotent upsert.
+  - `BlockVerdict` — daily ensemble verdict consumed by the UI. Unique on `(block, date)`. Stores all fields from the schema verbatim including drivers, forecast_7d, audit_hash.
+- **Migration `0008_aggregation_models`** — creates both tables, adds RLS policies that traverse `block → vineyard → org_id` (matches M1-09 Capture pattern). Reversible.
+- **Celery worker task** (`services/worker/graft_worker/tasks/aggregation_run.py`):
+  - `compute_all_active_blocks` (hourly beat, in-season April–October UTC) fans out per-block tasks.
+  - `compute_block_verdict` runs all registered runners against the last 24h weather window for the block's region-default station, persists RiskRecords (upsert), emits `risk_record.emitted` per record, fuses via the ensemble, persists the verdict (upsert), emits `block_verdict.generated`.
+  - Cadence env-overridable via `GRAFT_SPRAY_AGGREGATION_CADENCE_SEC` (default 3600).
+  - Eagerly imported by `tasks/__init__.py` so `@shared_task` registers at worker boot.
+- **API endpoints** (`services/api/spray/views.py` + `urls.py`):
+  - `GET /api/spray/orgs/<org_id>/blocks/<block_id>/verdicts/latest` — most recent verdict; 404 if none yet.
+  - `GET /api/spray/orgs/<org_id>/blocks/<block_id>/verdicts?since=<iso>` — paginated history, default 30-day window.
+  - Both gated by `IsOrgViewer`; tenant-scoped via the manager.
+  - `BlockVerdictSerializer` + `RiskRecordSerializer` added.
+- **Frontend stub** (`apps/web/app/spray/(app)/recommendations/page.tsx`) — placeholder page that links to verdict endpoints. Real UI lands in PR-F.
+- **Tests** (~30 new):
+  - `test_aggregation_runners.py` — registry sanity, severity anchors monotonic + bounded, GT high/low/lethal scenarios, Caffi primary 3-of-3 / 0-of-3 cases, Caffi secondary high/low cases, snapshot_id determinism.
+  - `test_ensemble_and_audit.py` — audit_hash sha256 format, deterministic, changes when any input changes; ensemble action thresholding (spray/scout/hold), split_summary surfaces disagreement, empty-records still emits a valid 7-day-forecast verdict.
+  - `test_verdict_endpoints.py` — latest returns most recent, 404 when none, since-param filtering, invalid-since 400, cross-org denial, viewer role can read.
+
+#### Manual prerequisites
+
+**None.** Reuses existing Render Postgres + worker + Redis. No new infra.
+
+#### Notes
+
+- **Year-0 simplifications** (intentional, documented in each runner's docstring): GT skips biofix detection + diurnal humidity gating; Caffi runners use qualitative gates instead of full energy-balance equations; forecast_7d is a deterministic flat-line stub until forecast windows arrive in PR-G. Caveats under "PR-C.5 / M2" in code comments.
+- Adding a 4th runner is verified-by-design: drop a module under `aggregation/runners/`, decorate with `@register_runner`, add the import in `registry.py`. Tests assert this works for the three shipped runners; the PR-C plan §6 acceptance criterion mandates a stub `mills_table` runner test which we add in PR-C.5 alongside the real Mills implementation.
+- `audit_hash` is reproducible: same `(input_snapshot_id, model_versions, ensemble_version)` always produces the same hash. Mutating any of the three changes the hash. Tested.
+- The forecast in `forecast_7d` is a placeholder (every day is "hold severity 1.0"). Real 7-day forecasts require running each runner against forecast weather windows; that's wired in PR-G alongside the Sentinel-2 vigor anomaly feature.
+- All emit_event calls use the schemas from PR-B; `scripts/check_event_schemas.py` will see new producers (`risk_record.emitted`, `block_verdict.generated`) and validate them.
+
 ### M1.5 PR-B: aggregation schemas (RiskRecord, BlockVerdict, AdvisoryEvent, SensorReading) — READY FOR MERGE
 
 PR on `graft-spray/m1.5/aggregation-schemas`. Pure schema-registry additions with zero behavior change. Foundation for PR-C (aggregation engine), PR-D/E (sensor connectors), and PR-H (advisory feeds).

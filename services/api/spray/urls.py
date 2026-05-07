@@ -97,4 +97,15 @@ urlpatterns = [
         views.CaptureDetailView.as_view(),
         name="capture_detail",
     ),
+    # M1.5 PR-C: Aggregation engine — verdict endpoints.
+    path(
+        "orgs/<uuid:org_id>/blocks/<uuid:block_id>/verdicts/latest",
+        views.BlockVerdictLatestView.as_view(),
+        name="block_verdict_latest",
+    ),
+    path(
+        "orgs/<uuid:org_id>/blocks/<uuid:block_id>/verdicts",
+        views.BlockVerdictListView.as_view(),
+        name="block_verdict_list",
+    ),
 ]

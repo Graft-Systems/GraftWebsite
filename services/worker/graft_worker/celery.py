@@ -57,6 +57,20 @@ app.conf.beat_schedule = {
         ),
         "schedule": schedule(3600.0),
     },
+    # M1.5 PR-C: aggregation engine. Beat fires hourly; the task itself
+    # short-circuits when out of season (April–October UTC).
+    "aggregation-run": {
+        "task": (
+            "graft_worker.tasks.aggregation_run.compute_all_active_blocks"
+        ),
+        "schedule": schedule(
+            float(
+                __import__("os").environ.get(
+                    "GRAFT_SPRAY_AGGREGATION_CADENCE_SEC", "3600"
+                )
+            )
+        ),
+    },
 }
 
 app.conf.timezone = "UTC"
