@@ -202,9 +202,77 @@ export function SprayMap({
     const map = mapRef.current;
 
     if (editable && !drawRef.current) {
+      // MapboxDraw's DEFAULT styles use Mapbox-GL-specific expression
+      // syntax (numeric dasharray arrays without a "literal" wrapper)
+      // that MapLibre rejects. Pass our own MapLibre-safe minimal
+      // styles so the layer adds cleanly.
+      // Reference style ids must include "gl-draw-*" prefixes that
+      // mapbox-gl-draw expects when filtering its own layers.
       const draw = new MapboxDraw({
         displayControlsDefault: false,
         controls: { polygon: true, trash: true },
+        styles: [
+          // Polygon fill (active = selected, inactive = saved/idle)
+          {
+            id: "gl-draw-polygon-fill-inactive",
+            type: "fill",
+            filter: [
+              "all",
+              ["==", "active", "false"],
+              ["==", "$type", "Polygon"],
+              ["!=", "mode", "static"],
+            ],
+            paint: { "fill-color": "#c08a3e", "fill-opacity": 0.25 },
+          },
+          {
+            id: "gl-draw-polygon-fill-active",
+            type: "fill",
+            filter: ["all", ["==", "active", "true"], ["==", "$type", "Polygon"]],
+            paint: { "fill-color": "#c08a3e", "fill-opacity": 0.4 },
+          },
+          // Polygon stroke
+          {
+            id: "gl-draw-polygon-stroke-inactive",
+            type: "line",
+            filter: [
+              "all",
+              ["==", "active", "false"],
+              ["==", "$type", "Polygon"],
+              ["!=", "mode", "static"],
+            ],
+            layout: { "line-cap": "round", "line-join": "round" },
+            paint: { "line-color": "#ffffff", "line-width": 1.5 },
+          },
+          {
+            id: "gl-draw-polygon-stroke-active",
+            type: "line",
+            filter: ["all", ["==", "active", "true"], ["==", "$type", "Polygon"]],
+            layout: { "line-cap": "round", "line-join": "round" },
+            paint: { "line-color": "#c08a3e", "line-width": 2 },
+          },
+          // Mid-line for the polygon currently being drawn (LineString
+          // is what MapboxDraw uses while waiting for the user to close)
+          {
+            id: "gl-draw-line-active",
+            type: "line",
+            filter: ["all", ["==", "$type", "LineString"], ["==", "active", "true"]],
+            layout: { "line-cap": "round", "line-join": "round" },
+            paint: { "line-color": "#c08a3e", "line-width": 2 },
+          },
+          // Vertex points (the dots on every polygon corner)
+          {
+            id: "gl-draw-polygon-and-line-vertex-stroke-inactive",
+            type: "circle",
+            filter: ["all", ["==", "meta", "vertex"], ["==", "$type", "Point"]],
+            paint: { "circle-radius": 5, "circle-color": "#ffffff" },
+          },
+          {
+            id: "gl-draw-polygon-and-line-vertex-inactive",
+            type: "circle",
+            filter: ["all", ["==", "meta", "vertex"], ["==", "$type", "Point"]],
+            paint: { "circle-radius": 3, "circle-color": "#c08a3e" },
+          },
+        ],
       });
       // MapboxDraw's typing assumes mapbox-gl, but it works at runtime
       // with maplibre-gl.
