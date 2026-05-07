@@ -70,6 +70,22 @@ def set_current_org_id(org_id: str | None) -> None:
             cursor.execute("SELECT set_config('app.current_org_id', '', true)")
 
 
+def set_current_user_id(user_id: str | None) -> None:
+    """Set the `app.current_user_id` GUC for RLS user-scoped reads.
+
+    Used by the Membership policy: a user can always see their OWN
+    Membership rows even when no org context is set (i.e. when calling
+    GET /api/spray/orgs/me to discover which orgs they belong to).
+    """
+    if connection.vendor != "postgresql":
+        return
+    with connection.cursor() as cursor:
+        if user_id:
+            cursor.execute("SELECT set_config('app.current_user_id', %s, true)", [str(user_id)])
+        else:
+            cursor.execute("SELECT set_config('app.current_user_id', '', true)")
+
+
 class CurrentOrgMiddleware:
     """Sets `app.current_org_id` from the resolved org context per request."""
 
@@ -82,9 +98,22 @@ class CurrentOrgMiddleware:
         # (e.g. JSON body, freshly-created Org).
         org_id = _resolve_org_id(request)
         set_current_org_id(org_id)
+
+        # Set user GUC so the Membership RLS policy lets a user see
+        # their OWN rows even when no org context is set (e.g. the
+        # GET /orgs/me list-my-memberships call).
+        user = getattr(request, "user", None)
+        user_id = (
+            str(getattr(user, "id", "") or "")
+            if getattr(user, "is_authenticated", False)
+            else ""
+        )
+        set_current_user_id(user_id or None)
+
         try:
             return self.get_response(request)
         finally:
             # Defensive: explicitly clear so a connection returned to
             # the pool with a stale GUC cannot leak across requests.
             set_current_org_id(None)
+            set_current_user_id(None)
