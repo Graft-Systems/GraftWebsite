@@ -6,6 +6,36 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), wit
 
 ## Unreleased
 
+### Pivot amendment: decision-intelligence aggregation hub (SA-2) — IN REVIEW
+
+PR-A on `graft-spray/m1/pivot-amendment-docs`. Documentation-only amendment that locks in the strategic pivot from per-photo computer-vision detection to a per-vineyard decision-intelligence aggregation hub. CV becomes an optional Phase 3 scouting module (M3+); the M1-09 capture upload pipeline stays merged but the CV severity grading work slips behind M1.5 in priority.
+
+#### Customer signal (canonical pivot rationale)
+
+Five winery conversations independently surfaced the same insight: *"if you see mold it's already too late, but we still want something better than the smattering of sources we currently rely on."* Named: Far Niente (John McCarthy, Director Vineyard Ops), Newton Vineyards, Chandon, Sprucewood Shores, plus pattern across other Napa/Sonoma growers. McCarthy meeting was 2026-05-05 in person. This is the empirical basis for SA-2.
+
+#### Added (docs only — zero code changes)
+
+- `docs/spec/Graft-Spray-App-Spec.md` Appendix A — new SA-2 entry, plus six new sections inserted: §11A (Model Aggregation & Ensembling), §12A (Sensor Platform Integrations), §12B (Satellite & Remote Sensing), §12C (Advisory Feeds), §13A (Per-Tenant Agent Architecture), §13B (Recommendation Engine + Daily Card).
+- `docs/spec/Graft-Spray-App-Spec.md` rewrites: §1 Executive Summary (terser, aggregation-hub framing), §5.5 (model-runner orchestration replaces hybrid CV inference), §8.9 (risk heatmap is ensemble-driven, not CV-driven). Demotions: §6.3, §8.5, §10 wrapped under "Phase 3" framings.
+- `docs/spec/CODEBASE_PLAN.md` Section 2 — new directories under `services/api/spray/aggregation/`, `connectors/sensors/`, `connectors/satellite/`, `agents/`, `recommendation/`. Namespace convention locked: `providers/` for external read-only feeds, `connectors/sensors/` for vendor APIs the customer authenticates against.
+- `docs/spec/CODEBASE_PLAN.md` Section 5 — M1.5 rows for all SA-2 work; `services/ml/*` moved from M1-10 to M3+ (Phase 3 CV scouting).
+- `docs/spec/CODEBASE_PLAN.md` Section 13 — new risks R21–R26 (sensor API churn, satellite quota, model disagreement UX, agent lock-in, advisory scrape fragility, prescriptive-advice liability).
+- `docs/spec/CODEBASE_PLAN.md` Section 14 — new questions Q15 (RESOLVED: daily verdict format), Q16 (RESOLVED: phased agent architecture), Q17 (OPEN: free-tier ceiling), Q18 (OPEN: Sentinel-2 cloud-day fallback), Q19 (OPEN: METER PHYTOS-31 requirement).
+- Six new dossier files (`08_model-aggregation.md` through `13_advisory-feeds.md`) at ~500 lines each.
+- `docs/research/pivot/` — `PIVOT_AMENDMENT_PLAN.md`, `SPEC_AMENDMENT_v2.md`, `CLAUDE_CODE_DIRECTIVE_v3.md` (8-PR implementation track).
+- Updated `docs/research/00_index.md`, `glossary.md`, `paywalled_queue.md`, `sources_master.csv` (211 new pivot-related sources).
+
+#### Manual prerequisites
+
+**None.** PR-A is documentation-only. Subsequent PRs (PR-B onward) need a willing pilot grower with Pessl/Davis/METER stations to validate sensor connectors.
+
+#### Notes
+
+- Original CV-centric Executive Summary preserved in git history at commit `73a5371`.
+- 8-PR implementation sequence (PR-B schemas → PR-C aggregation engine → PR-D Pessl → PR-E Davis+METER → PR-F daily verdict UI + LLM brief → PR-G Sentinel-2 → PR-H advisory feeds EU/AR) per directive.
+- Strategist's flag: aggressive scope vs Moelis runway (June 1). PRs G + H deferable to post-Moelis without breaking the Napa-launch demo.
+
 ### M1-09: Photo/video capture upload (web) — READY FOR MERGE
 
 PR #16 on `graft-spray/m1/capture-upload-web`. The first user-visible feature in the M1 layer (Spec §8.5). Step 2 of the M0-06 → M1-09 → M1-10 → M1-12 triad that gives a Napa beta grower the visible loop before Moelis blackout.

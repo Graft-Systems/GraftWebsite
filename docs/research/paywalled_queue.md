@@ -2,7 +2,7 @@
 
 This queue aggregates every paywalled source flagged across the Graft Spray research dossier, sorted by category and reference ID. The user (bensonn@umich.edu) has University of Michigan library access and will retrieve full text in batch.
 
-**Total to retrieve:** 47 paywalled sources across 8 categories.
+**Total to retrieve:** 56 paywalled sources across 10 categories.
 
 **Recommended workflow:** open the U-M Library proxy → bulk-search by DOI → save PDFs to `/home/user/workspace/graft-spray/research/assets/<category>/paywalled/` and update the relevant category file with a local link beside the original URL.
 
@@ -94,3 +94,56 @@ This queue aggregates every paywalled source flagged across the Graft Spray rese
 | P4 | The Value of Powdery Mildew Resistance in Grapes Evidence from California | Fuller Alston Sambucci | 2014 |  | https://www.econstor.eu/bitstream/10419/194486/1/1-s2.0-S2212977414000234-main.pdf |
 | P5 | To what extent can a phase-out of pesticides in viticulture be achieved DEPHY network | Various | 2024 |  | https://oeno-one.eu/article/view/7885 |
 | P6 | EU Directive 2009/128/EC EPRS Study | EPRS | 2018 |  | https://www.europarl.europa.eu/RegData/etudes/STUD/2018/627113/EPRS_STU(2018)627113_EN.pdf |
+
+## 11_agent-architecture — Agent Architecture Survey [11-agents]
+
+All 29 sources for this category are open-access (vendor documentation, pricing pages, engineering blogs, community forums). No paywalled sources identified.
+
+No retrieval action required for this category.
+
+---
+
+## 12_recommendation-engine-patterns — Recommendation Engine Patterns (5 paywalled) `[12-reco]`
+
+| Ref | Title | Author/Org | Year | DOI | URL |
+|---|---|---|---|---|---|
+| P11 | Comparison of SHAP and clinician-friendly explanations for AI-based clinical decision support systems. *npj Digital Medicine* (2025). | npj Digital Medicine | 2025 | PMC12475050 | https://pmc.ncbi.nlm.nih.gov/articles/PMC12475050/ |
+| P12 | Additive-feature-attribution methods: A review on explainable AI for fluid dynamics and heat transfer. *International Journal of Heat and Fluid Flow* (2024). | ScienceDirect | 2024 | 10.1016/j.ijheatfluidflow.2024.109542 | https://www.sciencedirect.com/science/article/pii/S0142727X24003874 |
+| P13 | Efficient Fact-Checking of LLMs on Grounding Documents (MiniCheck). EMNLP 2024. | Tang et al.; EMNLP 2024 | 2024 | (ACL Anthology) | https://aclanthology.org/2024.emnlp-main.499.pdf |
+| P14 | Social acceptance of large language models in agricultural extension and advisory services. *Q Open* (2026). | Oxford Academic | 2026 | 10.1093/qopen/qoag001 | https://academic.oup.com/qopen/article/6/1/qoag001/8653928 |
+| P15 | AI for crop production — Where can large language models add value? *Computers and Electronics in Agriculture* (2024). | ScienceDirect | 2024 | 10.1016/j.compag.2024.109124 | https://www.sciencedirect.com/science/article/pii/S0168169924003156 |
+
+## 10_satellite-remote-sensing — Satellite & Remote Sensing (4 paywalled)
+
+| Ref | Title | Author/Org | Year | DOI | URL |
+|---|---|---|---|---|---|
+| P1 | Assessing the Capacity of High-Resolution Commercial Satellite Imagery for Grapevine Downy Mildew Detection and Surveillance in New York State | Kanaley K, Combs DB, Paul A, Jiang Y, Bates TL, Gold K / *Phytopathology* | 2024 | 10.1094/PHYTO-11-23-0432-R | https://apsjournals.apsnet.org/doi/10.1094/PHYTO-11-23-0432-R |
+| P2 | Box Sampling: a New Spatial Sampling Method for Grapevine Macronutrients Using Sentinel-1 and Sentinel-2 Satellite Images | Trivedi MB, Bates TR, Meyers J, Shcherbatyuk N, Davadant P, Chancia R, Lohman R, Van Heuvel JE / *Precision Agriculture* | 2025 | 10.1007/s11119-025-10225-5 | https://link.springer.com/article/10.1007/s11119-025-10225-5 |
+| P3 | Comparison of Different Vegetative Indices for Calibrating Proximal Canopy Sensors to Grapevine Pruning Weight | Taylor J, Bates T / *American Journal of Enology and Viticulture* | 2021 | 10.5344/ajev.2021.20042 | https://www.ajevonline.org/content/ajev/72/3/279.full.pdf |
+| P4 | A Global Drought Monitoring System and Dataset Based on ERA5 Reanalysis: A Focus on Crop-Growing Regions | El Kenawy A, Latorre B, Peña-Angulo D et al. / *Geoscience Data Journal* | 2022 | 10.1002/gdj3.178 | https://rmets.onlinelibrary.wiley.com/doi/10.1002/gdj3.178 |
+
+## 08_model-aggregation — Model Aggregation & Ensemble Architecture (5 paywalled) [08-aggregation]
+
+| Ref | Title | Author/Org | Year | DOI | URL |
+|---|---|---|---|---|---|
+| S3 | A multiple crop model ensemble for improving broad-scale yield prediction using Bayesian model averaging | Huang X et al. | 2017 | 10.1016/J.FCR.2017.06.011 | https://doi.org/10.1016/J.FCR.2017.06.011 |
+| S4 | Evaluation of crop model prediction and uncertainty using Bayesian parameter estimation and Bayesian model averaging | Gao Y et al. | 2021 | 10.1016/j.agrformet.2021.108686 | https://doi.org/10.1016/j.agrformet.2021.108686 |
+| S6/S22 | Factor Analysis and Prediction of Disease Risk Based on Large Ensembles of Models: Application to Virus Yellows in Sugar Beet | Chauvin D et al. | 2025 | 10.1094/PHYTO-01-25-0014-FI | https://doi.org/10.1094/PHYTO-01-25-0014-FI |
+| S12 | Influence of different sensor positions on leaf wetness duration measurements and their effect on the simulation of grapevine downy mildew (Plasmopara viticola) | Di Marta A; Orlandini S et al. | n.d. | 126188797 (SemanticScholar internal) | https://www.semanticscholar.org/paper/71da900d1d65226bd251e039ad3a30a4309e1478 |
+| S18 | Simulation of surface wetness with a water budget and energy balance approach | Magarey RD; Russo JM; Seem RC | 2006 | 10.1016/J.AGRFORMET.2006.08.016 | https://doi.org/10.1016/J.AGRFORMET.2006.08.016 |
+
+## 09_sensor-integrations — Sensor Integration Research (2 paywalled) [09-sensors]
+
+| Ref | Title | Author/Org | Year | DOI | URL |
+|---|---|---|---|---|---|
+| P1 | Trilles S, Torres-Sospedra J, Belmonte Ó, Zabala A (2018/2019). A Real IoT Solution for Smart Viticulture and Precision Agriculture Using IoT Sensors for Disease Prediction. Cited in Pascoal et al. (2024). | Trilles et al. | 2018 | — | — |
+| P2 | Bălăceanu C et al. (2021). Multi-sensor IoT platform with climatic, leaf wetness, and soil sensors for pest/disease prevention in viticulture. Cited in Pascoal et al. (2024). | Bălăceanu et al. | 2021 | — | — |
+
+## 13_advisory-feeds — Advisory Feeds (2 paywalled / restricted)
+
+Most advisory feeds in this category are open-access government or institutional resources. Two items with restricted access are noted below.
+
+| Ref | Title | Author/Org | Year | DOI | URL | Tag |
+|---|---|---|---|---|---|---|
+| P1 | CABI Compendium — Plasmopara viticola full datasheet (full text requires institutional login for some sections) | CABI | 2021 | 10.1079/cabicompendium.41918 | https://www.cabidigitallibrary.org/doi/full/10.1079/cabicompendium.41918 | [13-advisories] |
+| P2 | CABI Compendium — Erysiphe necator full datasheet (full text requires institutional login for some sections) | CABI | 2022 | 10.1079/cabicompendium.55705 | https://www.cabidigitallibrary.org/doi/full/10.1079/cabicompendium.55705 | [13-advisories] |

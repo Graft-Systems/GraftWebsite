@@ -233,6 +233,72 @@ The directory structure the repo will have at end of M1 (web MVP launch). Annota
 └── README.md                          [E rewritten for monorepo]
 ```
 
+### Section 2 — Pivot additions (SA-2, 2026-05-07)
+
+Per Spec Amendment SA-2, the target tree gains the following directories. Existing tree above is preserved verbatim.
+
+```
+services/api/spray/
+  aggregation/                       [N] M1.5 — §11A ensemble layer
+    runners/                         [N]   one subpackage per mechanistic model
+      gubler_thomas/                 [N]   M1.5
+      caffi_primary/                 [N]   M1.5
+      caffi_secondary/               [N]   M1.5
+      dmcast/                        [N]   M2 (deferable)
+      mills/                         [N]   M2 (deferable)
+      plasmo/                        [N]   M2+ (research)
+      magarey/                       [N]   M2+ (research)
+      snyder_sall/                   [N]   M2+ (research)
+    ensemble.py                      [N]   M1.5 — weighted/stacked fusion + conformal intervals
+    schemas.py                       [N]   M1.5 — RiskRecord, BlockVerdict
+    severity_anchors.py              [N]   M1.5 — 1–10 anchor tables
+    audit.py                         [N]   M1.5 — audit_hash computation
+  connectors/                        [N] M1.5 — vendor APIs the customer authenticates against
+    sensors/
+      davis/                         [N]   WeatherLink v2 polling — M1.5
+      pessl/                         [N]   FieldClimate OAuth 2.0 — M1.5
+      meter/                         [N]   ZENTRA push + poll — M1.5
+      sencrop/                       [N]   Phase 2 scaffold only at MVP
+    satellite/
+      cdse/                          [N]   Sentinel-2 Statistical API — M1.5
+      sentinel_hub/                  [N]   Phase 2 (paid)
+      earth_engine/                  [N]   Phase 3 (research-only license)
+  agents/                            [N] M2 — per-tenant agent runtime (gated on org.features.agent_enabled)
+    orchestrator/
+      langgraph/                     [N]   MVP path
+    memory/
+      postgres/                      [N]   MVP — checkpoints
+      letta/                         [N]   Growth phase
+    email/
+      agentmail/                     [N]   MVP — feature-flagged per org
+      ses/                           [N]   Scale phase (>300 farms)
+  recommendation/                    [N] M1.5/M2 — daily verdict UI + LLM brief
+    daily_brief/                     [N]   M2 — LLM rendering + P-Cite verifier
+    audit_log.py                     [N]   M1.5 — audit log writer
+
+services/api/spray/providers/        [E existing, retained]
+  uc_ipm_grape_pm.py                 [E from M0-06; becomes advisory_event producer at M1.5]
+  uspest_grape_pm.py                 [E same]
+  bsv_bourgogne_franche_comte.py     [N] M1.5 — PDF parser
+  bsv_nouvelle_aquitaine.py          [N] M1.5 — PDF parser
+  inrae_vigicultures.py              [N] M1.5 — JSON feed
+  inta_eea_mendoza.py                [N] M1.5 — HTML scrape
+
+docs/research/                       [E pivot adds 6 new categories]
+  08_model-aggregation.md            [N] SA-2
+  09_sensor-integrations.md          [N] SA-2
+  10_satellite-remote-sensing.md     [N] SA-2
+  11_agent-architecture.md           [N] SA-2
+  12_recommendation-engine-patterns.md [N] SA-2
+  13_advisory-feeds.md               [N] SA-2
+  pivot/
+    PIVOT_AMENDMENT_PLAN.md          [N] SA-2
+    SPEC_AMENDMENT_v2.md             [N] SA-2
+    CLAUDE_CODE_DIRECTIVE_v3.md      [N] SA-2
+```
+
+**Namespace convention (per directive §7).** `services/api/spray/providers/` keeps external read-only feeds we don't own (weather, advisory). `services/api/spray/connectors/sensors/` is for vendor APIs the customer authenticates against (Davis, Pessl, METER, Sencrop). The two namespaces coexist intentionally.
+
 ---
 
 ## Section 3 — Per-File Responsibility Map [SKELETON]
@@ -315,7 +381,17 @@ Every directory in the target tree mapped to the milestone (M0 / M1 / M2…) it 
 | `services/api/api/*` (existing) | M0-01 (relocated) | `graft-spray/m0/repo-bootstrap` |
 | `services/api/spray/models.py` + migrations | M0-03 | `graft-spray/m0/postgis-schema` |
 | `services/api/spray/views.py` (capture endpoint) | M1-09 | `graft-spray/m1/capture-upload-web` |
-| `services/ml/*` | M1-10 | `graft-spray/m1/ml-inference-cloud` |
+| `services/ml/*` | **M3+ (Phase 3 CV scouting per SA-2)** | `graft-spray/m3/cv-scouting-inference` |
+| `services/api/spray/aggregation/*` | **M1.5 (SA-2)** | `graft-spray/m1.5/aggregation-engine-v0` |
+| `services/api/spray/aggregation/runners/{gubler_thomas,caffi_primary,caffi_secondary}/*` | **M1.5 (SA-2)** | `graft-spray/m1.5/aggregation-engine-v0` |
+| `services/api/spray/connectors/sensors/davis/*` | **M1.5 (SA-2)** | `graft-spray/m1.5/sensor-davis-meter` |
+| `services/api/spray/connectors/sensors/pessl/*` | **M1.5 (SA-2)** | `graft-spray/m1.5/sensor-pessl` |
+| `services/api/spray/connectors/sensors/meter/*` | **M1.5 (SA-2)** | `graft-spray/m1.5/sensor-davis-meter` |
+| `services/api/spray/connectors/satellite/cdse/*` | **M1.5 (SA-2)** | `graft-spray/m1.5/satellite-sentinel2` |
+| `services/api/spray/providers/bsv_*.py`, `inrae_*.py`, `inta_*.py` | **M1.5 (SA-2)** | `graft-spray/m1.5/advisory-feeds-eu-ar` |
+| `services/api/spray/recommendation/*` | **M1.5 + M2 (SA-2)** | `graft-spray/m1.5/recommendation-card`, then `graft-spray/m2/llm-daily-brief` |
+| `services/api/spray/agents/*` | **M2 (SA-2)** | `graft-spray/m2/agent-runtime` |
+| `services/api/spray/translation/*` | **M1.5 (SA-2)** | `graft-spray/m1.5/advisory-feeds-eu-ar` |
 | `services/worker/tasks/weather_pull.py` | M0-06 | `graft-spray/m0/weather-adapter-napa` |
 | `services/worker/tasks/external_risk_index.py` | M0-06b | `graft-spray/m0/external-risk-index-feeds` |
 | `services/worker/tasks/risk_index.py` | M1-07 + M1-08 | `graft-spray/m1/risk-engine-*` |
@@ -589,6 +665,12 @@ Coverage targets: pytest ≥80% on `services/*`, vitest ≥70% on `apps/web` (ex
 | R18 | **External risk-index scraping etiquette** (M0-06b, Appendix A SA-1). UC IPM and uspest.org are public extension service sites; aggressive scraping could trigger rate limits or a block. | Medium | Possible | Builder | M0-06b: identifying user-agent (`Graft Spray External-Feeds Bot, contact: ...`), respect `robots.txt`, throttle to once per region per hour. Reach out to UC IPM (UC ANR) and OSU IPPC for an official API or partnership; cite per their TOS. |
 | R19 | **Source HTML changes break the parser** (M0-06b). UC IPM and uspest.org may redesign and break our scraper without notice. | Medium | Likely | Builder | M0-06b: parser-regression tests against captured HTML fixtures. Sentry alert on parse failure. Stale-flag fallback: serve last cached value for up to 24h before degrading the recommendation; after 24h, recommendation engine flags external feeds as unavailable. |
 | R20 | **TOS compliance for external sources** (M0-06b). Each source's terms must be reviewed: UC IPM (UC Cooperative Extension), OSU IPPC (OSU Extension). Both are public-funded extension services; data is generally permissive but verify. | Low | Possible | Strategist | M0-06b: explicit TOS review per source; document attribution language in app footer ("Live PM risk indices courtesy of UC IPM and OSU IPPC"); contact source maintainers proactively. |
+| **R21 (SA-2)** | **Sensor vendor API churn.** Davis, Pessl, METER all version their APIs. Breaking change without notice is realistic. | Medium | Likely | Builder | M1.5: vendor adapter pattern (one package per vendor under `connectors/sensors/`); contract tests per adapter; CI alert on schema drift. |
+| **R22 (SA-2)** | **Satellite quota overage.** CDSE Statistical API has rate caps; commercial Sentinel Hub tier costs scale with farm count. | Medium | Possible | Builder | M1.5: per-org quota meters; paid-tier upgrade trigger logged before user-facing degradation; document the upgrade economics in the runbook. |
+| **R23 (SA-2)** | **Model disagreement UX.** Growers may distrust the verdict if `split_summary` shows frequent disagreement between runners. | Medium | Possible | Strategist | M1.5: in-app onboarding explains ensembles; "show me why" expander surfaces every driver + weight + citation; M2: tune ensemble weights via Brier-score minimization. |
+| **R24 (SA-2)** | **Agent architecture lock-in.** Picking AgentMail or Letta now and migrating later costs weeks. | Medium | Possible | Builder | Every external-runtime choice sits behind a thin adapter package (`agents/orchestrator/<framework>/`, `agents/memory/<backend>/`, `agents/email/<provider>/`). Sprint-1 ships pure-API baseline so the agent runtime is purely additive at M2. |
+| **R25 (SA-2)** | **Advisory feed scrape fragility.** BSV PDFs and INTA HTML change layouts without notice. | Medium | Likely | Builder | M1.5: schema-validated parsers + golden-file regression tests + fallback-to-manual ingest worker on parse failure; row written with `severity=low` + `parse_error` field for ops triage. |
+| **R26 (SA-2)** | **Prescriptive-advice liability.** A wrong "hold" call could cost the grower a crop. | Medium | Possible | Strategist | §13B.4 three-layer disclaimer + signed onboarding ack + audit log PDF export + non-device CDS framing per FDA SaMD Criterion 4. Footer disclaimer on every recommendation surface (per §17.4). |
 
 ---
 
@@ -631,6 +713,23 @@ Numbered questions that block specific milestones. Each must be answered before 
 14. **Q14 — Default region pricing tiers.** Spec says "API budget undetermined; for every external API list pricing tiers." Confirm preferred default tier per provider (weather, satellite tiles, Gemini, Sentry, Datadog) or keep all on free tiers until traffic warrants. **Blocks:** M0-06 (weather provider choice).
    - **RESOLVED 2026-04-30 by Benson:** Free tier across the board until traffic warrants an upgrade. Per provider at launch: Visual Crossing free dev tier (1,000 calls per day), Tomorrow.io free tier as alternate, MapLibre with free Esri or Sentinel-2 tiles, Gemini API free tier, Sentry free or developer plan, Datadog skipped at launch (Sentry-only for observability), Render free Postgres for dev and Pro tier for prod (already paying). Each integration prints a usage warning when approaching its free-tier limit so an upgrade decision arrives ahead of an outage.
 
+### Pivot questions (SA-2, 2026-05-07)
+
+15. **Q15 — Recommendation output style.** Daily verdict (`spray`/`hold`/`scout`) + 7-day forecast + severity 1–10 + inline citations is the primary surface; the dashboard becomes a secondary view. **Blocks:** M1.5-10 daily-brief renderer.
+   - **RESOLVED 2026-05-07 by Benson:** single daily verdict + 7-day forecast + severity 1–10 + inline citations. Dashboard is secondary, not primary. Locked as L3 in `docs/research/pivot/CLAUDE_CODE_DIRECTIVE_v3.md`.
+
+16. **Q16 — Agent architecture choice.** Phased: pure-API (sprint 1) → LangGraph + Postgres (MVP) → LangGraph + Letta (growth) → LangGraph on K8s + SES (scale). AgentMail enabled per-tenant via feature flag at MVP+. **Blocks:** M2 agent runtime.
+   - **RESOLVED 2026-05-07 by Benson:** phased plan per spec §13A.2. AgentMail is a *capability*, not the architecture. Sprint-1 ships pure-API baseline; LangGraph + Postgres checkpoints land at M2; Letta + RLS isolation come on at the growth phase. Locked as L4.
+
+17. **Q17 — Free-tier ceiling for new integrations.** CDSE Statistical API (Sentinel-2), Letta API, AgentMail. Acceptable to stay free-tier until throughput forces upgrade? **Blocks:** M1.5-07 (satellite), M2 (agent runtime).
+   - **OPEN.** Default if silent: keep CDSE free tier as long as throughput allows; budget Sentinel Hub Statistical API paid-tier check-in at M3. Letta API spend gated to organizations with >50 active blocks. AgentMail enablement opt-in per org and disabled by default to avoid the $100/mo floor before paying customers materialize.
+
+18. **Q18 — Sentinel-2 cloud-day fallback.** When a block is cloud-covered for >2 consecutive Sentinel-2 revisits (10+ days), do we (a) hold the last good vigor metric, (b) substitute MODIS at coarser resolution, or (c) drop the satellite signal from the ensemble for that block until clear? **Blocks:** M1.5-07.
+   - **OPEN.** Default if silent: hold last good vigor 10 days, then drop from ensemble. Ship behind a feature flag; tune once we have real Napa data.
+
+19. **Q19 — METER PHYTOS-31 add-on requirement.** METER ATMOS-41 lacks native leaf wetness; require PHYTOS-31 at onboarding for METER-only customers, or accept gap-filled LW from RH-based heuristic? **Blocks:** M1.5-06 (METER connector).
+   - **OPEN.** Default if silent: non-blocking warning in onboarding, gap-fill via RH heuristic, mark `quality_flag="gap_filled"`. Surface a "for higher-confidence verdicts add a PHYTOS-31" prompt in the integrations panel.
+
 ---
 
 ## Appendix A — Spec Amendments
@@ -640,6 +739,7 @@ Amendments Benson has requested to the spec markdown after this plan was first d
 | ID | Date | Spec section affected | Change |
 |---|---|---|---|
 | **SA-1** | 2026-04-30 | §11 Disease Forecasting Engine + §12 Weather & External Data Integration Layer | **Live external-risk-index aggregator.** Periodically fetch authoritative grape powdery mildew risk indices from public extension services and feed them into the recommendation engine alongside the local Gubler-Thomas / DMCast computations. **Sources at launch:** UC IPM Grape PM Risk Assessment Index (https://ipm.ucanr.edu/weather/grape-powdery-mildew-risk-assessment-index/) and Oregon State USPest grape PM tool (https://uspest.org/risk/grape_powdery_app). **Architecture:** new Celery task `services/worker/tasks/external_risk_index.py` (M0-06b) scrapes hourly per region, writes to a new `ExternalRiskIndex` model in `services/api/spray/models.py`, lands in §19 data lake as an `external_risk_index.pulled` event. Recommendation engine cross-references local-vs-external on every block compute; flags divergence > threshold (e.g., 2 risk levels) for human review. Mobile chatbot can answer "what is UC IPM saying about my region?" by querying this table. **Risks:** R18 (rate limits / scraping etiquette), R19 (source HTML changes), R20 (TOS compliance). |
+| **SA-2** | 2026-05-07 | §1, §5.5, §6.3, §8.5, §8.9, §10, §11, §12 + new §11A, §12A, §12B, §12C, §13A, §13B + new Appendix A entry in spec | **Pivot to per-vineyard decision-intelligence aggregation hub.** Center of gravity moves from per-photo CV detection to fusion of mechanistic mildew models, public weather, satellite vegetation indices, on-vineyard sensors (Davis, Pessl, METER), and government advisories (UC IPM, BSV, INRAE, INTA, EPPO) into a daily spray verdict + 7-day forecast + inline citations. CV becomes optional Phase 3 scouting (M3+). Triggered by independent customer signal across 5 winery conversations (Far Niente / John McCarthy, Newton, Chandon, Sprucewood Shores, others) all converging on "if you see mold it's already too late." Six new dossier categories (`08_model-aggregation` through `13_advisory-feeds`) anchor the engineering surface. M1.5 milestone inserted between M1 and M2 with 11 sub-milestones (M1.5-01 through M1.5-11); existing `services/ml/*` row moves from M1-10 to M3+. New risks R21–R26 cover sensor API churn, satellite quota, model disagreement UX, agent lock-in, advisory scrape fragility, prescriptive-advice liability. New questions Q15–Q19; Q15 + Q16 RESOLVED, Q17–Q19 OPEN with stated defaults. Implementation track: 8 sequential PRs in `docs/research/pivot/CLAUDE_CODE_DIRECTIVE_v3.md`. PR-A (this PR) lands the docs only; PR-B+ ship code. |
 
 ---
 
