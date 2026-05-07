@@ -1238,3 +1238,80 @@ class CaptureDetailView(APIView):
         capture.archived_at = timezone.now()
         capture.save(update_fields=["archived_at"])
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------------
+# M1.5 PR-C: Aggregation engine — verdict endpoints (SA-2)
+# ---------------------------------------------------------------------
+
+
+class BlockVerdictLatestView(APIView):
+    """GET /api/spray/orgs/<org_id>/blocks/<block_id>/verdicts/latest
+
+    Returns the most recent BlockVerdict for the block. 404 if none yet.
+    """
+
+    permission_classes = [IsOrgViewer]
+
+    def get(self, request, org_id, block_id):
+        from spray.models import Block, BlockVerdict
+        from spray.serializers import BlockVerdictSerializer
+
+        set_current_org_id(str(org_id))
+        # Verify block belongs to caller's org via the block's vineyard.
+        get_object_or_404(Block.objects.for_org(org_id), id=block_id)
+
+        verdict = (
+            BlockVerdict.objects.for_org(org_id)
+            .filter(block_id=block_id)
+            .order_by("-date")
+            .first()
+        )
+        if verdict is None:
+            return Response(
+                {"detail": "no verdict yet for this block"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(BlockVerdictSerializer(verdict).data)
+
+
+class BlockVerdictListView(APIView):
+    """GET /api/spray/orgs/<org_id>/blocks/<block_id>/verdicts?since=<iso>
+
+    Paginated history. `since` is an ISO date; default = last 30 days.
+    """
+
+    permission_classes = [IsOrgViewer]
+
+    def get(self, request, org_id, block_id):
+        from datetime import date, timedelta
+        from spray.models import Block, BlockVerdict
+        from spray.serializers import BlockVerdictSerializer
+
+        set_current_org_id(str(org_id))
+        get_object_or_404(Block.objects.for_org(org_id), id=block_id)
+
+        since_param = request.query_params.get("since")
+        if since_param:
+            try:
+                since_date = date.fromisoformat(since_param)
+            except ValueError:
+                return Response(
+                    {"detail": "invalid 'since' date; use YYYY-MM-DD"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            since_date = timezone.now().date() - timedelta(days=30)
+
+        qs = (
+            BlockVerdict.objects.for_org(org_id)
+            .filter(block_id=block_id, date__gte=since_date)
+            .order_by("-date")
+        )
+        return Response(
+            {
+                "since": since_date.isoformat(),
+                "count": qs.count(),
+                "results": BlockVerdictSerializer(qs[:200], many=True).data,
+            }
+        )

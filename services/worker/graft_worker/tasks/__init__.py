@@ -7,6 +7,7 @@ fails at fire time with `Received unregistered task`.
 """
 
 from graft_worker.tasks import (  # noqa: F401
+    aggregation_run,
     data_lake_etl,
     external_risk_index,
     weather_pull,

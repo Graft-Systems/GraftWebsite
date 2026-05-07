@@ -12,9 +12,11 @@ from rest_framework import serializers
 
 from spray.models import (
     Block,
+    BlockVerdict,
     ConsentRecord,
     Membership,
     Org,
+    RiskRecord,
     User,
     Vineyard,
 )
@@ -244,6 +246,62 @@ class CaptureSerializer(serializers.ModelSerializer):
             "uploaded_at",
             "status",
             "download_url",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
+# ---------------------------------------------------------------------
+# M1.5 PR-C: Aggregation engine — RiskRecord + BlockVerdict
+# ---------------------------------------------------------------------
+
+
+class RiskRecordSerializer(serializers.ModelSerializer):
+    """Read-only view of a RiskRecord row."""
+
+    class Meta:
+        model = RiskRecord
+        fields = [
+            "id",
+            "block",
+            "model_id",
+            "model_version",
+            "valid_from",
+            "valid_to",
+            "pathogen",
+            "severity_1_10",
+            "raw_score",
+            "thresholds_fired",
+            "input_snapshot_id",
+            "confidence",
+            "citation_id",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
+class BlockVerdictSerializer(serializers.ModelSerializer):
+    """Read-only view of a BlockVerdict row."""
+
+    class Meta:
+        model = BlockVerdict
+        fields = [
+            "id",
+            "block",
+            "date",
+            "powdery_severity_1_10",
+            "downy_severity_1_10",
+            "powdery_confidence",
+            "downy_confidence",
+            "action",
+            "urgency",
+            "drivers",
+            "split_summary",
+            "forecast_7d",
+            "advisory_events",
+            "model_versions",
+            "generated_at",
+            "audit_hash",
             "created_at",
         ]
         read_only_fields = fields
