@@ -6,6 +6,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), wit
 
 ## Unreleased
 
+### M1.5 PR-B: aggregation schemas (RiskRecord, BlockVerdict, AdvisoryEvent, SensorReading) — READY FOR MERGE
+
+PR on `graft-spray/m1.5/aggregation-schemas`. Pure schema-registry additions with zero behavior change. Foundation for PR-C (aggregation engine), PR-D/E (sensor connectors), and PR-H (advisory feeds).
+
+#### Added
+
+- **`risk_record/emitted/v1.json`** — per-block, per-day, per-pathogen output of a single mechanistic model runner (Gubler-Thomas, Caffi Primary, Caffi Secondary, etc.). Spec §11A.1.
+- **`block_verdict/generated/v1.json`** — daily ensemble verdict consumed by the grower-facing UI. Severity dual-track (powdery + downy), action enum (`spray|hold|scout`), urgency (`now|24h|72h|none`), drivers array with citation IDs, strict 7-day forecast (exactly 7 entries enforced), audit_hash sha256 format. Spec §11A.2.
+- **`advisory_event/ingested/v1.json`** — public/government advisory feed envelope. Source slug, ISO 3166-2 region, hazard type, severity, license string, language enum, optional EN translation. Spec §12C.2.
+- **`sensor_reading/ingested/v1.json`** — canonical sensor schema all vendor connectors (Davis, Pessl, METER, Sencrop) normalize to. Required `block_id`, `ts`, `source`, `device_id`, `quality_flag`; numeric fields nullable for graceful gap-fill. RH bounded 0–100. Quality flag enum: `ok|estimated|gap_filled|stale|bad`. Spec §12A.3.
+- 16 new pytest cases in `test_schema_registry.py` covering well-formed payloads, bounded-value rejection, enum mismatch rejection, and structural constraints (e.g. `forecast_7d` must be exactly 7 entries, `audit_hash` must match `sha256:[hex64]`).
+
+#### Changed
+
+- `docs/spec/CODEBASE_PLAN.md` Section 14 — Q17, Q18, Q19 marked RESOLVED / DEFERRED:
+  - Q17 — free-tier on CDSE + Letta; **AgentMail committed** as the email-as-IO surface (per-org feature flag at MVP+).
+  - Q18 — accept default cloud-day fallback (hold last good vigor 10 days, then drop from ensemble). Behind a feature flag.
+  - Q19 — deferred until first METER customer; default applies on arrival (gap-fill via RH heuristic).
+
+#### Notes
+
+- No Django models, no API endpoints, no producer call sites at this PR. All four schemas await consumers in PR-C (RiskRecord, BlockVerdict), PR-D/E (SensorReading), PR-H (AdvisoryEvent).
+- `scripts/check_event_schemas.py` auto-discovers from `emit_event(...)` callsites and doesn't enumerate registered schemas; no update needed. New schemas are validated via the pytest suite which runs in CI.
+- All four schemas set `additionalProperties: false` so producers can't accidentally extend the contract without amending the schema first.
+
 ### Pivot amendment: decision-intelligence aggregation hub (SA-2) — IN REVIEW
 
 PR-A on `graft-spray/m1/pivot-amendment-docs`. Documentation-only amendment that locks in the strategic pivot from per-photo computer-vision detection to a per-vineyard decision-intelligence aggregation hub. CV becomes an optional Phase 3 scouting module (M3+); the M1-09 capture upload pipeline stays merged but the CV severity grading work slips behind M1.5 in priority.

@@ -722,13 +722,13 @@ Numbered questions that block specific milestones. Each must be answered before 
    - **RESOLVED 2026-05-07 by Benson:** phased plan per spec §13A.2. AgentMail is a *capability*, not the architecture. Sprint-1 ships pure-API baseline; LangGraph + Postgres checkpoints land at M2; Letta + RLS isolation come on at the growth phase. Locked as L4.
 
 17. **Q17 — Free-tier ceiling for new integrations.** CDSE Statistical API (Sentinel-2), Letta API, AgentMail. Acceptable to stay free-tier until throughput forces upgrade? **Blocks:** M1.5-07 (satellite), M2 (agent runtime).
-   - **OPEN.** Default if silent: keep CDSE free tier as long as throughput allows; budget Sentinel Hub Statistical API paid-tier check-in at M3. Letta API spend gated to organizations with >50 active blocks. AgentMail enablement opt-in per org and disabled by default to avoid the $100/mo floor before paying customers materialize.
+   - **RESOLVED 2026-05-07 by Benson:** Free-tier across the board on CDSE + Letta. **AgentMail is committed** — Benson explicitly wants it as the email-as-IO surface. Implication: when the agent runtime ships at MVP+ (M2), AgentMail enables per-org via feature flag. Pricing absorbed: ~$100/mo at 50 inboxes is acceptable once paying customers materialize. Below 50 inboxes the floor is the cost of admission.
 
 18. **Q18 — Sentinel-2 cloud-day fallback.** When a block is cloud-covered for >2 consecutive Sentinel-2 revisits (10+ days), do we (a) hold the last good vigor metric, (b) substitute MODIS at coarser resolution, or (c) drop the satellite signal from the ensemble for that block until clear? **Blocks:** M1.5-07.
-   - **OPEN.** Default if silent: hold last good vigor 10 days, then drop from ensemble. Ship behind a feature flag; tune once we have real Napa data.
+   - **RESOLVED 2026-05-07 by Benson:** Default option (a) accepted: hold last good vigor 10 days, then drop from ensemble. Ship behind a feature flag at M1.5; tune once we have real Napa data.
 
 19. **Q19 — METER PHYTOS-31 add-on requirement.** METER ATMOS-41 lacks native leaf wetness; require PHYTOS-31 at onboarding for METER-only customers, or accept gap-filled LW from RH-based heuristic? **Blocks:** M1.5-06 (METER connector).
-   - **OPEN.** Default if silent: non-blocking warning in onboarding, gap-fill via RH heuristic, mark `quality_flag="gap_filled"`. Surface a "for higher-confidence verdicts add a PHYTOS-31" prompt in the integrations panel.
+   - **DEFERRED 2026-05-07 by Benson:** No METER access right now, so the question doesn't bind today. Default applies when first METER customer arrives: non-blocking warning in onboarding, gap-fill via RH heuristic, `quality_flag="gap_filled"`, plus a "for higher-confidence verdicts add a PHYTOS-31" prompt in the integrations panel. Revisit when a real METER customer signs up.
 
 ---
 

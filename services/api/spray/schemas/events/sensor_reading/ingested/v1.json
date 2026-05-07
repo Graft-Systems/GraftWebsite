@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "sensor_reading.ingested.v1",
+  "title": "sensor_reading.ingested",
+  "description": "Single hourly reading from an on-vineyard sensor (Davis WeatherLink, Pessl FieldClimate, METER ZENTRA, Sencrop). All vendor connectors normalize to this canonical shape. See spec §12A.3.",
+  "type": "object",
+  "required": ["block_id", "ts", "source", "device_id", "quality_flag"],
+  "properties": {
+    "block_id": { "type": "string", "format": "uuid" },
+    "ts": { "type": "string", "format": "date-time" },
+    "leaf_wetness_min": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "maximum": 60
+    },
+    "air_temp_c": { "type": ["number", "null"] },
+    "rh_pct": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "maximum": 100
+    },
+    "precip_mm": {
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "wind_speed_ms": {
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "source": {
+      "type": "string",
+      "enum": ["davis", "pessl", "meter", "sencrop"]
+    },
+    "device_id": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "quality_flag": {
+      "type": "string",
+      "enum": ["ok", "estimated", "gap_filled", "stale", "bad"]
+    }
+  },
+  "additionalProperties": false
+}
