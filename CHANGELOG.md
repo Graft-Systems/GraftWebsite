@@ -6,6 +6,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), wit
 
 ## Unreleased
 
+### M1.5 PR-F: recommendation card UI + deterministic daily brief
+
+PR on `graft-spray/m1.5/recommendation-card`. Closes the loop from PR-C (verdicts persisted) to grower-visible UI: every BlockVerdict now renders as a `VerdictCard` on the dashboard, and a deterministic daily-brief endpoint surfaces a citation-anchored narrative built from the same schema-validated numbers. Per spec §13B.1, BlockVerdict IS the daily card; UI never originates or paraphrases numbers. The LLM-authored brief with hallucination guard ships in PR-F.5; this PR establishes the deterministic fallback path that PR-F.5 will fall back to on guard failure.
+
+#### Added
+
+- **`services/api/spray/recommendation/`** package.
+  - `citations.py` — `lookup(citation_id)` + `lookup_many(...)` resolve a citation_id to its row in `docs/research/sources_master.csv`. Cached at import; no per-request CSV reads.
+  - `daily_brief.py` — `render_brief(verdict)` returns a deterministic envelope `{headline, paragraphs, drivers, citations, fallback_reason, renderer}`. Headline branches on action × urgency. Severity paragraph surfaces schema numbers verbatim with confidence percentages. Drivers paragraph emits `[CITATION_ID]` markers per model. Action paragraph branches on action × urgency. Split paragraph slots in when ensemble splits. `renderer` field records the template version (`deterministic_template@1.0.0`) so PR-F.5 can distinguish LLM vs. fallback renders.
+- **API endpoint** (`services/api/spray/views.py` + `urls.py`):
+  - `GET /api/spray/orgs/<org_id>/blocks/<block_id>/verdicts/<verdict_id>/brief` — gated by `IsOrgViewer`; tenant-scoped via the BlockVerdict manager.
+- **Frontend** (`apps/web/`):
+  - `components/spray/VerdictCard.tsx` — grower-facing card. Severity dual-bar (powdery + downy) with confidence labels, action chip color-coded (spray red / scout amber / hold emerald), urgency label (`Today` / `Within 24h` / `Within 72h`), expandable "Why this verdict?" drivers list with `[citation_id]` markers, audit-hash footer. Renders schema-validated numbers verbatim via a `num()` parser that handles Postgres-decimal-string round-trips.
+  - `app/spray/(app)/dashboard/page.tsx` — replaces M0-02a placeholder. Resolves active org via `/orgs/me`, expands every vineyard's blocks, fetches `verdicts/latest` per block, renders `VerdictCard` grid (or empty placeholder for blocks pre-first-verdict). Loads in parallel via `Promise.all`.
+- **Tests**:
+  - `apps/web/__tests__/verdict-card.test.tsx` — schema numbers verbatim, action chip + urgency rendering, drivers expander reveals citation markers, hold-action variant.
+  - `services/api/spray/tests/test_daily_brief.py` — happy-path spray-24h brief asserts headline + verbatim numbers + citation marker, hold + scout + split-summary variants, drivers mirror passes through unchanged for the UI.
+
+#### Scope cuts (deferred to PR-F.5)
+
+- LLM-authored brief with P-Cite verifier + Jinja-fallback wiring.
+- PDF audit-log export (covered by audit_hash on the card; full PDF render lands later).
+
 ### M1.5 PR-C: aggregation engine MVP (3 model runners + Year-0 ensemble + audit hash + verdict API) — READY FOR MERGE
 
 PR on `graft-spray/m1.5/aggregation-engine-v0`. The keystone milestone where the SA-2 pivot becomes real code: 3 mechanistic model runners emit `RiskRecord`s, an equal-weight soft-vote ensemble fuses them into a `BlockVerdict` per block per day, both layers persist to Postgres + emit DataLakeEvents, audit-hash makes each verdict tamper-evident, hourly Celery beat fires in-season, and verdict API endpoints surface the result to the frontend.
