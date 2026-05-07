@@ -29,15 +29,8 @@ vi.mock("maplibre-gl", () => {
   };
 });
 
-vi.mock("@mapbox/mapbox-gl-draw", () => ({
-  default: class {
-    deleteAll() {}
-  },
-}));
-
 // CSS imports inside the component need stubbing so Vite doesn't choke.
 vi.mock("maplibre-gl/dist/maplibre-gl.css", () => ({}));
-vi.mock("@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css", () => ({}));
 
 import { SprayMap } from "@/components/spray/SprayMap";
 
