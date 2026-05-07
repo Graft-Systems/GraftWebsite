@@ -98,3 +98,40 @@ Consolidated terminology across the seven brain categories.
 ADAPT · AEMET · APNs · ASABE · ASVO · AUC · BPA · BSV · CAC · CART · CCPA · CDFA · CIVB · COVIAR · DGAL · DM · DPR · DSS · ECMWF · EPI · EPPO · ETo · F1 · FAA · FIFRA · FRAC · GDPR · GT · HOBO · IFV · INRAE · INTA · INV · IPM · ISO 11783 · LSTM · LWD · MAE · MLflow · NDVI · NDFD · NEWA · NOAA · NOP · NWS · OIV · PCA · PHI · PM · PUR · QAC · QAL · QoI · REI · RH · RIMpro · RTK · SAR · SDHI · SDS · SENASA · SUD · TAM · TTB · UV-B / UV-C · VPD · WCAG · WPS · WSP
 
 (Full expansions appear in the relevant category files.)
+
+## Pivot Vocabulary (added 2026-05)
+
+| Term | Definition |
+|---|---|
+| **Aggregation hub** | The central cloud service that pulls every credible mildew-relevant signal (mechanistic model outputs, weather, satellite, sensor, advisory feeds) into one normalized timeseries per vineyard block. |
+| **Block verdict** | The unit of output: one daily `spray` / `hold` / `scout` decision per vineyard block, with severity 1–10 for both pathogens, 7-day forecast, and inline citations. JSON schema specified in §08 + §12. |
+| **Decision intelligence** | The product category Graft Spray now competes in: aggregating models + data + reasoning into a cited recommendation, distinct from raw monitoring or raw modelling. |
+| **Driver** | An item in `BlockVerdict.drivers[]` — `{model, value, threshold, citation_id}` — explaining *why* the verdict landed where it did. |
+| **Risk record** | The normalized output of a single mechanistic-model runner, designed so any new model can be plugged in. Specified in §08. |
+| **Ensemble** | The fusion layer that combines multiple risk records into a single verdict (Year 0 soft vote → Year 1 weighted average → Year 2+ stacking + conformal per §08). |
+| **Conformal prediction** | Distribution-free statistical method that wraps any model's point forecast with a calibrated prediction interval — the recommended method for confidence on the 1–10 scale. |
+| **Advisory event** | A normalized record from a public/government feed (UC IPM, BSV, INRAE, INTA, EPPO, OIV) — schema in §13. |
+| **Per-tenant agent** | One isolated AI agent context per signed-up vineyard, optionally addressed by an AgentMail email. Architecture options scored in §11. |
+| **AgentMail** | Hosted email-as-IO service ([agentmail.to](https://agentmail.to)) — provides millisecond inbox provisioning, SPF/DKIM/DMARC, webhooks. **Email plumbing only** — does not provide LLM, memory, or GDPR tooling. |
+| **Letta** | Long-term-memory agent framework (formerly MemGPT) — recommended growth-phase memory store at $0.10/active agent/month or self-hosted Apache 2.0. |
+| **LangGraph** | Graph-based LLM-orchestration framework from LangChain — recommended MVP orchestrator with Postgres checkpoints. |
+| **Pure-API baseline** | The simplest agent shape: per-farm config + shared inference, no per-tenant runtime. Recommended first-sprint architecture before adding framework complexity. |
+| **Sentinel-2 L2A** | ESA Copernicus optical satellite, 10 m resolution, 5-day revisit, atmospherically corrected (Level-2A) — the Phase-1 satellite signal. |
+| **NDRE** | Normalized Difference Red-Edge index — vegetation index more sensitive to nitrogen and chlorophyll stress than NDVI; preferred for late-season canopy stress signals relevant to mildew context. |
+| **NDWI** | Normalized Difference Water Index — surrogate for canopy water content, useful for drought-conditioning context. |
+| **s2cloudless** | Open-source cloud probability mask for Sentinel-2 — primary recommended cloud screen. |
+| **CDSE** | Copernicus Data Space Ecosystem — the free official Sentinel-2 access portal with STAC, OData, and Sentinel Hub APIs. |
+| **ERA5-Land** | ECMWF reanalysis hourly land dataset, 9 km — recommended hourly weather back-fill when ground stations are offline. |
+| **SMAP** | Soil Moisture Active Passive (NASA) — 9 km, 3-day soil moisture for regional drought pre-conditioning context. |
+| **Davis WeatherLink v2** | Davis Instruments cloud API; two-key auth (API Key + X-Api-Secret); polling only. |
+| **Pessl FieldClimate** | Pessl Instruments Metos cloud; OAuth 2.0 partner-app pattern is the right MVP path; leaf wetness reported directly in minutes. |
+| **METER ZENTRA Cloud** | METER Group cloud platform; only one of the three with native Push API (webhook); v5 API migration scheduled 2026. |
+| **Sencrop** | French sensor SaaS; OAuth 2.0 module-activation flow; Phase 2 partner. |
+| **Canonical sensor schema** | Graft Spray's normalized timeseries shape: `leaf_wetness_min`, `air_temp_c`, `rh_pct`, `precip_mm`, `quality_flag` — every connector emits this. |
+| **MISFITS-DSS** | Italian DSS (88 % balanced accuracy, 5-class output) that uses ML to post-process mechanistic-model outputs — the closest published precedent for Graft Spray's architecture. |
+| **VitiMeteo / Agrometeo** | Agroscope/WBI Freiburg DSS with 9-yr published validation showing 0–4 vs 8–12 sprays. |
+| **RAI (Risk Assessment Index)** | UC IPM's powdery mildew risk score derived from Gubler-Thomas, published live weekly. |
+| **SaMD** | Software as a Medical Device — FDA framework borrowed conceptually for the *non-device CDS* framing of Graft Spray's recommendation engine. |
+| **G-Cite vs P-Cite** | Generation-time vs post-hoc citation grounding; P-Cite recommended for high-stakes prescriptive use. |
+| **FRONT** | Fine-grained citation-grounding LLM technique referenced in §12. |
+| **Conformal interval** | The 1–10 severity scale's confidence band; lets the UI say "likely 6, plausible 4–7". |
