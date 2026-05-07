@@ -147,4 +147,22 @@ urlpatterns = [
         views.IntegrationDisconnectView.as_view(),
         name="integration_disconnect",
     ),
+    # M1.5 PR-E: Davis + METER paste-key connect + METER push receiver.
+    path(
+        "orgs/<uuid:org_id>/integrations/davis/connect",
+        views.DavisConnectView.as_view(),
+        name="davis_connect",
+    ),
+    path(
+        "orgs/<uuid:org_id>/integrations/meter/connect",
+        views.MeterConnectView.as_view(),
+        name="meter_connect",
+    ),
+    # Public webhook (no auth; HMAC-validated). Must remain unauthenticated
+    # at the middleware level — METER's Push API can't carry a Clerk JWT.
+    path(
+        "integrations/meter/webhook",
+        views.meter_webhook,
+        name="meter_webhook",
+    ),
 ]

@@ -84,6 +84,29 @@ app.conf.beat_schedule = {
             )
         ),
     },
+    # M1.5 PR-E: Davis WeatherLink polling (15 min default).
+    "davis-pull": {
+        "task": "graft_worker.tasks.davis_pull.pull_all_davis_stations",
+        "schedule": schedule(
+            float(
+                __import__("os").environ.get(
+                    "GRAFT_SPRAY_DAVIS_CADENCE_SEC", "900"
+                )
+            )
+        ),
+    },
+    # M1.5 PR-E: METER ZENTRA polling — gap-fill only. Real-time data
+    # flows through the webhook receiver. 60 min default cadence.
+    "meter-pull": {
+        "task": "graft_worker.tasks.meter_pull.pull_all_meter_stations",
+        "schedule": schedule(
+            float(
+                __import__("os").environ.get(
+                    "GRAFT_SPRAY_METER_CADENCE_SEC", "3600"
+                )
+            )
+        ),
+    },
 }
 
 app.conf.timezone = "UTC"

@@ -15,6 +15,7 @@ import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
+import { PasteKeyDialog } from "@/components/spray/PasteKeyDialog";
 
 type Membership = { org: { id: string; name: string } };
 type Connection = {
@@ -57,6 +58,11 @@ function IntegrationsPageInner() {
   const [connections, setConnections] = useState<Connection[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showDavisDialog, setShowDavisDialog] = useState(false);
+  const [showMeterDialog, setShowMeterDialog] = useState(false);
+  const [meterReveal, setMeterReveal] = useState<
+    { secret: string; url: string } | null
+  >(null);
 
   const justConnected = searchParams.get("connected");
 
@@ -124,6 +130,53 @@ function IntegrationsPageInner() {
       setBusy(false);
       setError(e instanceof Error ? e.message : "could not start OAuth");
     }
+  }
+
+  async function reloadConnections() {
+    if (!orgId) return;
+    const r = await authedFetch(`/api/spray/orgs/${orgId}/integrations`);
+    if (r.ok) {
+      const data = (await r.json()) as { results: Connection[] };
+      setConnections(data.results);
+    }
+  }
+
+  async function connectDavis(values: Record<string, string>) {
+    if (!orgId) return;
+    const r = await authedFetch(
+      `/api/spray/orgs/${orgId}/integrations/davis/connect`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(values),
+      },
+    );
+    if (!r.ok) {
+      const detail = (await r.json().catch(() => ({}))) as { detail?: string };
+      throw new Error(detail.detail ?? `connect ${r.status}`);
+    }
+    setShowDavisDialog(false);
+    await reloadConnections();
+  }
+
+  async function connectMeter(values: Record<string, string>) {
+    if (!orgId) return;
+    const r = await authedFetch(
+      `/api/spray/orgs/${orgId}/integrations/meter/connect`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(values),
+      },
+    );
+    if (!r.ok) {
+      const detail = (await r.json().catch(() => ({}))) as { detail?: string };
+      throw new Error(detail.detail ?? `connect ${r.status}`);
+    }
+    const data = (await r.json()) as { webhook_secret: string; webhook_url: string };
+    setShowMeterDialog(false);
+    setMeterReveal({ secret: data.webhook_secret, url: data.webhook_url });
+    await reloadConnections();
   }
 
   async function disconnect(connId: string) {
@@ -194,15 +247,128 @@ function IntegrationsPageInner() {
           </button>
         </article>
 
+        <article className="rounded-md border border-border/40 bg-background/40 p-5">
+          <h2 className="frame text-xs font-semibold uppercase tracking-wider text-foreground/60">
+            Davis WeatherLink
+          </h2>
+          <p className="mt-3 text-sm text-foreground/70">
+            Two-key paste. 15-min polling. Leaf-wetness 0-15 scale
+            normalized to minutes per spec §12A.1.
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowDavisDialog(true)}
+            disabled={!orgId}
+            className="mt-4 rounded-md bg-amber px-4 py-2 frame text-xs font-semibold text-background transition-colors hover:bg-amber/90 disabled:opacity-40"
+          >
+            Connect Davis
+          </button>
+        </article>
+
+        <article className="rounded-md border border-border/40 bg-background/40 p-5">
+          <h2 className="frame text-xs font-semibold uppercase tracking-wider text-foreground/60">
+            METER ZENTRA
+          </h2>
+          <p className="mt-3 text-sm text-foreground/70">
+            Bearer-token paste + native HTTPS Push. Real-time webhook
+            ingestion; 60-min poll as gap-fill.
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowMeterDialog(true)}
+            disabled={!orgId}
+            className="mt-4 rounded-md bg-amber px-4 py-2 frame text-xs font-semibold text-background transition-colors hover:bg-amber/90 disabled:opacity-40"
+          >
+            Connect METER
+          </button>
+        </article>
+
         <article className="rounded-md border border-dashed border-border/40 bg-background/30 p-5">
           <h2 className="frame text-xs font-semibold uppercase tracking-wider text-foreground/50">
-            Davis · METER · Sencrop
+            Sencrop
           </h2>
           <p className="mt-3 text-sm text-foreground/60">
-            Coming next milestone. The same "Connect" flow will live here.
+            Phase 2. OAuth handoff with module-activation flow.
           </p>
         </article>
       </section>
+
+      {showDavisDialog && (
+        <PasteKeyDialog
+          vendorLabel="Davis WeatherLink"
+          fields={[
+            { name: "api_key", label: "API Key", placeholder: "from weatherlink.com → Account → API" },
+            { name: "api_secret", label: "API Secret", placeholder: "(also from API page)" },
+          ]}
+          helpText="Both values are issued together at weatherlink.com under Account → API. We validate against /v2/stations before saving."
+          onSubmit={connectDavis}
+          onClose={() => setShowDavisDialog(false)}
+        />
+      )}
+
+      {showMeterDialog && (
+        <PasteKeyDialog
+          vendorLabel="METER ZENTRA"
+          fields={[
+            { name: "token", label: "API Token", placeholder: "from ZENTRA Cloud → Settings → API" },
+          ]}
+          helpText="On connect we generate a webhook secret you'll paste into METER's Push API setup. The secret is shown once — copy it now."
+          onSubmit={connectMeter}
+          onClose={() => setShowMeterDialog(false)}
+        />
+      )}
+
+      {meterReveal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/80"
+        >
+          <div className="w-full max-w-lg rounded-md border border-amber/60 bg-background p-6">
+            <h2 className="font-display text-xl">METER webhook ready</h2>
+            <p className="mt-2 text-sm text-foreground/70">
+              Paste these into METER ZENTRA Cloud → Settings → Push API.
+              The secret is shown once and cannot be re-displayed.
+            </p>
+            <div className="mt-5 space-y-3">
+              <div>
+                <p className="frame text-[0.65rem] font-semibold uppercase tracking-wider text-foreground/60">
+                  Webhook URL
+                </p>
+                <code className="mt-1 block rounded bg-foreground/10 px-3 py-2 font-mono text-xs">
+                  {meterReveal.url}
+                </code>
+              </div>
+              <div>
+                <p className="frame text-[0.65rem] font-semibold uppercase tracking-wider text-foreground/60">
+                  Webhook Secret
+                </p>
+                <code className="mt-1 block break-all rounded bg-foreground/10 px-3 py-2 font-mono text-xs">
+                  {meterReveal.secret}
+                </code>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard?.writeText(meterReveal.secret);
+                }}
+                className="rounded-md border border-border/40 px-3 py-1 frame text-xs font-semibold uppercase tracking-wider text-foreground/80 hover:text-foreground"
+              >
+                Copy secret
+              </button>
+              <button
+                type="button"
+                onClick={() => setMeterReveal(null)}
+                className="rounded-md bg-amber px-4 py-2 frame text-xs font-semibold text-background hover:bg-amber/90"
+              >
+                Done — I've saved it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <section className="mt-12">
         <h2 className="frame text-xs font-semibold uppercase tracking-wider text-foreground/60">

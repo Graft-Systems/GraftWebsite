@@ -104,6 +104,19 @@ PESSL_API_BASE = os.environ.get(
 )
 # Frontend origin used for OAuth callback redirects (set in Render env).
 SPRAY_FRONTEND_BASE_URL = os.environ.get("SPRAY_FRONTEND_BASE_URL", "")
+# API origin surfaced in PR-E's METER webhook reveal flow so the user
+# can paste a complete webhook URL into METER ZENTRA Cloud.
+SPRAY_API_BASE_URL = os.environ.get(
+    "SPRAY_API_BASE_URL", "https://api.graft-systems.app"
+)
+# M1.5 PR-E: Davis WeatherLink + METER ZENTRA Cloud bases (env-overridable
+# so dev/CI can point at fixtures or a staging gateway).
+DAVIS_API_BASE = os.environ.get(
+    "DAVIS_API_BASE", "https://api.weatherlink.com/v2"
+)
+METER_API_BASE = os.environ.get(
+    "METER_API_BASE", "https://zentracloud.com/api/v4"
+)
 
 # M1-09: Imagery bucket (separate from M0-04's data-lake bucket so
 # retention rules + KMS-CMK swaps can diverge per spec §17.1).
