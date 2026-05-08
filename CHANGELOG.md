@@ -66,6 +66,59 @@ PR on `graft-spray/m1.5/llm-brief`. Closes the loop on PR-F: every BlockVerdict'
 - Anthropic API key from https://console.anthropic.com → API Keys → Create Key, name "Graft Spray Production". Save to secrets doc.
 - Add `ANTHROPIC_API_KEY` to Render API env. Worker doesn't need it.
 - Brief endpoint serves the deterministic fallback when the key is unset, so this PR is safe to merge before the key lands.
+### M1.5 PR-E: Davis WeatherLink + METER ZENTRA sensor connectors
+
+PR on `graft-spray/m1.5/sensor-davis-meter`. Two more vendors plug into PR-D's `SensorConnector` Protocol with no Protocol changes, proving the abstraction generalizes. Davis (paste-key + 15-min polling) and METER (paste-token + native HTTPS Push API + 60-min poll-as-gap-fill) cover the two structurally novel shapes left after Pessl: pre-shared-key auth and webhook-first ingestion.
+
+#### Added
+
+- **`services/api/spray/connectors/sensors/davis/`** — Davis WeatherLink v2.
+  - `client.py` — two-key auth (`X-Api-Key` + `X-Api-Secret`). Endpoints: `/v2/stations`, `/v2/historic/{station_id}`. Maps Davis status codes to connector exception classes.
+  - `normalizer.py` — Davis payload → canonical schema. Converts °F→°C, mph→m/s, in→mm, and Davis's 0-15 LW scale → minutes per hour (`davis_lw_to_minutes`). Spec §12A.1's industry pitfall is called out + tested explicitly. Multi-sensor-block merge on the same timestamp.
+  - `connector.py` — `DavisConnector` implements the `SensorConnector` Protocol; persists nothing it doesn't already (no token rotation since two-key auth has no refresh).
+- **`services/api/spray/connectors/sensors/meter/`** — METER ZENTRA Cloud v4.
+  - `client.py` — bearer-token auth (`Authorization: Token <t>`). Endpoints: `/devices/`, `/readings/`. Used for poll-as-gap-fill only.
+  - `normalizer.py` — two normalizers, one per payload shape. `normalize_poll_response` for the v4 readings API; `normalize_push_payload` for the HTTPS Push API. ATMOS-41 without PHYTOS-31 → `leaf_wetness_min = None`, row still persists with the other fields.
+  - `connector.py` — `MeterConnector` implements the Protocol for gap-fill polling.
+  - `webhook.py` — pure helpers: `generate_webhook_secret` (32-byte URL-safe random), `compute_signature`/`verify_signature` (HMAC-SHA256, constant-time compare), `parse_meter_form_payload` (extracts the `data` JSON field from formdata POSTs).
+- **API endpoints** (`spray/views.py` + `urls.py`):
+  - `POST /api/spray/orgs/<org>/integrations/davis/connect` — `IsOrgAdmin`. Smoke-validates against Davis `/v2/stations` before saving the encrypted blob.
+  - `POST /api/spray/orgs/<org>/integrations/meter/connect` — `IsOrgAdmin`. Smoke-validates against METER `/devices/`. Generates per-connection `webhook_secret` and returns it ONCE in the response (paste into METER's Push setup).
+  - `POST /api/spray/integrations/meter/webhook` — public path, no Clerk auth. HMAC-validates `X-MET-Signature` against the connection's stored `webhook_secret`, looks up the `SensorStation` by `device_sn`, normalizes, upserts SensorReading rows in real time, emits per-row `sensor.reading_pulled` events plus one `sensor.webhook_received` audit event. Constant 401 reject shape across "unknown device" + "bad signature" + "disconnected connection" to defeat account enumeration.
+- **Worker** (`services/worker/`):
+  - `tasks/sensor_pull.py` (NEW) — vendor-agnostic generalization of PR-D's `pessl_pull`. `pull_all_sensor_stations(vendor_slug)` + `pull_sensor_station(station_id, vendor_slug)`. Same gap-fill rule, same idempotent upsert, same lake-event emit. Vendor-mismatch guard prevents cross-wiring.
+  - `tasks/davis_pull.py` (NEW) + `tasks/meter_pull.py` (NEW) — thin shims that delegate to `sensor_pull` so the beat schedule has stable named tasks per vendor.
+  - `tasks/pessl_pull.py` reduced to a backward-compat shim (the actual logic now lives in `sensor_pull`).
+  - Beat schedule: `davis-pull` (15 min default, env-overridable via `GRAFT_SPRAY_DAVIS_CADENCE_SEC`) + `meter-pull` (60 min default, env-overridable via `GRAFT_SPRAY_METER_CADENCE_SEC`).
+- **Frontend** (`apps/web/`):
+  - `components/spray/PasteKeyDialog.tsx` (NEW) — generic paste-credential dialog for vendors that don't do OAuth. Accepts a list of `PasteField`s + an `onSubmit` handler.
+  - `app/spray/(app)/integrations/page.tsx` — adds Davis + METER cards next to Pessl. Davis click → `PasteKeyDialog` with `api_key` + `api_secret` fields → POST connect → reloads list. METER click → token-only paste → POST connect → modal reveal of `webhook_secret` + `webhook_url` with Copy button (one-time display, never re-displayed by any other endpoint). Sencrop card now shows "Phase 2".
+- **Lake event schema**:
+  - `sensor.webhook_received.v1.json` — audit event per accepted webhook push (separate from per-row `sensor.reading_pulled.v1`). Captures `payload_size_bytes`, `reading_count`, `accepted_at`. `additionalProperties: false`.
+- **Settings** (`graft_api/settings.py`):
+  - `DAVIS_API_BASE`, `METER_API_BASE`, `SPRAY_API_BASE_URL` (used in METER reveal flow). All env-overridable, all default to production endpoints.
+- **Tests** (~50 new across 6 files):
+  - `test_davis_normalizer.py` — LW 0-15 conversion correctness + clamp + missing/malformed paths + multi-sensor-block merge.
+  - `test_davis_client.py` — list_stations happy path, 401/429 mapping, missing creds bail, fetch_historic param shape.
+  - `test_meter_normalizer.py` — poll + push variants, ATMOS-41-without-LW path, missing device_sn raises.
+  - `test_meter_webhook_unit.py` — secret generation, HMAC compute/verify round-trip, tamper rejection, wrong-secret rejection, formdata parse.
+  - `test_meter_webhook_view.py` — full Django view round-trip: happy path, missing/bad signature, unknown device, idempotent replay, disconnected-connection rejection.
+  - `test_paste_key_endpoints.py` — Davis + METER connect happy paths, smoke-validation 400 surfacing, METER one-time-secret reveal + non-leak in subsequent reads.
+  - `test_sensor_pull_task.py` — generalized polling task per-vendor isolation, gap-fill flag, vendor-mismatch guard, fan-out enqueues only the right vendor's stations.
+
+#### Scope cuts (deferred)
+
+- Sencrop OAuth (Phase 2 per spec §12A.2).
+- Pessl HMAC-SHA256 single-account fallback (still deferred).
+- Sensor-fed `WeatherWindow` enrichment for ensemble runners (PR-E.5 / PR-D.5).
+- METER v5 (2026 release; v4 ships now).
+- Per-org Davis rate-limit tracking via Redis (Phase 2 — for now we surface 429 + back off).
+
+#### Pre-flight (Benson, deferred)
+
+- Davis WeatherLink test account at https://www.weatherlink.com → API-Key + API-Secret.
+- METER ZENTRA Cloud test account at https://zentracloud.com → bearer token from Settings → API.
+- No new Render env vars required beyond PR-D's `SPRAY_INTEGRATION_FERNET_KEY`.
 
 ### M1.5 PR-D: Pessl FieldClimate sensor connector (OAuth 2.0)
 

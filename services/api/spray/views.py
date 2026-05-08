@@ -1776,3 +1776,369 @@ class IntegrationDisconnectView(APIView):
             logger.exception("emit integration.disconnected failed")
 
         return Response({"ok": True})
+
+
+# ---------------------------------------------------------------------
+# M1.5 PR-E: Davis + METER paste-key connect + METER webhook receiver
+# ---------------------------------------------------------------------
+
+
+class DavisConnectView(APIView):
+    """POST /api/spray/orgs/<org_id>/integrations/davis/connect
+
+    Body: {api_key, api_secret, label?}.
+    Validates via Davis /v2/stations smoke call before saving the
+    encrypted blob.
+    """
+
+    permission_classes = [IsOrgAdmin]
+
+    def post(self, request, org_id):
+        from spray.connectors import credentials as creds
+        from spray.connectors.base import (
+            ConnectorAuthError,
+            ConnectorRateLimitError,
+            ConnectorResponseError,
+        )
+        from spray.connectors.sensors.davis.client import DavisClient
+        from spray.models import IntegrationConnection
+
+        api_key = (request.data.get("api_key") or "").strip()
+        api_secret = (request.data.get("api_secret") or "").strip()
+        if not api_key or not api_secret:
+            return Response(
+                {"detail": "api_key and api_secret required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Smoke-validate.
+        try:
+            client = DavisClient(creds={"api_key": api_key, "api_secret": api_secret})
+            stations = client.list_stations()
+        except ConnectorAuthError as exc:
+            return Response(
+                {"detail": f"Davis rejected the credentials: {exc}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except (ConnectorRateLimitError, ConnectorResponseError) as exc:
+            return Response(
+                {"detail": f"Davis unavailable: {exc}"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        # Use the first station's account/uuid as a stable account id;
+        # fall back to a hash of the api_key.
+        import hashlib
+        account_id = ""
+        if stations and isinstance(stations[0], dict):
+            account_id = str(
+                stations[0].get("account_id")
+                or stations[0].get("station_id_uuid")
+                or stations[0].get("station_id")
+                or ""
+            )
+        if not account_id:
+            account_id = hashlib.sha256(api_key.encode()).hexdigest()[:16]
+
+        ciphertext = creds.encrypt_token_blob(
+            {"api_key": api_key, "api_secret": api_secret}
+        )
+
+        set_current_org_id(str(org_id))
+        with transaction.atomic():
+            conn, created = IntegrationConnection.objects.unscoped().update_or_create(
+                org_id=org_id,
+                vendor=IntegrationConnection.Vendor.DAVIS,
+                vendor_account_id=account_id,
+                defaults={
+                    "token_ciphertext": ciphertext,
+                    "status": IntegrationConnection.Status.ACTIVE,
+                    "disconnected_at": None,
+                },
+            )
+
+        try:
+            _emit_lake_event(
+                org=conn.org,
+                user=getattr(request, "spray_user", None),
+                category="integration.connected",
+                payload={
+                    "org_id": str(org_id),
+                    "connection_id": str(conn.id),
+                    "vendor": "davis",
+                    "vendor_account_id": account_id,
+                    "created": created,
+                },
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("emit integration.connected (davis) failed")
+
+        return Response(
+            {"ok": True, "connection_id": str(conn.id), "created": created},
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+
+class MeterConnectView(APIView):
+    """POST /api/spray/orgs/<org_id>/integrations/meter/connect
+
+    Body: {token, label?}.
+    Validates via METER /devices/ smoke call before saving. Generates
+    a per-connection webhook_secret and returns it ONCE (the user pastes
+    it into METER ZENTRA Cloud's Push setup). The secret is encrypted
+    alongside the bearer token.
+    """
+
+    permission_classes = [IsOrgAdmin]
+
+    def post(self, request, org_id):
+        from spray.connectors import credentials as creds
+        from spray.connectors.base import (
+            ConnectorAuthError,
+            ConnectorRateLimitError,
+            ConnectorResponseError,
+        )
+        from spray.connectors.sensors.meter.client import MeterClient
+        from spray.connectors.sensors.meter.webhook import (
+            generate_webhook_secret,
+        )
+        from spray.models import IntegrationConnection
+
+        token = (request.data.get("token") or "").strip()
+        if not token:
+            return Response(
+                {"detail": "token required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            client = MeterClient(creds={"token": token, "webhook_secret": ""})
+            devices = client.list_devices()
+        except ConnectorAuthError as exc:
+            return Response(
+                {"detail": f"METER rejected the token: {exc}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except (ConnectorRateLimitError, ConnectorResponseError) as exc:
+            return Response(
+                {"detail": f"METER unavailable: {exc}"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        webhook_secret = generate_webhook_secret()
+        import hashlib
+        account_id = ""
+        if devices and isinstance(devices[0], dict):
+            account_id = str(
+                devices[0].get("account_id")
+                or devices[0].get("organization_id")
+                or ""
+            )
+        if not account_id:
+            account_id = hashlib.sha256(token.encode()).hexdigest()[:16]
+
+        ciphertext = creds.encrypt_token_blob(
+            {"token": token, "webhook_secret": webhook_secret}
+        )
+
+        set_current_org_id(str(org_id))
+        with transaction.atomic():
+            conn, created = IntegrationConnection.objects.unscoped().update_or_create(
+                org_id=org_id,
+                vendor=IntegrationConnection.Vendor.METER,
+                vendor_account_id=account_id,
+                defaults={
+                    "token_ciphertext": ciphertext,
+                    "status": IntegrationConnection.Status.ACTIVE,
+                    "disconnected_at": None,
+                },
+            )
+
+        try:
+            _emit_lake_event(
+                org=conn.org,
+                user=getattr(request, "spray_user", None),
+                category="integration.connected",
+                payload={
+                    "org_id": str(org_id),
+                    "connection_id": str(conn.id),
+                    "vendor": "meter",
+                    "vendor_account_id": account_id,
+                    "created": created,
+                },
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("emit integration.connected (meter) failed")
+
+        return Response(
+            {
+                "ok": True,
+                "connection_id": str(conn.id),
+                "created": created,
+                # Returned ONCE — the user must paste this into METER's
+                # Push setup. Never re-displayed by any other endpoint.
+                "webhook_secret": webhook_secret,
+                "webhook_url": (
+                    f"{getattr(settings, 'SPRAY_API_BASE_URL', '')}"
+                    "/api/spray/integrations/meter/webhook"
+                ),
+            },
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+
+@csrf_exempt
+@require_POST
+def meter_webhook(request: HttpRequest) -> JsonResponse:
+    """POST /api/spray/integrations/meter/webhook
+
+    Public path. METER ZENTRA Cloud Push API delivers formdata POSTs
+    here in real time. We validate `X-MET-Signature` (HMAC-SHA256 of
+    the raw body) against the connection's stored `webhook_secret`,
+    look up the SensorStation by `device_sn`, normalize, and upsert.
+
+    Returns 202 on success. 4xx on bad signature, unknown device, or
+    malformed payload. Never reveals whether a device exists across
+    orgs (constant 4xx shape).
+    """
+    from spray.connectors import credentials as creds
+    from spray.connectors.sensors.meter.normalizer import normalize_push_payload
+    from spray.connectors.sensors.meter.webhook import (
+        SIGNATURE_HEADER,
+        parse_meter_form_payload,
+        verify_signature,
+    )
+    from spray.lake import emit_event
+    from spray.models import (
+        IntegrationConnection,
+        SensorReading,
+        SensorStation,
+    )
+
+    raw_body = request.body or b""
+    sig_header = request.headers.get(SIGNATURE_HEADER, "")
+    if not sig_header:
+        return JsonResponse(
+            {"detail": "missing signature header"}, status=400
+        )
+
+    # Parse form data first to extract device_sn → connection lookup.
+    try:
+        payload = parse_meter_form_payload(dict(request.POST.items()))
+    except ValueError as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
+
+    try:
+        device_sn, rows = normalize_push_payload(payload)
+    except ValueError as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
+
+    # Locate the SensorStation. ALL Meter connections + station rows
+    # are unscoped here (no Clerk JWT, no org context); we lock down
+    # via HMAC.
+    station = (
+        SensorStation.objects.unscoped()
+        .select_related("connection", "connection__org")
+        .filter(
+            connection__vendor=IntegrationConnection.Vendor.METER,
+            connection__status=IntegrationConnection.Status.ACTIVE,
+            vendor_station_id=device_sn,
+            archived_at__isnull=True,
+        )
+        .first()
+    )
+    if station is None:
+        # Don't disclose existence; constant 401 across all reject paths
+        # makes account enumeration harder.
+        return JsonResponse({"detail": "unauthorized"}, status=401)
+
+    try:
+        blob = creds.decrypt_token_blob(station.connection.token_ciphertext)
+    except creds.CredentialError:
+        return JsonResponse({"detail": "credential error"}, status=500)
+    secret = blob.get("webhook_secret", "")
+    if not verify_signature(secret, raw_body, sig_header):
+        return JsonResponse({"detail": "unauthorized"}, status=401)
+
+    if not rows:
+        return JsonResponse({"detail": "no readings"}, status=202)
+
+    readings = [
+        SensorReading(
+            station=station,
+            ts=row["ts"],
+            air_temp_c=row.get("air_temp_c"),
+            rh_pct=row.get("rh_pct"),
+            leaf_wetness_min=row.get("leaf_wetness_min"),
+            precip_mm=row.get("precip_mm"),
+            wind_speed_ms=row.get("wind_speed_ms"),
+            quality_flag=SensorReading.QualityFlag.OK,
+        )
+        for row in rows
+    ]
+
+    with transaction.atomic():
+        SensorReading.objects.unscoped().bulk_create(
+            readings,
+            update_conflicts=True,
+            update_fields=[
+                "air_temp_c",
+                "rh_pct",
+                "leaf_wetness_min",
+                "precip_mm",
+                "wind_speed_ms",
+                "quality_flag",
+            ],
+            unique_fields=["station", "ts"],
+        )
+        latest_ts = max(r.ts for r in readings)
+        if station.last_seen_at is None or latest_ts > station.last_seen_at:
+            station.last_seen_at = latest_ts
+            station.save(update_fields=["last_seen_at"])
+
+    org = station.connection.org
+    for r in readings:
+        try:
+            emit_event(
+                category="sensor.reading_pulled",
+                payload={
+                    "org_id": str(station.connection.org_id),
+                    "connection_id": str(station.connection.id),
+                    "station_id": str(station.id),
+                    "vendor": "meter",
+                    "vendor_station_id": station.vendor_station_id,
+                    "ts": r.ts.isoformat().replace("+00:00", "Z"),
+                    "air_temp_c": float(r.air_temp_c) if r.air_temp_c is not None else None,
+                    "rh_pct": float(r.rh_pct) if r.rh_pct is not None else None,
+                    "leaf_wetness_min": float(r.leaf_wetness_min) if r.leaf_wetness_min is not None else None,
+                    "precip_mm": float(r.precip_mm) if r.precip_mm is not None else None,
+                    "wind_speed_ms": float(r.wind_speed_ms) if r.wind_speed_ms is not None else None,
+                    "quality_flag": r.quality_flag,
+                    "source": "meter",
+                    "device_id": station.vendor_station_id,
+                },
+                org=org,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("emit sensor.reading_pulled (meter webhook) failed")
+
+    try:
+        emit_event(
+            category="sensor.webhook_received",
+            payload={
+                "org_id": str(station.connection.org_id),
+                "connection_id": str(station.connection.id),
+                "vendor": "meter",
+                "payload_size_bytes": len(raw_body),
+                "reading_count": len(readings),
+                "accepted_at": timezone.now()
+                .astimezone(timezone.utc)
+                .isoformat()
+                .replace("+00:00", "Z"),
+            },
+            org=org,
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("emit sensor.webhook_received failed")
+
+    return JsonResponse({"ok": True, "reading_count": len(readings)}, status=202)
