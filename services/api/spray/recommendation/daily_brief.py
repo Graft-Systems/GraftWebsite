@@ -169,14 +169,24 @@ def _collect_citations(verdict: dict[str, Any]) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------
 
 
-def render_brief(verdict: dict[str, Any]) -> dict[str, Any]:
+def render_deterministic_brief(
+    verdict: dict[str, Any], *, fallback_reason: str | None = None
+) -> dict[str, Any]:
     """Render a deterministic brief for one BlockVerdict.
+
+    PR-F.5 added the `fallback_reason` kwarg so the orchestrator can
+    record why the LLM path was skipped. When `fallback_reason` is None
+    AND the LLM path is disabled (no key, etc.), this still returns a
+    perfectly valid brief — the deterministic template was the original
+    PR-F floor and remains the authoritative fallback.
 
     Args:
         verdict: dict matching the `block_verdict.generated.v1` schema.
+        fallback_reason: optional reason string set by the orchestrator.
 
     Returns:
-        Brief envelope (see module docstring for shape).
+        Brief envelope: {headline, paragraphs, drivers, citations,
+                         fallback_reason, renderer}.
     """
     paragraphs = [
         _severity_paragraph(verdict),
@@ -192,6 +202,16 @@ def render_brief(verdict: dict[str, Any]) -> dict[str, Any]:
         "paragraphs": paragraphs,
         "drivers": list(verdict.get("drivers") or []),
         "citations": _collect_citations(verdict),
-        "fallback_reason": None,
+        "fallback_reason": fallback_reason,
         "renderer": "deterministic_template@1.0.0",
     }
+
+
+# Backward-compat alias for PR-F callers that imported `render_brief`
+# directly from this module before the orchestrator existed. New code
+# should import from `spray.recommendation.orchestrator`.
+def render_brief(verdict: dict[str, Any]) -> dict[str, Any]:
+    """Backward-compat: routes through the orchestrator (PR-F.5)."""
+    from spray.recommendation.orchestrator import render_brief as _render
+
+    return _render(verdict)

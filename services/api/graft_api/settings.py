@@ -118,6 +118,14 @@ METER_API_BASE = os.environ.get(
     "METER_API_BASE", "https://zentracloud.com/api/v4"
 )
 
+# M1.5 PR-F.5: LLM-authored daily brief. The orchestrator falls back to
+# the deterministic-template renderer when ANTHROPIC_API_KEY is unset,
+# so this is safe to leave empty in dev/CI.
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+LLM_BRIEF_ENABLED = os.environ.get("LLM_BRIEF_ENABLED", "true").lower() == "true"
+LLM_BRIEF_MODEL = os.environ.get("LLM_BRIEF_MODEL", "claude-sonnet-4-5-20251022")
+LLM_BRIEF_TIMEOUT_SEC = int(os.environ.get("LLM_BRIEF_TIMEOUT_SEC", "10"))
+
 # M1-09: Imagery bucket (separate from M0-04's data-lake bucket so
 # retention rules + KMS-CMK swaps can diverge per spec §17.1).
 AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "")

@@ -14,7 +14,7 @@ from typing import Any
 
 from django.conf import settings
 from django.db import transaction
-from django.http import HttpRequest, JsonResponse
+from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -1335,8 +1335,9 @@ class BlockVerdictBriefView(APIView):
     permission_classes = [IsOrgViewer]
 
     def get(self, request, org_id, block_id, verdict_id):
+        from spray.lake import emit_event
         from spray.models import Block, BlockVerdict
-        from spray.recommendation.daily_brief import render_brief
+        from spray.recommendation.orchestrator import render_brief
         from spray.serializers import BlockVerdictSerializer
 
         set_current_org_id(str(org_id))
@@ -1359,7 +1360,104 @@ class BlockVerdictBriefView(APIView):
             if value is not None:
                 verdict_dict[key] = float(value)
 
-        return Response(render_brief(verdict_dict))
+        envelope = render_brief(verdict_dict)
+
+        # Emit telemetry. Strip the internal `_telemetry` key before
+        # returning to the caller — it's a private channel between the
+        # orchestrator and this view.
+        telemetry = envelope.pop("_telemetry", {}) or {}
+        try:
+            emit_event(
+                category="brief.rendered",
+                payload={
+                    "org_id": str(org_id),
+                    "block_id": str(block_id),
+                    "verdict_id": str(verdict_id),
+                    "renderer": envelope.get("renderer", ""),
+                    "fallback_reason": envelope.get("fallback_reason"),
+                    "prompt_tokens": int(telemetry.get("prompt_tokens", 0) or 0),
+                    "completion_tokens": int(
+                        telemetry.get("completion_tokens", 0) or 0
+                    ),
+                    "model": telemetry.get("model", "")
+                    or telemetry.get("prompt_version", ""),
+                    "latency_ms": int(telemetry.get("latency_ms", 0) or 0),
+                    "generated_at": timezone.now()
+                    .isoformat()
+                    .replace("+00:00", "Z"),
+                },
+                org=verdict.block.vineyard.org,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("emit brief.rendered failed")
+
+        return Response(envelope)
+
+
+class BlockVerdictAuditPdfView(APIView):
+    """GET /api/spray/orgs/<org_id>/blocks/<block_id>/verdicts/<verdict_id>/audit.pdf
+
+    Tamper-evident audit-log PDF. Regenerated on every download — the
+    audit value comes from regeneration matching the live
+    `audit_hash`. Caching would create stale-PDF risk.
+
+    Permission: same `IsOrgViewer` gate as the brief endpoint.
+    """
+
+    permission_classes = [IsOrgViewer]
+
+    def get(self, request, org_id, block_id, verdict_id):
+        from spray.models import Block, BlockVerdict
+        from spray.recommendation.orchestrator import render_brief
+        from spray.recommendation.pdf_audit import render_audit_pdf
+        from spray.serializers import BlockVerdictSerializer
+
+        set_current_org_id(str(org_id))
+        block = get_object_or_404(Block.objects.for_org(org_id), id=block_id)
+        verdict = get_object_or_404(
+            BlockVerdict.objects.for_org(org_id),
+            id=verdict_id,
+            block_id=block_id,
+        )
+
+        verdict_dict = BlockVerdictSerializer(verdict).data
+        for key in (
+            "powdery_severity_1_10",
+            "downy_severity_1_10",
+            "powdery_confidence",
+            "downy_confidence",
+        ):
+            value = verdict_dict.get(key)
+            if value is not None:
+                verdict_dict[key] = float(value)
+
+        envelope = render_brief(verdict_dict)
+        envelope.pop("_telemetry", None)
+
+        block_label = (
+            f"{block.vineyard.name} · {block.name}"
+            if hasattr(block, "vineyard")
+            else block.name
+        )
+        try:
+            pdf_bytes = render_audit_pdf(
+                verdict=verdict_dict, brief=envelope, block_label=block_label
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("audit PDF render failed for verdict=%s", verdict_id)
+            return Response(
+                {"detail": f"PDF render failed: {exc}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        resp = HttpResponse(pdf_bytes, content_type="application/pdf")
+        resp["Content-Disposition"] = (
+            f'inline; filename="graft-spray-{verdict.date}-{str(verdict.id)[:8]}.pdf"'
+        )
+        # No caching — every download regenerates against the live verdict.
+        resp["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+        resp["Pragma"] = "no-cache"
+        return resp
 
 
 # ---------------------------------------------------------------------

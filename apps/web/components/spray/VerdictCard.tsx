@@ -97,9 +97,11 @@ function SeverityBar({
 export function VerdictCard({
   verdict,
   blockName,
+  orgId,
 }: {
   verdict: Verdict;
   blockName?: string;
+  orgId?: string;
 }) {
   const [showDrivers, setShowDrivers] = useState(false);
 
@@ -193,14 +195,27 @@ export function VerdictCard({
         <span title={verdict.audit_hash}>
           audit {verdict.audit_hash.slice(7, 15)}…
         </span>
-        <span>
-          {new Date(verdict.generated_at).toLocaleString(undefined, {
-            month: "short",
-            day: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
-        </span>
+        <div className="flex items-center gap-3">
+          {orgId && verdict.block && (
+            <a
+              href={`/api/spray/orgs/${orgId}/blocks/${verdict.block}/verdicts/${verdict.id}/audit.pdf`}
+              target="_blank"
+              rel="noreferrer"
+              className="text-amber transition-colors hover:text-amber/80"
+              title="Download audit-log PDF"
+            >
+              audit pdf ↗
+            </a>
+          )}
+          <span>
+            {new Date(verdict.generated_at).toLocaleString(undefined, {
+              month: "short",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+          </span>
+        </div>
       </footer>
     </article>
   );

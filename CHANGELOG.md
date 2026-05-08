@@ -6,6 +6,66 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), wit
 
 ## Unreleased
 
+### M1.5 PR-F.5: LLM-authored daily brief + P-Cite verifier + PDF audit export
+
+PR on `graft-spray/m1.5/llm-brief`. Closes the loop on PR-F: every BlockVerdict's daily brief now picks the LLM-authored prose path when verification passes, falling back to PR-F's deterministic-template renderer on any failure. Per spec §13B.1/§13B.3, BlockVerdict is the authoritative source of numbers; the LLM produces *only* the prose narrative around them. Adds a tamper-evident audit-log PDF download for grower record-keeping + compliance (CDPR PUR etc.).
+
+#### Added
+
+- **`services/api/spray/recommendation/`**:
+  - `verifier.py` — pure-Python P-Cite verifier + hallucination guard. Tokenizes LLM output, validates every numeric atom against verdict-derived strings (severity / confidence / driver value / forecast / generic-scale numbers), validates every `[CITATION_ID]` against `sources_master.csv` AND `verdict.drivers`. Strict by default — any unverified atom or unknown citation forces fallback.
+  - `llm_brief.py` — Anthropic Claude Messages SDK wrapper. Loads prompt from `prompts/daily_brief_v1.md` (versioned + audited), maps SDK exceptions to `LLMUnavailable` / `LLMTimeout` / `LLMMalformed`, parses + validates the JSON `{headline, paragraphs}` envelope, surfaces token usage + latency for telemetry.
+  - `orchestrator.py` — picks LLM-or-fallback. 1-hour cache keyed on `audit_hash` so repeat dashboard loads within an hour are free. Returns `_telemetry` (private channel for the view layer) when LLM path served.
+  - `pdf_audit.py` — `reportlab.platypus` PDF composer. Header (block + date + headline) → verdict summary table → brief paragraphs → drivers table → resolved citations → audit footer (full hash + renderer + fallback_reason + model versions).
+  - `prompts/daily_brief_v1.md` — pinned, versioned prompt. SYSTEM + USER template split. Prompt version (`daily_brief@1.0.0`) is part of every `brief.rendered` lake event.
+  - `daily_brief.py` (PR-F) — `render_brief` is now a backward-compat alias that routes through the orchestrator. Existing callers don't break.
+- **API endpoints** (`spray/views.py` + `urls.py`):
+  - Existing `BlockVerdictBriefView` rewired through the orchestrator. Strips `_telemetry` before returning to the client; emits `brief.rendered` lake event with the metadata.
+  - `BlockVerdictAuditPdfView` (NEW) — `GET /api/spray/orgs/<org>/blocks/<block>/verdicts/<verdict>/audit.pdf`, `IsOrgViewer`-gated, regenerates on every download (no caching — audit value comes from regeneration matching the live `audit_hash`).
+- **Frontend** (`apps/web/`):
+  - `components/spray/VerdictCard.tsx` — footer adds an "audit pdf ↗" link when `orgId` is provided. Opens the PDF endpoint in a new tab.
+  - `app/spray/(app)/dashboard/page.tsx` — captures `orgId` in state and passes it through to `VerdictCard`.
+- **Lake event schema**:
+  - `brief.rendered.v1.json` — emitted on every render. Captures `renderer`, `fallback_reason`, `prompt_tokens`, `completion_tokens`, `model`, `latency_ms`. Brief content is NOT in the payload — only metadata. `additionalProperties: false`.
+- **Settings** (`graft_api/settings.py`):
+  - `ANTHROPIC_API_KEY`, `LLM_BRIEF_ENABLED` (default true), `LLM_BRIEF_MODEL`, `LLM_BRIEF_TIMEOUT_SEC`. All env-overridable.
+- **Dependencies** (`services/api/requirements.txt`):
+  - `anthropic==0.39.0` — Claude Messages SDK.
+  - `reportlab==4.2.5` — PDF generation.
+- **Tests** (~25 new):
+  - `test_brief_verifier.py` — happy path, hallucinated number, unknown citation, prose-too-long, generic-scale numbers allowed, percentage rendering, empty prose, string input.
+  - `test_brief_llm.py` (mocked Anthropic) — happy path, JSON-embedded-in-chatter extraction, malformed response, missing headline, too many paragraphs, no-key path.
+  - `test_brief_orchestrator.py` — LLM disabled / explicitly disabled / unavailable / timeout / verifier failure all route to fallback with the right reason; LLM-ok + verifier-ok returns LLM envelope; cache hit doesn't re-invoke the LLM.
+  - `test_brief_pdf.py` — PDF starts with `%PDF` magic, handles no-drivers + escaped special chars, deterministic given same input.
+  - `test_brief_endpoints.py` — brief endpoint returns fallback envelope without key, emits `brief.rendered` event, audit-pdf endpoint returns 200 + `application/pdf` + `Cache-Control: no-store`, cross-org returns 404.
+
+#### Fallback-reason taxonomy
+
+| Reason | Trigger |
+|---|---|
+| `null` | LLM path served successfully + verified |
+| `llm_disabled` | `ANTHROPIC_API_KEY` unset OR `LLM_BRIEF_ENABLED=false` |
+| `llm_unavailable` | API rejected request (auth / rate-limit / 5xx / network) |
+| `llm_timeout` | Request exceeded `LLM_BRIEF_TIMEOUT_SEC` |
+| `schema_mismatch` | LLM response was not parseable JSON or wrong shape |
+| `hallucination_guard_failed` | A numeric atom in the prose didn't match any verdict-derived value |
+| `citation_missing` | A `[CITATION_ID]` marker didn't resolve via `sources_master.csv` or wasn't in `verdict.drivers` |
+| `prose_too_long` | Combined prose exceeded `DEFAULT_MAX_PROSE_CHARS` (600) |
+
+#### Scope cuts (deferred)
+
+- Streaming LLM responses to the UI (deterministic fallback renders instantly anyway).
+- Multi-language briefs (EN-US only at MVP; ES + FR with PR-H advisory feeds).
+- Email-as-IO delivery via AgentMail (post-MVP per Q17 resolution).
+- Per-grower tone customization (formal vs casual).
+- LLM-authored structured-field fills (split_summary, driver explanations).
+- LLM model A/B testing or eval harness.
+
+#### Pre-flight (Benson, deferred)
+
+- Anthropic API key from https://console.anthropic.com → API Keys → Create Key, name "Graft Spray Production". Save to secrets doc.
+- Add `ANTHROPIC_API_KEY` to Render API env. Worker doesn't need it.
+- Brief endpoint serves the deterministic fallback when the key is unset, so this PR is safe to merge before the key lands.
 ### M1.5 PR-E: Davis WeatherLink + METER ZENTRA sensor connectors
 
 PR on `graft-spray/m1.5/sensor-davis-meter`. Two more vendors plug into PR-D's `SensorConnector` Protocol with no Protocol changes, proving the abstraction generalizes. Davis (paste-key + 15-min polling) and METER (paste-token + native HTTPS Push API + 60-min poll-as-gap-fill) cover the two structurally novel shapes left after Pessl: pre-shared-key auth and webhook-first ingestion.

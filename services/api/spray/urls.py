@@ -115,6 +115,13 @@ urlpatterns = [
         views.BlockVerdictBriefView.as_view(),
         name="block_verdict_brief",
     ),
+    # M1.5 PR-F.5: Audit-log PDF export.
+    path(
+        "orgs/<uuid:org_id>/blocks/<uuid:block_id>/verdicts/"
+        "<uuid:verdict_id>/audit.pdf",
+        views.BlockVerdictAuditPdfView.as_view(),
+        name="block_verdict_audit_pdf",
+    ),
     # M1.5 PR-D: Sensor connector integrations (Pessl FieldClimate).
     path(
         "orgs/<uuid:org_id>/integrations",

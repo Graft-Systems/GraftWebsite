@@ -44,6 +44,13 @@ pyarrow==18.1.0
 jsonschema==4.23.0
 moto[s3]==5.0.28
 
+# M1.5 PR-F.5: LLM-authored daily brief + PDF audit export.
+# `anthropic` for Claude Messages API; `reportlab` for the audit-log PDF.
+# Both pinned; reportlab is widely-used + actively maintained, Dependabot
+# tracks CVE drift.
+anthropic==0.39.0
+reportlab==4.2.5
+
 # CNN inference for v2 grape weight model (DINOv2 ViT-S/14 + HistGradientBoosting).
 # CPU-only torch wheels live on PyTorch's index (not PyPI).
 --extra-index-url https://download.pytorch.org/whl/cpu
