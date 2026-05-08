@@ -39,6 +39,7 @@ export default function SprayDashboardPage() {
     ? `Welcome back, ${user.firstName}.`
     : "Welcome back.";
 
+  const [orgId, setOrgId] = useState<string | null>(null);
   const [orgName, setOrgName] = useState<string>("");
   const [entries, setEntries] = useState<BlockEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +69,10 @@ export default function SprayDashboardPage() {
           return;
         }
         const orgId = first.org.id;
-        if (!cancelled) setOrgName(first.org.name);
+        if (!cancelled) {
+          setOrgId(orgId);
+          setOrgName(first.org.name);
+        }
 
         const vRes = await authedFetch(`/api/spray/orgs/${orgId}/vineyards`);
         if (!vRes.ok) throw new Error(`vineyards ${vRes.status}`);
@@ -160,6 +164,7 @@ export default function SprayDashboardPage() {
                 key={block.id}
                 verdict={verdict}
                 blockName={`${vineyardName} · ${block.name}`}
+                orgId={orgId ?? undefined}
               />
             ) : (
               <article
