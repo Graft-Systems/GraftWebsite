@@ -782,8 +782,12 @@ class VineyardListCreateView(APIView):
             return [IsOrgMember()]
         return [IsOrgViewer()]
 
+    @transaction.atomic
     def get(self, request, org_id):
         # Set GUC explicitly because the URL kwarg already resolved here.
+        # @transaction.atomic keeps the GUC alive for subsequent ORM calls
+        # (set_config(..., true) is transaction-local and would otherwise
+        # clear before for_org() runs).
         set_current_org_id(str(org_id))
         vineyards = (
             Vineyard.objects.for_org(org_id)
@@ -838,10 +842,12 @@ class VineyardDetailView(APIView):
             Vineyard.objects.for_org(org_id), id=vineyard_id
         )
 
+    @transaction.atomic
     def get(self, request, org_id, vineyard_id):
         set_current_org_id(str(org_id))
         return Response(VineyardSerializer(self._get(org_id, vineyard_id)).data)
 
+    @transaction.atomic
     def patch(self, request, org_id, vineyard_id):
         set_current_org_id(str(org_id))
         vineyard = self._get(org_id, vineyard_id)
@@ -893,6 +899,7 @@ class BlockListCreateView(APIView):
             return [IsOrgMember()]
         return [IsOrgViewer()]
 
+    @transaction.atomic
     def get(self, request, org_id, vineyard_id):
         set_current_org_id(str(org_id))
         # Ensure the vineyard belongs to the org before listing its blocks.
@@ -946,10 +953,12 @@ class BlockDetailView(APIView):
             Block.objects.for_org(org_id), id=block_id
         )
 
+    @transaction.atomic
     def get(self, request, org_id, block_id):
         set_current_org_id(str(org_id))
         return Response(BlockSerializer(self._get(org_id, block_id)).data)
 
+    @transaction.atomic
     def patch(self, request, org_id, block_id):
         set_current_org_id(str(org_id))
         block = self._get(org_id, block_id)
@@ -1180,6 +1189,7 @@ class CaptureListView(APIView):
 
     permission_classes = [IsOrgViewer]
 
+    @transaction.atomic
     def get(self, request, org_id):
         from spray.models import Capture
         from spray.serializers import CaptureSerializer
@@ -1212,6 +1222,7 @@ class CaptureDetailView(APIView):
 
     permission_classes = [IsOrgViewer]
 
+    @transaction.atomic
     def get(self, request, org_id, capture_id):
         from spray.models import Capture
         from spray.serializers import CaptureSerializer
@@ -1253,6 +1264,7 @@ class BlockVerdictLatestView(APIView):
 
     permission_classes = [IsOrgViewer]
 
+    @transaction.atomic
     def get(self, request, org_id, block_id):
         from spray.models import Block, BlockVerdict
         from spray.serializers import BlockVerdictSerializer
@@ -1283,6 +1295,7 @@ class BlockVerdictListView(APIView):
 
     permission_classes = [IsOrgViewer]
 
+    @transaction.atomic
     def get(self, request, org_id, block_id):
         from datetime import date, timedelta
         from spray.models import Block, BlockVerdict
@@ -1334,6 +1347,7 @@ class BlockVerdictBriefView(APIView):
 
     permission_classes = [IsOrgViewer]
 
+    @transaction.atomic
     def get(self, request, org_id, block_id, verdict_id):
         from spray.lake import emit_event
         from spray.models import Block, BlockVerdict
@@ -1406,6 +1420,7 @@ class BlockVerdictAuditPdfView(APIView):
 
     permission_classes = [IsOrgViewer]
 
+    @transaction.atomic
     def get(self, request, org_id, block_id, verdict_id):
         from spray.models import Block, BlockVerdict
         from spray.recommendation.orchestrator import render_brief
@@ -1492,6 +1507,7 @@ class IntegrationListView(APIView):
 
     permission_classes = [IsOrgViewer]
 
+    @transaction.atomic
     def get(self, request, org_id):
         from spray.models import IntegrationConnection
         from spray.serializers import IntegrationConnectionSerializer
@@ -1513,6 +1529,7 @@ class PesslOAuthStartView(APIView):
 
     permission_classes = [IsOrgAdmin]
 
+    @transaction.atomic
     def post(self, request, org_id):
         from spray.connectors.sensors.pessl.oauth import build_authorize_url
 
@@ -1654,7 +1671,12 @@ class IntegrationStationListView(APIView):
 
     permission_classes = [IsOrgMember]
 
+    @transaction.atomic
     def get(self, request, org_id, conn_id):
+        # NB: this view makes an HTTP call to the vendor inside the
+        # atomic block. That holds the DB transaction for the duration
+        # of the call (typically <30s). Acceptable for a low-frequency
+        # connect-flow endpoint; revisit if it surfaces as contention.
         from spray.connectors.base import (
             ConnectorAuthError,
             ConnectorRateLimitError,
@@ -1710,6 +1732,7 @@ class IntegrationStationLinkBlockView(APIView):
 
     permission_classes = [IsOrgMember]
 
+    @transaction.atomic
     def post(self, request, org_id, conn_id, station_id):
         from spray.models import (
             Block,
@@ -1750,6 +1773,7 @@ class IntegrationDisconnectView(APIView):
 
     permission_classes = [IsOrgAdmin]
 
+    @transaction.atomic
     def delete(self, request, org_id, conn_id):
         from spray.models import IntegrationConnection
 
@@ -1844,8 +1868,10 @@ class DavisConnectView(APIView):
             {"api_key": api_key, "api_secret": api_secret}
         )
 
-        set_current_org_id(str(org_id))
         with transaction.atomic():
+            # GUC must live inside the same transaction as the write
+            # (set_config(..., true) is transaction-local).
+            set_current_org_id(str(org_id))
             conn, created = IntegrationConnection.objects.unscoped().update_or_create(
                 org_id=org_id,
                 vendor=IntegrationConnection.Vendor.DAVIS,
@@ -1941,8 +1967,10 @@ class MeterConnectView(APIView):
             {"token": token, "webhook_secret": webhook_secret}
         )
 
-        set_current_org_id(str(org_id))
         with transaction.atomic():
+            # GUC must live inside the same transaction as the write
+            # (set_config(..., true) is transaction-local).
+            set_current_org_id(str(org_id))
             conn, created = IntegrationConnection.objects.unscoped().update_or_create(
                 org_id=org_id,
                 vendor=IntegrationConnection.Vendor.METER,
