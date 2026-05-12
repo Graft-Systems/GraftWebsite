@@ -1,211 +1,154 @@
-/**
- * Spray dashboard (M1.5 PR-F).
- *
- * Pulls the active org's vineyards, expands every vineyard's blocks,
- * fetches the latest BlockVerdict per block, and renders a VerdictCard
- * grid. Blocks without a verdict (no aggregation has run yet — out of
- * season, fresh block, etc.) render an empty placeholder so the grower
- * still sees the block exists.
- *
- * Active Org = first Membership returned by /api/spray/orgs/me, matching
- * the rest of the spray app. Org switching lands later (M0-05a follow-up).
- */
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { useAuth, useUser } from "@clerk/nextjs";
-import { VerdictCard, type Verdict } from "@/components/spray/VerdictCard";
-
-type Membership = { org: { id: string; name: string } };
-type Vineyard = { id: string; name: string; archived_at: string | null };
-type Block = {
-  id: string;
-  name: string;
-  vineyard_id: string;
-  archived_at: string | null;
-};
-type SetupStep = {
-  id: string;
-  label: string;
-  complete: boolean;
-  href: string;
-};
-type SetupSummary = {
-  counts: {
-    vineyards: number;
-    blocks: number;
-    active_integrations: number;
-    mapped_stations: number;
-    verdicts: number;
-    unmapped_stations: number;
-    stale_stations: number;
-    stale_integrations: number;
-    never_seen_stations: number;
-    never_checked_integrations: number;
-  };
-  steps: SetupStep[];
-  warnings: string[];
-};
-
-type BlockEntry = {
-  block: Block;
-  vineyardName: string;
-  verdict: Verdict | null;
-};
+import { useMemo, useState } from "react";
+import { RefreshCw } from "lucide-react";
+import { useUser } from "@clerk/nextjs";
+import { VerdictCard } from "@/components/spray/VerdictCard";
+import {
+  type DashboardBlock,
+  type SetupSummary,
+  useSprayDashboard,
+} from "@/lib/sprayApi";
 
 export default function SprayDashboardPage() {
   const { user } = useUser();
-  const { getToken, isSignedIn } = useAuth();
+  const { summary, loading, error, reload, authedFetch } = useSprayDashboard();
+  const [refreshingBlock, setRefreshingBlock] = useState<string | null>(null);
   const greeting = user?.firstName
     ? `Welcome back, ${user.firstName}.`
     : "Welcome back.";
+  const today = useMemo(() => classifyToday(summary?.blocks ?? []), [summary]);
 
-  const [orgId, setOrgId] = useState<string | null>(null);
-  const [orgName, setOrgName] = useState<string>("");
-  const [entries, setEntries] = useState<BlockEntry[] | null>(null);
-  const [setup, setSetup] = useState<SetupSummary | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function authedFetch(path: string, init?: RequestInit) {
-    const token = await getToken();
-    return fetch(path, {
-      ...init,
-      headers: {
-        ...(init?.headers ?? {}),
-        Authorization: `Bearer ${token}`,
-      },
-    });
+  async function refreshDirective(blockId: string) {
+    if (!summary) return;
+    setRefreshingBlock(blockId);
+    try {
+      await authedFetch(
+        `/api/spray/orgs/${summary.org.id}/blocks/${blockId}/verdicts/recompute`,
+        { method: "POST" },
+      );
+      await reload();
+    } finally {
+      setRefreshingBlock(null);
+    }
   }
 
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      if (!isSignedIn) return;
-      try {
-        const meRes = await authedFetch("/api/spray/orgs/me");
-        if (!meRes.ok) throw new Error(`orgs/me ${meRes.status}`);
-        const me = (await meRes.json()) as { memberships: Membership[] };
-        const first = me.memberships?.[0];
-        if (!first) {
-          if (!cancelled) setEntries([]);
-          return;
-        }
-        const orgId = first.org.id;
-        if (!cancelled) {
-          setOrgId(orgId);
-          setOrgName(first.org.name);
-        }
-
-        const setupRes = await authedFetch(`/api/spray/orgs/${orgId}/setup-summary`);
-        if (setupRes.ok && !cancelled) {
-          setSetup((await setupRes.json()) as SetupSummary);
-        }
-
-        const vRes = await authedFetch(`/api/spray/orgs/${orgId}/vineyards`);
-        if (!vRes.ok) throw new Error(`vineyards ${vRes.status}`);
-        const vineyards = ((await vRes.json()) as Vineyard[]).filter(
-          (v) => v.archived_at === null,
-        );
-
-        const blockLists = await Promise.all(
-          vineyards.map(async (v) => {
-            const r = await authedFetch(
-              `/api/spray/orgs/${orgId}/vineyards/${v.id}/blocks`,
-            );
-            if (!r.ok) return { vineyard: v, blocks: [] as Block[] };
-            const blocks = ((await r.json()) as Block[]).filter(
-              (b) => b.archived_at === null,
-            );
-            return { vineyard: v, blocks };
-          }),
-        );
-
-        const flat: { block: Block; vineyardName: string }[] = [];
-        for (const { vineyard, blocks } of blockLists) {
-          for (const b of blocks) {
-            flat.push({ block: b, vineyardName: vineyard.name });
-          }
-        }
-
-        const filled = await Promise.all(
-          flat.map(async ({ block, vineyardName }) => {
-            const r = await authedFetch(
-              `/api/spray/orgs/${orgId}/blocks/${block.id}/verdicts/latest`,
-            );
-            const verdict = r.ok ? ((await r.json()) as Verdict) : null;
-            return { block, vineyardName, verdict };
-          }),
-        );
-
-        if (!cancelled) setEntries(filled);
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "load failed");
-      }
-    }
-    load();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSignedIn]);
-
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-6xl pb-24 md:pb-0">
       <header>
-        <h1 className="font-display text-3xl">{greeting}</h1>
-        <p className="mt-2 text-foreground/60">
-          {orgName
-            ? `Latest verdicts for blocks in ${orgName}.`
-            : "Latest verdicts for your blocks."}
-        </p>
-      </header>
-
-      {error && (
-        <p className="mt-6 rounded-md border border-red-500/50 bg-red-500/10 p-3 text-sm text-red-300">
-          {error}
-        </p>
-      )}
-
-      {entries === null && !error && (
-        <p className="mt-12 text-foreground/50">Loading...</p>
-      )}
-
-      {setup && <SetupChecklist setup={setup} />}
-
-      {entries && entries.length === 0 && (
-        <div className="mt-12 rounded-md border border-dashed border-border/40 p-12 text-center">
-          <p className="text-foreground/70">
-            No blocks yet. Head to{" "}
-            <Link href="/spray/vineyards" className="text-amber hover:underline">
-              Vineyards
-            </Link>{" "}
-            to draw your first block. Verdicts compute hourly during the
-            growing season once a block exists.
-          </p>
-        </div>
-      )}
-
-      {entries && entries.length > 0 && (
-        <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {entries.map(({ block, vineyardName, verdict }) =>
-            verdict ? (
-              <VerdictCard
-                key={block.id}
-                verdict={verdict}
-                blockName={`${vineyardName} · ${block.name}`}
-                orgId={orgId ?? undefined}
-              />
-            ) : (
-              <NoVerdictCard
-                key={block.id}
-                blockName={`${vineyardName} · ${block.name}`}
-                setup={setup}
-              />
-            ),
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="font-display text-3xl">{greeting}</h1>
+            <p className="mt-2 text-foreground/60">
+              {summary?.org.name
+                ? `Today’s mildew work for ${summary.org.name}.`
+                : "Today’s mildew work for your blocks."}
+            </p>
+          </div>
+          {summary?.org.is_demo && (
+            <span className="rounded border border-amber/40 bg-amber/10 px-3 py-1 frame text-[0.65rem] font-semibold uppercase tracking-wider text-amber">
+              Demo vineyard
+            </span>
           )}
         </div>
+      </header>
+
+      {error && <ErrorState message={error} onRetry={reload} />}
+      {loading && !error && <DashboardSkeleton />}
+
+      {summary && (
+        <>
+          <section className="sticky top-16 z-20 mt-8 rounded-md border border-border/40 bg-background/95 p-4 shadow-sm backdrop-blur">
+            <div className="grid gap-3 md:grid-cols-4">
+              <Metric label="Spray" value={today.spray} tone="text-red-300" />
+              <Metric label="Scout" value={today.scout} tone="text-amber" />
+              <Metric label="Hold" value={today.hold} tone="text-emerald-300" />
+              <Metric
+                label="Data warnings"
+                value={summary.setup.warnings.length}
+                tone="text-foreground/70"
+              />
+            </div>
+            {summary.latest_generated_at && (
+              <p className="mt-3 text-xs text-foreground/50">
+                Last directive generated{" "}
+                {new Date(summary.latest_generated_at).toLocaleString()}.
+              </p>
+            )}
+          </section>
+
+          <SetupChecklist setup={summary.setup} />
+
+          {summary.blocks.length === 0 ? (
+            <EmptyState
+              title="No blocks yet"
+              body="Create a vineyard and draw blocks before Graft Spray can make block-level directives."
+              href="/spray/vineyards"
+              cta="Create blocks"
+            />
+          ) : (
+            <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {summary.blocks.map((block) =>
+                block.latest_verdict ? (
+                  <div key={block.id} className="space-y-2">
+                    <VerdictCard
+                      verdict={block.latest_verdict}
+                      blockName={`${block.vineyard_name} · ${block.name}`}
+                      orgId={summary.org.id}
+                    />
+                    <CardActions
+                      stale={block.verdict_stale}
+                      refreshing={refreshingBlock === block.id}
+                      onRefresh={() => refreshDirective(block.id)}
+                    />
+                  </div>
+                ) : (
+                  <NoVerdictCard
+                    key={block.id}
+                    block={block}
+                    setup={summary.setup}
+                    refreshing={refreshingBlock === block.id}
+                    onRefresh={() => refreshDirective(block.id)}
+                  />
+                ),
+              )}
+            </div>
+          )}
+        </>
       )}
+    </div>
+  );
+}
+
+function classifyToday(blocks: DashboardBlock[]) {
+  return blocks.reduce(
+    (acc, block) => {
+      const action = block.latest_verdict?.action;
+      if (action === "spray") acc.spray += 1;
+      else if (action === "scout") acc.scout += 1;
+      else if (action === "hold") acc.hold += 1;
+      return acc;
+    },
+    { spray: 0, scout: 0, hold: 0 },
+  );
+}
+
+function Metric({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: string;
+}) {
+  return (
+    <div className="rounded-md border border-border/40 bg-background/40 p-3">
+      <p className="frame text-[0.6rem] uppercase tracking-wider text-foreground/50">
+        {label}
+      </p>
+      <p className={`mt-1 font-display text-2xl ${tone}`}>{value}</p>
     </div>
   );
 }
@@ -215,7 +158,7 @@ function SetupChecklist({ setup }: { setup: SetupSummary }) {
   const next = setup.steps.find((step) => !step.complete);
 
   return (
-    <section className="mt-8 rounded-md border border-border/40 bg-background/40 p-5">
+    <section className="mt-6 rounded-md border border-border/40 bg-background/40 p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="frame text-[0.65rem] font-semibold uppercase tracking-wider text-foreground/50">
@@ -272,32 +215,133 @@ function SetupChecklist({ setup }: { setup: SetupSummary }) {
   );
 }
 
-function NoVerdictCard({
-  blockName,
-  setup,
+function CardActions({
+  stale,
+  refreshing,
+  onRefresh,
 }: {
-  blockName: string;
-  setup: SetupSummary | null;
+  stale: boolean;
+  refreshing: boolean;
+  onRefresh: () => void;
 }) {
-  const next = setup?.steps.find((step) => !step.complete);
-  const message = next
-    ? `No verdict yet. Complete "${next.label}" to generate this block's first directive.`
-    : "No verdict yet. The aggregation engine fires hourly during the growing season.";
+  return (
+    <div className="flex items-center justify-between rounded-md border border-border/30 bg-background/30 px-3 py-2">
+      <span className={`text-xs ${stale ? "text-amber" : "text-foreground/50"}`}>
+        {stale ? "Data is stale" : "Directive is current"}
+      </span>
+      <button
+        type="button"
+        onClick={onRefresh}
+        disabled={refreshing}
+        className="inline-flex items-center gap-1 frame text-xs font-semibold text-amber hover:text-amber/80 disabled:opacity-50"
+      >
+        <RefreshCw className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
+        Refresh directive
+      </button>
+    </div>
+  );
+}
 
+function NoVerdictCard({
+  block,
+  setup,
+  refreshing,
+  onRefresh,
+}: {
+  block: DashboardBlock;
+  setup: SetupSummary;
+  refreshing: boolean;
+  onRefresh: () => void;
+}) {
+  const next = setup.steps.find((step) => !step.complete);
   return (
     <article className="rounded-md border border-dashed border-border/40 bg-background/30 p-5">
       <p className="frame text-[0.65rem] font-semibold uppercase tracking-wider text-foreground/50">
-        {blockName}
+        {block.vineyard_name} · {block.name}
       </p>
-      <p className="mt-3 text-sm text-foreground/60">{message}</p>
-      {next && (
-        <Link
-          href={next.href}
-          className="mt-4 inline-flex frame text-xs font-semibold text-amber transition-colors hover:text-amber/80"
+      <p className="mt-3 text-sm text-foreground/60">
+        {next
+          ? `No directive yet. Complete "${next.label}" to generate this block’s first recommendation.`
+          : "No directive yet. Generate one now or wait for the next scheduled run."}
+      </p>
+      <div className="mt-4 flex flex-wrap gap-3">
+        {next && (
+          <Link
+            href={next.href}
+            className="frame text-xs font-semibold text-amber transition-colors hover:text-amber/80"
+          >
+            Go to {next.label}
+          </Link>
+        )}
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={refreshing}
+          className="inline-flex items-center gap-1 frame text-xs font-semibold text-amber hover:text-amber/80 disabled:opacity-50"
         >
-          Go to {next.label} →
-        </Link>
-      )}
+          <RefreshCw className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
+          Generate first directive
+        </button>
+      </div>
     </article>
+  );
+}
+
+function EmptyState({
+  title,
+  body,
+  href,
+  cta,
+}: {
+  title: string;
+  body: string;
+  href: string;
+  cta: string;
+}) {
+  return (
+    <div className="mt-12 rounded-md border border-dashed border-border/40 p-12 text-center">
+      <h2 className="font-display text-xl">{title}</h2>
+      <p className="mx-auto mt-2 max-w-xl text-sm text-foreground/60">{body}</p>
+      <Link
+        href={href}
+        className="mt-5 inline-flex rounded-md bg-amber px-4 py-2 frame text-xs font-semibold text-background hover:bg-amber/90"
+      >
+        {cta}
+      </Link>
+    </div>
+  );
+}
+
+function ErrorState({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="mt-6 rounded-md border border-red-500/50 bg-red-500/10 p-4 text-sm text-red-200">
+      <p>{message}</p>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="mt-3 frame text-xs font-semibold text-red-100 underline"
+      >
+        Retry
+      </button>
+    </div>
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="mt-8 grid gap-4 md:grid-cols-3">
+      {[0, 1, 2].map((item) => (
+        <div
+          key={item}
+          className="h-48 animate-pulse rounded-md border border-border/40 bg-foreground/5"
+        />
+      ))}
+    </div>
   );
 }

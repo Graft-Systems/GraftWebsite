@@ -16,6 +16,7 @@ from spray.models import (
     Membership,
     Org,
     Session,
+    SprayRecord,
     User,
     Vineyard,
 )
@@ -113,6 +114,14 @@ class BlockAdmin(gis_admin.GISModelAdmin):
     list_filter = ("variety", "archived_at")
     search_fields = ("name", "vineyard__name", "variety")
     readonly_fields = ("id", "created_at")
+
+
+@admin.register(SprayRecord)
+class SprayRecordAdmin(admin.ModelAdmin):
+    list_display = ("product", "block", "target_disease", "applied_at", "archived_at")
+    list_filter = ("target_disease", "archived_at")
+    search_fields = ("product", "block__name", "block__vineyard__name")
+    readonly_fields = ("id", "created_at", "updated_at")
 
 
 @admin.register(DataLakeEvent)

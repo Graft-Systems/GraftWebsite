@@ -736,6 +736,62 @@ class BlockVerdict(models.Model):
         return f"{self.block_id} {self.date} {self.action} ({self.urgency})"
 
 
+class SprayRecord(models.Model):
+    """Manager-entered spray operation tied to a block and optional verdict."""
+
+    class TargetDisease(models.TextChoices):
+        POWDERY = "powdery", "Powdery mildew"
+        DOWNY = "downy", "Downy mildew"
+        BOTH = "both", "Powdery + downy mildew"
+        OTHER = "other", "Other"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    block = models.ForeignKey(
+        Block, on_delete=models.CASCADE, related_name="spray_records"
+    )
+    verdict = models.ForeignKey(
+        BlockVerdict,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="spray_records",
+    )
+    applied_at = models.DateTimeField()
+    product = models.CharField(max_length=160)
+    rate = models.CharField(max_length=80, blank=True)
+    target_disease = models.CharField(
+        max_length=20,
+        choices=TargetDisease.choices,
+        default=TargetDisease.BOTH,
+    )
+    rei_hours = models.PositiveIntegerField(null=True, blank=True)
+    phi_days = models.PositiveIntegerField(null=True, blank=True)
+    applicator = models.CharField(max_length=120, blank=True)
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="spray_records",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
+
+    objects = OrgScopedManager(via="block__vineyard__org_id")
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["block", "-applied_at"]),
+            models.Index(fields=["target_disease", "-applied_at"]),
+            models.Index(fields=["archived_at", "-created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.product} on {self.block_id} @ {self.applied_at}"
+
+
 # =====================================================================
 # M1.5 PR-D: Sensor connectors — IntegrationConnection + SensorStation
 # + SensorReading + OAuthState (SA-2)

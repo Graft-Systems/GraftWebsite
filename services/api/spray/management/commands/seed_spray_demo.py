@@ -18,6 +18,7 @@ from spray.models import (
     SensorReading,
     SensorStation,
     SensorStationBlock,
+    SprayRecord,
     User,
     Vineyard,
     WeatherObservation,
@@ -46,7 +47,21 @@ class Command(BaseCommand):
             name=org_name,
             defaults={
                 "region": Org.Region.NAPA,
-                "settings": {"demo": True, "pilot_ready": True},
+                "settings": {
+                    "demo": True,
+                    "pilot_ready": True,
+                    "spray_program": {
+                        "program_type": "organic",
+                        "allowed_products": "sulfur, potassium bicarbonate, biological rotation",
+                        "frac_rotation": "Rotate FRAC groups and avoid back-to-back single-site materials.",
+                        "cultivar_sensitivity": "high",
+                        "canopy_density": "medium",
+                        "max_wind_mph": 10,
+                        "min_temp_f": 45,
+                        "max_temp_f": 85,
+                        "avoid_rain_hours": 12,
+                    },
+                },
             },
         )
         owner_email = options.get("owner_email") or ""
@@ -129,6 +144,7 @@ class Command(BaseCommand):
         _seed_sensor_readings(station, now)
         _seed_weather(weather_station, now)
         _seed_verdicts(blocks, now.date())
+        _seed_spray_records(blocks, now)
 
         self.stdout.write(
             self.style.SUCCESS(
@@ -260,3 +276,19 @@ def _seed_verdicts(blocks: dict[str, Block], target_date: date) -> None:
                 "audit_hash": "sha256:" + ("d" * 64),
             },
         )
+
+
+def _seed_spray_records(blocks: dict[str, Block], now: datetime) -> None:
+    SprayRecord.objects.update_or_create(
+        block=blocks["Home Chardonnay"],
+        applied_at=now - timedelta(days=6),
+        product="Demo sulfur rotation",
+        defaults={
+            "rate": "label rate",
+            "target_disease": SprayRecord.TargetDisease.POWDERY,
+            "rei_hours": 24,
+            "phi_days": 0,
+            "applicator": "Demo vineyard crew",
+            "notes": "Seeded demo record for pilot walkthrough.",
+        },
+    )

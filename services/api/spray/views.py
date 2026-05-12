@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import timedelta
 from typing import Any
 
 from django.conf import settings
@@ -1012,106 +1013,259 @@ class SetupSummaryView(APIView):
 
     @transaction.atomic
     def get(self, request, org_id):
-        from datetime import timedelta
+        set_current_org_id(str(org_id))
+        return Response(_setup_summary_payload(org_id))
 
-        from spray.models import (
-            BlockVerdict,
-            IntegrationConnection,
-            SensorStation,
-        )
+
+def _setup_summary_payload(org_id):
+    from spray.models import (
+        BlockVerdict,
+        IntegrationConnection,
+        SensorStation,
+    )
+
+    now = timezone.now()
+    station_stale_after = now - timedelta(hours=2)
+    health_stale_after = now - timedelta(hours=24)
+
+    vineyards = Vineyard.objects.for_org(org_id).filter(archived_at__isnull=True)
+    blocks = Block.objects.for_org(org_id).filter(
+        vineyard__archived_at__isnull=True,
+        archived_at__isnull=True,
+    )
+    integrations = IntegrationConnection.objects.for_org(org_id)
+    active_integrations = integrations.filter(
+        status=IntegrationConnection.Status.ACTIVE
+    )
+    stations = SensorStation.objects.for_org(org_id).filter(
+        archived_at__isnull=True
+    )
+    mapped_stations = stations.filter(
+        linked_blocks__isnull=False,
+        linked_blocks__archived_at__isnull=True,
+    ).distinct()
+    stale_stations = stations.filter(last_seen_at__lt=station_stale_after)
+    never_seen_stations = stations.filter(last_seen_at__isnull=True)
+    stale_integrations = active_integrations.filter(
+        last_health_at__lt=health_stale_after
+    )
+    never_checked_integrations = active_integrations.filter(
+        last_health_at__isnull=True
+    )
+    verdicts = BlockVerdict.objects.for_org(org_id).filter(block__in=blocks)
+
+    counts = {
+        "vineyards": vineyards.count(),
+        "blocks": blocks.count(),
+        "integrations": integrations.count(),
+        "active_integrations": active_integrations.count(),
+        "stations": stations.count(),
+        "mapped_stations": mapped_stations.count(),
+        "unmapped_stations": max(stations.count() - mapped_stations.count(), 0),
+        "stale_stations": stale_stations.count(),
+        "never_seen_stations": never_seen_stations.count(),
+        "stale_integrations": stale_integrations.count(),
+        "never_checked_integrations": never_checked_integrations.count(),
+        "verdicts": verdicts.count(),
+    }
+    steps = [
+        {
+            "id": "create_vineyard",
+            "label": "Create vineyard",
+            "complete": counts["vineyards"] > 0,
+            "href": "/spray/vineyards",
+        },
+        {
+            "id": "draw_blocks",
+            "label": "Draw blocks",
+            "complete": counts["blocks"] > 0,
+            "href": "/spray/vineyards",
+        },
+        {
+            "id": "connect_sensor",
+            "label": "Connect sensor",
+            "complete": counts["active_integrations"] > 0,
+            "href": "/spray/integrations",
+        },
+        {
+            "id": "map_station",
+            "label": "Map station to block",
+            "complete": counts["mapped_stations"] > 0,
+            "href": "/spray/integrations",
+        },
+        {
+            "id": "generate_verdict",
+            "label": "Generate verdict",
+            "complete": counts["verdicts"] > 0,
+            "href": "/spray/dashboard",
+        },
+    ]
+
+    warnings = []
+    if counts["unmapped_stations"] > 0:
+        warnings.append("Some stations are not linked to a block.")
+    if counts["stale_stations"] > 0 or counts["never_seen_stations"] > 0:
+        warnings.append("Some stations have no recent readings.")
+    if counts["stale_integrations"] > 0 or counts["never_checked_integrations"] > 0:
+        warnings.append("Some provider health checks are stale.")
+
+    return {
+        "org_id": str(org_id),
+        "counts": counts,
+        "steps": steps,
+        "warnings": warnings,
+        "generated_at": now.isoformat(),
+    }
+
+
+class DashboardSummaryView(APIView):
+    """GET /api/spray/orgs/<org_id>/dashboard-summary."""
+
+    permission_classes = [IsOrgViewer]
+
+    @transaction.atomic
+    def get(self, request, org_id):
+        from spray.models import BlockVerdict, IntegrationConnection, SensorStation
+        from spray.serializers import BlockVerdictSerializer
 
         set_current_org_id(str(org_id))
+        org = get_object_or_404(Org, id=org_id, archived_at__isnull=True)
+        setup = _setup_summary_payload(org_id)
         now = timezone.now()
         station_stale_after = now - timedelta(hours=2)
         health_stale_after = now - timedelta(hours=24)
 
-        vineyards = Vineyard.objects.for_org(org_id).filter(archived_at__isnull=True)
-        blocks = Block.objects.for_org(org_id).filter(
-            vineyard__archived_at__isnull=True,
-            archived_at__isnull=True,
+        vineyards = list(
+            Vineyard.objects.for_org(org_id)
+            .filter(archived_at__isnull=True)
+            .order_by("name")
         )
-        integrations = IntegrationConnection.objects.for_org(org_id)
-        active_integrations = integrations.filter(
-            status=IntegrationConnection.Status.ACTIVE
+        blocks = list(
+            Block.objects.for_org(org_id)
+            .filter(vineyard__archived_at__isnull=True, archived_at__isnull=True)
+            .select_related("vineyard")
+            .order_by("vineyard__name", "name")
         )
-        stations = SensorStation.objects.for_org(org_id).filter(
-            archived_at__isnull=True
-        )
-        mapped_stations = stations.filter(
-            linked_blocks__isnull=False,
-            linked_blocks__archived_at__isnull=True,
-        ).distinct()
-        stale_stations = stations.filter(last_seen_at__lt=station_stale_after)
-        never_seen_stations = stations.filter(last_seen_at__isnull=True)
-        stale_integrations = active_integrations.filter(
-            last_health_at__lt=health_stale_after
-        )
-        never_checked_integrations = active_integrations.filter(
-            last_health_at__isnull=True
-        )
-        verdicts = BlockVerdict.objects.for_org(org_id).filter(block__in=blocks)
 
-        counts = {
-            "vineyards": vineyards.count(),
-            "blocks": blocks.count(),
-            "integrations": integrations.count(),
-            "active_integrations": active_integrations.count(),
-            "stations": stations.count(),
-            "mapped_stations": mapped_stations.count(),
-            "unmapped_stations": max(stations.count() - mapped_stations.count(), 0),
-            "stale_stations": stale_stations.count(),
-            "never_seen_stations": never_seen_stations.count(),
-            "stale_integrations": stale_integrations.count(),
-            "never_checked_integrations": never_checked_integrations.count(),
-            "verdicts": verdicts.count(),
-        }
-        steps = [
-            {
-                "id": "create_vineyard",
-                "label": "Create vineyard",
-                "complete": counts["vineyards"] > 0,
-                "href": "/spray/vineyards",
-            },
-            {
-                "id": "draw_blocks",
-                "label": "Draw blocks",
-                "complete": counts["blocks"] > 0,
-                "href": "/spray/vineyards",
-            },
-            {
-                "id": "connect_sensor",
-                "label": "Connect sensor",
-                "complete": counts["active_integrations"] > 0,
-                "href": "/spray/integrations",
-            },
-            {
-                "id": "map_station",
-                "label": "Map station to block",
-                "complete": counts["mapped_stations"] > 0,
-                "href": "/spray/integrations",
-            },
-            {
-                "id": "generate_verdict",
-                "label": "Generate verdict",
-                "complete": counts["verdicts"] > 0,
-                "href": "/spray/dashboard",
-            },
-        ]
+        latest_by_block = {}
+        for verdict in (
+            BlockVerdict.objects.for_org(org_id)
+            .filter(block__in=blocks)
+            .order_by("block_id", "-date")
+        ):
+            latest_by_block.setdefault(str(verdict.block_id), verdict)
 
-        warnings = []
-        if counts["unmapped_stations"] > 0:
-            warnings.append("Some stations are not linked to a block.")
-        if counts["stale_stations"] > 0 or counts["never_seen_stations"] > 0:
-            warnings.append("Some stations have no recent readings.")
-        if counts["stale_integrations"] > 0 or counts["never_checked_integrations"] > 0:
-            warnings.append("Some provider health checks are stale.")
+        block_rows = []
+        for block in blocks:
+            verdict = latest_by_block.get(str(block.id))
+            block_rows.append(
+                {
+                    "id": str(block.id),
+                    "name": block.name,
+                    "vineyard_id": str(block.vineyard_id),
+                    "vineyard_name": block.vineyard.name,
+                    "variety": block.variety,
+                    "latest_verdict": (
+                        BlockVerdictSerializer(verdict).data if verdict else None
+                    ),
+                    "verdict_stale": (
+                        bool(verdict)
+                        and verdict.generated_at < now - timedelta(hours=26)
+                    ),
+                }
+            )
+
+        integrations = []
+        for conn in IntegrationConnection.objects.for_org(org_id).order_by("vendor"):
+            health_status = "disconnected"
+            if conn.status == IntegrationConnection.Status.NEEDS_REAUTH:
+                health_status = "needs_reauth"
+            elif conn.status == IntegrationConnection.Status.ACTIVE:
+                if conn.last_health_at is None:
+                    health_status = "unchecked"
+                elif conn.last_health_at < health_stale_after:
+                    health_status = "health_stale"
+                else:
+                    health_status = "active"
+            integrations.append(
+                {
+                    "id": str(conn.id),
+                    "vendor": conn.vendor,
+                    "vendor_account_id": conn.vendor_account_id,
+                    "status": conn.status,
+                    "health_status": health_status,
+                    "last_health_at": (
+                        conn.last_health_at.isoformat()
+                        if conn.last_health_at
+                        else None
+                    ),
+                    "last_health_detail": conn.last_health_detail,
+                }
+            )
+
+        stations = []
+        for station in (
+            SensorStation.objects.for_org(org_id)
+            .filter(archived_at__isnull=True)
+            .prefetch_related("linked_blocks")
+            .select_related("connection")
+        ):
+            linked = [b for b in station.linked_blocks.all() if b.archived_at is None]
+            station_status = "active"
+            if not linked:
+                station_status = "unmapped"
+            elif station.last_seen_at is None:
+                station_status = "never_seen"
+            elif station.last_seen_at < station_stale_after:
+                station_status = "stale"
+            stations.append(
+                {
+                    "id": str(station.id),
+                    "name": station.name or station.vendor_station_id,
+                    "vendor": station.connection.vendor,
+                    "last_seen_at": (
+                        station.last_seen_at.isoformat()
+                        if station.last_seen_at
+                        else None
+                    ),
+                    "status": station_status,
+                    "linked_block_ids": [str(b.id) for b in linked],
+                    "linked_block_names": [b.name for b in linked],
+                }
+            )
+
+        latest_generated_at = max(
+            (
+                row["latest_verdict"]["generated_at"]
+                for row in block_rows
+                if row["latest_verdict"]
+            ),
+            default=None,
+        )
 
         return Response(
             {
-                "org_id": str(org_id),
-                "counts": counts,
-                "steps": steps,
-                "warnings": warnings,
+                "org": {
+                    "id": str(org.id),
+                    "name": org.name,
+                    "region": org.region,
+                    "settings": org.settings,
+                    "is_demo": bool(org.settings.get("demo")),
+                },
+                "setup": setup,
+                "vineyards": [
+                    {
+                        "id": str(v.id),
+                        "name": v.name,
+                        "region": v.region,
+                        "is_demo": bool(v.settings.get("demo")),
+                    }
+                    for v in vineyards
+                ],
+                "blocks": block_rows,
+                "integrations": integrations,
+                "stations": stations,
+                "latest_generated_at": latest_generated_at,
                 "generated_at": now.isoformat(),
             }
         )
@@ -1449,6 +1603,219 @@ class BlockVerdictListView(APIView):
                 "results": BlockVerdictSerializer(qs[:200], many=True).data,
             }
         )
+
+
+class BlockVerdictRecomputeView(APIView):
+    """POST /api/spray/orgs/<org_id>/blocks/<block_id>/verdicts/recompute."""
+
+    permission_classes = [IsOrgMember]
+
+    @transaction.atomic
+    def post(self, request, org_id, block_id):
+        from spray.models import Block
+
+        set_current_org_id(str(org_id))
+        block = get_object_or_404(
+            Block.objects.for_org(org_id).select_related("vineyard"),
+            id=block_id,
+            archived_at__isnull=True,
+        )
+
+        try:
+            from celery import current_app
+
+            result = current_app.send_task(
+                "graft_worker.tasks.aggregation_run.compute_block_verdict",
+                args=[str(block.id)],
+            )
+            task_id = result.id
+            queued = True
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("recompute queue failed for block=%s", block_id)
+            return Response(
+                {"detail": f"could not queue recompute: {exc}"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        logger.info(
+            "directive recompute queued org=%s block=%s user=%s task=%s",
+            org_id,
+            block_id,
+            getattr(request.user, "id", None),
+            task_id,
+        )
+        return Response(
+            {
+                "queued": queued,
+                "task_id": task_id,
+                "block_id": str(block.id),
+                "message": "Directive refresh queued.",
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+
+class SprayRecordListCreateView(APIView):
+    """GET/POST /api/spray/orgs/<org_id>/spray-records."""
+
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [IsOrgViewer()]
+        return [IsOrgMember()]
+
+    @transaction.atomic
+    def get(self, request, org_id):
+        from spray.models import SprayRecord
+        from spray.serializers import SprayRecordSerializer
+
+        set_current_org_id(str(org_id))
+        qs = (
+            SprayRecord.objects.for_org(org_id)
+            .filter(archived_at__isnull=True)
+            .select_related("block", "block__vineyard", "verdict")
+            .order_by("-applied_at", "-created_at")
+        )
+        block_id = request.query_params.get("block_id")
+        if block_id:
+            qs = qs.filter(block_id=block_id)
+        return Response({"results": SprayRecordSerializer(qs[:200], many=True).data})
+
+    @transaction.atomic
+    def post(self, request, org_id):
+        from spray.models import Block, BlockVerdict
+        from spray.serializers import SprayRecordSerializer
+
+        set_current_org_id(str(org_id))
+        serializer = SprayRecordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        block = get_object_or_404(
+            Block.objects.for_org(org_id),
+            id=serializer.validated_data["block"].id,
+            archived_at__isnull=True,
+        )
+        verdict = serializer.validated_data.get("verdict")
+        if verdict is not None:
+            get_object_or_404(
+                BlockVerdict.objects.for_org(org_id),
+                id=verdict.id,
+                block=block,
+            )
+        record = serializer.save(block=block, created_by=request.user)
+        return Response(
+            SprayRecordSerializer(record).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class SprayRecordDetailView(APIView):
+    """GET/PATCH/DELETE /api/spray/orgs/<org_id>/spray-records/<record_id>."""
+
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [IsOrgViewer()]
+        return [IsOrgMember()]
+
+    def _get(self, org_id, record_id):
+        from spray.models import SprayRecord
+
+        return get_object_or_404(
+            SprayRecord.objects.for_org(org_id).select_related(
+                "block",
+                "block__vineyard",
+                "verdict",
+            ),
+            id=record_id,
+        )
+
+    @transaction.atomic
+    def get(self, request, org_id, record_id):
+        from spray.serializers import SprayRecordSerializer
+
+        set_current_org_id(str(org_id))
+        return Response(SprayRecordSerializer(self._get(org_id, record_id)).data)
+
+    @transaction.atomic
+    def patch(self, request, org_id, record_id):
+        from spray.models import Block, BlockVerdict
+        from spray.serializers import SprayRecordSerializer
+
+        set_current_org_id(str(org_id))
+        record = self._get(org_id, record_id)
+        serializer = SprayRecordSerializer(record, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        block = serializer.validated_data.get("block")
+        if block is not None:
+            get_object_or_404(Block.objects.for_org(org_id), id=block.id)
+        verdict = serializer.validated_data.get("verdict")
+        if verdict is not None:
+            target_block = block or record.block
+            get_object_or_404(
+                BlockVerdict.objects.for_org(org_id),
+                id=verdict.id,
+                block=target_block,
+            )
+        serializer.save()
+        return Response(serializer.data)
+
+    @transaction.atomic
+    def delete(self, request, org_id, record_id):
+        set_current_org_id(str(org_id))
+        record = self._get(org_id, record_id)
+        if record.archived_at is not None:
+            return Response(
+                {"detail": "already archived"},
+                status=status.HTTP_409_CONFLICT,
+            )
+        record.archived_at = timezone.now()
+        record.save(update_fields=["archived_at"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class SprayProgramSettingsView(APIView):
+    """GET/PATCH /api/spray/orgs/<org_id>/program-settings."""
+
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [IsOrgViewer()]
+        return [IsOrgAdmin()]
+
+    @transaction.atomic
+    def get(self, request, org_id):
+        set_current_org_id(str(org_id))
+        org = get_object_or_404(Org, id=org_id, archived_at__isnull=True)
+        return Response(_program_settings(org))
+
+    @transaction.atomic
+    def patch(self, request, org_id):
+        set_current_org_id(str(org_id))
+        org = get_object_or_404(Org, id=org_id, archived_at__isnull=True)
+        current = _program_settings(org)
+        allowed_keys = set(current.keys())
+        incoming = {
+            key: value
+            for key, value in request.data.items()
+            if key in allowed_keys
+        }
+        next_settings = {**current, **incoming}
+        org.settings = {**org.settings, "spray_program": next_settings}
+        org.save(update_fields=["settings"])
+        return Response(next_settings)
+
+
+def _program_settings(org: Org) -> dict[str, Any]:
+    defaults = {
+        "program_type": "organic",
+        "allowed_products": "",
+        "frac_rotation": "",
+        "cultivar_sensitivity": "normal",
+        "canopy_density": "medium",
+        "max_wind_mph": 10,
+        "min_temp_f": 45,
+        "max_temp_f": 85,
+        "avoid_rain_hours": 12,
+    }
+    configured = org.settings.get("spray_program") or {}
+    return {**defaults, **configured}
 
 
 # ---------------------------------------------------------------------

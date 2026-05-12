@@ -75,6 +75,26 @@ urlpatterns = [
         views.SetupSummaryView.as_view(),
         name="setup_summary",
     ),
+    path(
+        "orgs/<uuid:org_id>/dashboard-summary",
+        views.DashboardSummaryView.as_view(),
+        name="dashboard_summary",
+    ),
+    path(
+        "orgs/<uuid:org_id>/program-settings",
+        views.SprayProgramSettingsView.as_view(),
+        name="program_settings",
+    ),
+    path(
+        "orgs/<uuid:org_id>/spray-records",
+        views.SprayRecordListCreateView.as_view(),
+        name="spray_record_list_create",
+    ),
+    path(
+        "orgs/<uuid:org_id>/spray-records/<uuid:record_id>",
+        views.SprayRecordDetailView.as_view(),
+        name="spray_record_detail",
+    ),
     # M0-06: provider-health admin endpoint.
     path(
         "admin/provider-health",
@@ -112,6 +132,11 @@ urlpatterns = [
         "orgs/<uuid:org_id>/blocks/<uuid:block_id>/verdicts",
         views.BlockVerdictListView.as_view(),
         name="block_verdict_list",
+    ),
+    path(
+        "orgs/<uuid:org_id>/blocks/<uuid:block_id>/verdicts/recompute",
+        views.BlockVerdictRecomputeView.as_view(),
+        name="block_verdict_recompute",
     ),
     # M1.5 PR-F: Daily brief renderer.
     path(

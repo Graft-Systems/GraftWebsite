@@ -19,6 +19,7 @@ from spray.models import (
     Org,
     RiskRecord,
     SensorStation,
+    SprayRecord,
     User,
     Vineyard,
 )
@@ -315,6 +316,42 @@ class BlockVerdictSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = fields
+
+
+class SprayRecordSerializer(serializers.ModelSerializer):
+    """Spray operation record for vineyard-manager audit history."""
+
+    block_name = serializers.CharField(source="block.name", read_only=True)
+    vineyard_name = serializers.CharField(source="block.vineyard.name", read_only=True)
+
+    class Meta:
+        model = SprayRecord
+        fields = [
+            "id",
+            "block",
+            "block_name",
+            "vineyard_name",
+            "verdict",
+            "applied_at",
+            "product",
+            "rate",
+            "target_disease",
+            "rei_hours",
+            "phi_days",
+            "applicator",
+            "notes",
+            "created_at",
+            "updated_at",
+            "archived_at",
+        ]
+        read_only_fields = [
+            "id",
+            "block_name",
+            "vineyard_name",
+            "created_at",
+            "updated_at",
+            "archived_at",
+        ]
 
 
 # ---------------------------------------------------------------------

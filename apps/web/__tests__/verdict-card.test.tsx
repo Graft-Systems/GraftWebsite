@@ -6,7 +6,7 @@
  * IS the daily card; UI must never originate or paraphrase numbers.
  */
 import { describe, expect, it } from "vitest";
-import { fireEvent, render } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { VerdictCard, type Verdict } from "@/components/spray/VerdictCard";
 
 const VERDICT: Verdict = {
@@ -56,7 +56,7 @@ describe("VerdictCard", () => {
     expect(getByText("Klein A")).toBeTruthy();
     expect(getByText("Spray")).toBeTruthy();
     expect(getByText("Within 24h")).toBeTruthy();
-    expect(getByText(/7\.2\/10/)).toBeTruthy();
+    expect(screen.getAllByText(/7\.2\/10/).length).toBeGreaterThan(0);
     expect(getByText(/3\.1\/10/)).toBeTruthy();
     expect(getByText("Powdery elevated; downy quiet.")).toBeTruthy();
     expect(getByText("Directive")).toBeTruthy();

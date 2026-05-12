@@ -76,18 +76,15 @@ jobs:
 
       - name: Lint workspace
         run: pnpm turbo run lint --continue
-        continue-on-error: true
 
       - name: Type-check workspace
         run: pnpm turbo run type-check --continue
-        continue-on-error: true
 
       - name: Build workspace
         run: pnpm turbo run build
 
       - name: Test workspace
         run: pnpm turbo run test --continue
-        continue-on-error: true
 
       - name: Django check (services/api)
         working-directory: services/api

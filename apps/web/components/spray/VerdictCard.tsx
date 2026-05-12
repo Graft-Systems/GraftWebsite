@@ -50,6 +50,10 @@ export type Verdict = {
     where_to_spray: string[];
     when_not_to_spray: string[];
     confidence_note: string;
+    spray_window?: {
+      status: string;
+      label: string;
+    };
   };
 };
 
@@ -184,6 +188,12 @@ export function VerdictCard({
               <p className="font-semibold text-foreground/85">When to spray</p>
               <p className="mt-1">{directive.when_to_spray}</p>
             </div>
+            {directive.spray_window && (
+              <div>
+                <p className="font-semibold text-foreground/85">Spray window</p>
+                <p className="mt-1">{directive.spray_window.label}</p>
+              </div>
+            )}
             <div>
               <p className="font-semibold text-foreground/85">What to spray</p>
               <p className="mt-1">{directive.what_to_spray}</p>
@@ -207,6 +217,25 @@ export function VerdictCard({
           </div>
         </section>
       )}
+
+      <section className="mt-4 grid gap-2 rounded-md border border-border/30 bg-background/30 p-3 text-xs text-foreground/60 sm:grid-cols-2">
+        <p>
+          <span className="frame text-[0.6rem] uppercase tracking-wider text-foreground/40">
+            Last run
+          </span>
+          <span className="mt-1 block">
+            {new Date(verdict.generated_at).toLocaleString()}
+          </span>
+        </p>
+        <p>
+          <span className="frame text-[0.6rem] uppercase tracking-wider text-foreground/40">
+            Evidence
+          </span>
+          <span className="mt-1 block">
+            {verdict.drivers.length} model driver(s), audit ready
+          </span>
+        </p>
+      </section>
 
       <button
         type="button"

@@ -13,6 +13,7 @@ from spray.models import (
     Org,
     SensorReading,
     SensorStationBlock,
+    SprayRecord,
     Vineyard,
     WeatherObservation,
 )
@@ -47,6 +48,7 @@ def test_seed_spray_demo_is_idempotent(make_user):
         == 72
     )
     assert BlockVerdict.objects.filter(block__vineyard=vineyard).count() == 3
+    assert SprayRecord.objects.filter(block__vineyard=vineyard).count() == 1
     assert Membership.objects.get(org=org, user=owner).role == Membership.Role.OWNER
     actions = BlockVerdict.objects.filter(block__vineyard=vineyard).values_list(
         "action",

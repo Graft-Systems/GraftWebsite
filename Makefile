@@ -2,6 +2,7 @@ SHELL := /bin/sh
 
 API_DIR := services/api
 PNPM ?= corepack pnpm
+PYTHON ?= python3.13
 BACKEND_HOST ?= 127.0.0.1
 BACKEND_PORT ?= 8080
 BACKEND_ADDR := $(BACKEND_HOST):$(BACKEND_PORT)
@@ -27,7 +28,10 @@ setup: setup-web setup-api
 setup-api:
 	@cd $(API_DIR) && \
 	if [ ! -x ".venv/bin/python" ]; then \
-		python3 -m venv .venv; \
+		$(PYTHON) -m venv .venv; \
+	else \
+		.venv/bin/python -c 'import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 13) else 1)' || \
+		(echo "services/api/.venv is not Python 3.13. Recreate it with: cd $(API_DIR) && rm -rf .venv && $(PYTHON) -m venv .venv" >&2; exit 1); \
 	fi && \
 	.venv/bin/pip install -r requirements.txt
 
