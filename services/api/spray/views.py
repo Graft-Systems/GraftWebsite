@@ -997,6 +997,127 @@ class BlockDetailView(APIView):
 
 
 # ---------------------------------------------------------------------
+# Pilot setup summary
+# ---------------------------------------------------------------------
+
+
+class SetupSummaryView(APIView):
+    """GET /api/spray/orgs/<org_id>/setup-summary.
+
+    Cached-store summary for dashboard onboarding. This intentionally
+    avoids live vendor calls; integrations detail pages own vendor refresh.
+    """
+
+    permission_classes = [IsOrgViewer]
+
+    @transaction.atomic
+    def get(self, request, org_id):
+        from datetime import timedelta
+
+        from spray.models import (
+            BlockVerdict,
+            IntegrationConnection,
+            SensorStation,
+        )
+
+        set_current_org_id(str(org_id))
+        now = timezone.now()
+        station_stale_after = now - timedelta(hours=2)
+        health_stale_after = now - timedelta(hours=24)
+
+        vineyards = Vineyard.objects.for_org(org_id).filter(archived_at__isnull=True)
+        blocks = Block.objects.for_org(org_id).filter(
+            vineyard__archived_at__isnull=True,
+            archived_at__isnull=True,
+        )
+        integrations = IntegrationConnection.objects.for_org(org_id)
+        active_integrations = integrations.filter(
+            status=IntegrationConnection.Status.ACTIVE
+        )
+        stations = SensorStation.objects.for_org(org_id).filter(
+            archived_at__isnull=True
+        )
+        mapped_stations = stations.filter(
+            linked_blocks__isnull=False,
+            linked_blocks__archived_at__isnull=True,
+        ).distinct()
+        stale_stations = stations.filter(last_seen_at__lt=station_stale_after)
+        never_seen_stations = stations.filter(last_seen_at__isnull=True)
+        stale_integrations = active_integrations.filter(
+            last_health_at__lt=health_stale_after
+        )
+        never_checked_integrations = active_integrations.filter(
+            last_health_at__isnull=True
+        )
+        verdicts = BlockVerdict.objects.for_org(org_id).filter(block__in=blocks)
+
+        counts = {
+            "vineyards": vineyards.count(),
+            "blocks": blocks.count(),
+            "integrations": integrations.count(),
+            "active_integrations": active_integrations.count(),
+            "stations": stations.count(),
+            "mapped_stations": mapped_stations.count(),
+            "unmapped_stations": max(stations.count() - mapped_stations.count(), 0),
+            "stale_stations": stale_stations.count(),
+            "never_seen_stations": never_seen_stations.count(),
+            "stale_integrations": stale_integrations.count(),
+            "never_checked_integrations": never_checked_integrations.count(),
+            "verdicts": verdicts.count(),
+        }
+        steps = [
+            {
+                "id": "create_vineyard",
+                "label": "Create vineyard",
+                "complete": counts["vineyards"] > 0,
+                "href": "/spray/vineyards",
+            },
+            {
+                "id": "draw_blocks",
+                "label": "Draw blocks",
+                "complete": counts["blocks"] > 0,
+                "href": "/spray/vineyards",
+            },
+            {
+                "id": "connect_sensor",
+                "label": "Connect sensor",
+                "complete": counts["active_integrations"] > 0,
+                "href": "/spray/integrations",
+            },
+            {
+                "id": "map_station",
+                "label": "Map station to block",
+                "complete": counts["mapped_stations"] > 0,
+                "href": "/spray/integrations",
+            },
+            {
+                "id": "generate_verdict",
+                "label": "Generate verdict",
+                "complete": counts["verdicts"] > 0,
+                "href": "/spray/dashboard",
+            },
+        ]
+
+        warnings = []
+        if counts["unmapped_stations"] > 0:
+            warnings.append("Some stations are not linked to a block.")
+        if counts["stale_stations"] > 0 or counts["never_seen_stations"] > 0:
+            warnings.append("Some stations have no recent readings.")
+        if counts["stale_integrations"] > 0 or counts["never_checked_integrations"] > 0:
+            warnings.append("Some provider health checks are stale.")
+
+        return Response(
+            {
+                "org_id": str(org_id),
+                "counts": counts,
+                "steps": steps,
+                "warnings": warnings,
+                "generated_at": now.isoformat(),
+            }
+        )
+
+
+# ---------------------------------------------------------------------
 # M0-06 step 11: Provider-health admin endpoint
 # ---------------------------------------------------------------------
 

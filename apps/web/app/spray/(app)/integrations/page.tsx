@@ -16,6 +16,10 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { PasteKeyDialog } from "@/components/spray/PasteKeyDialog";
+import {
+  getConnectionHealth,
+  type ConnectionHealth,
+} from "@/lib/spraySetupStatus";
 
 type Membership = { org: { id: string; name: string } };
 type Connection = {
@@ -25,6 +29,8 @@ type Connection = {
   status: "active" | "needs_reauth" | "disconnected";
   connected_at: string;
   disconnected_at: string | null;
+  last_health_at: string | null;
+  last_health_detail: string;
 };
 
 const VENDOR_LABEL: Record<Connection["vendor"], string> = {
@@ -34,10 +40,17 @@ const VENDOR_LABEL: Record<Connection["vendor"], string> = {
   sencrop: "Sencrop",
 };
 
-const STATUS_STYLES: Record<Connection["status"], string> = {
+type HealthBadge = {
+  label: string;
+  className: string;
+};
+
+const STATUS_STYLES: Record<ConnectionHealth, string> = {
   active: "bg-emerald-500/15 text-emerald-300",
   needs_reauth: "bg-amber/15 text-amber",
   disconnected: "bg-foreground/10 text-foreground/50",
+  health_stale: "bg-amber/15 text-amber",
+  unchecked: "bg-foreground/10 text-foreground/50",
 };
 
 export default function IntegrationsPage() {
@@ -209,8 +222,8 @@ function IntegrationsPageInner() {
           )}
           <p className="mt-3 max-w-2xl text-sm text-foreground/70">
             Connect your weather-station accounts so Spray can pull live
-            sensor data into the verdict engine. Pessl FieldClimate is
-            available now; Davis, METER, and Sencrop ship next.
+            sensor data into the verdict engine. Davis, Pessl, and METER are
+            the MVP providers; Sencrop is tracked for a later phase.
           </p>
         </div>
       </header>
@@ -387,49 +400,77 @@ function IntegrationsPageInner() {
 
         {connections && connections.length > 0 && (
           <ul className="mt-4 space-y-3">
-            {connections.map((c) => (
-              <li
-                key={c.id}
-                className="rounded-md border border-border/40 bg-background/40 p-4"
-              >
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="font-display text-lg">{VENDOR_LABEL[c.vendor]}</p>
-                    <p className="mt-1 text-xs text-foreground/60">
-                      Account {c.vendor_account_id} · connected{" "}
-                      {new Date(c.connected_at).toLocaleDateString()}
-                    </p>
+            {connections.map((c) => {
+              const health = getConnectionHealthBadge(c);
+              return (
+                <li
+                  key={c.id}
+                  className="rounded-md border border-border/40 bg-background/40 p-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <p className="font-display text-lg">
+                        {VENDOR_LABEL[c.vendor]}
+                      </p>
+                      <p className="mt-1 text-xs text-foreground/60">
+                        Account {c.vendor_account_id} · connected{" "}
+                        {new Date(c.connected_at).toLocaleDateString()}
+                      </p>
+                      <p className="mt-1 text-xs text-foreground/50">
+                        {c.last_health_at
+                          ? `Last health check ${new Date(c.last_health_at).toLocaleString()}`
+                          : "No health check recorded yet"}
+                        {c.last_health_detail
+                          ? ` · ${c.last_health_detail}`
+                          : ""}
+                      </p>
+                    </div>
+                    <span
+                      className={`rounded px-2 py-1 frame text-[0.65rem] font-semibold uppercase tracking-wider ${health.className}`}
+                    >
+                      {health.label}
+                    </span>
                   </div>
-                  <span
-                    className={`rounded px-2 py-1 frame text-[0.65rem] font-semibold uppercase tracking-wider ${STATUS_STYLES[c.status]}`}
-                  >
-                    {c.status.replace("_", " ")}
-                  </span>
-                </div>
-                <div className="mt-3 flex gap-3">
-                  {c.status === "active" && orgId && (
-                    <Link
-                      href={`/spray/integrations/${c.id}`}
-                      className="frame text-xs font-semibold text-amber transition-colors hover:text-amber/80"
-                    >
-                      Manage stations →
-                    </Link>
-                  )}
-                  {c.status !== "disconnected" && (
-                    <button
-                      type="button"
-                      onClick={() => disconnect(c.id)}
-                      className="frame text-xs font-semibold text-foreground/60 transition-colors hover:text-red-300"
-                    >
-                      Disconnect
-                    </button>
-                  )}
-                </div>
-              </li>
-            ))}
+                  <div className="mt-3 flex gap-3">
+                    {c.status === "active" && orgId && (
+                      <Link
+                        href={`/spray/integrations/${c.id}`}
+                        className="frame text-xs font-semibold text-amber transition-colors hover:text-amber/80"
+                      >
+                        Manage stations →
+                      </Link>
+                    )}
+                    {c.status !== "disconnected" && (
+                      <button
+                        type="button"
+                        onClick={() => disconnect(c.id)}
+                        className="frame text-xs font-semibold text-foreground/60 transition-colors hover:text-red-300"
+                      >
+                        Disconnect
+                      </button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
     </div>
   );
+}
+
+function getConnectionHealthBadge(connection: Connection): HealthBadge {
+  const health = getConnectionHealth(connection);
+  const labels: Record<ConnectionHealth, string> = {
+    active: "active",
+    needs_reauth: "needs reauth",
+    disconnected: "disconnected",
+    health_stale: "health stale",
+    unchecked: "unchecked",
+  };
+  return {
+    label: labels[health],
+    className: STATUS_STYLES[health],
+  };
 }

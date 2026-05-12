@@ -10,6 +10,10 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
+import {
+  getStationHealth,
+  type StationHealth,
+} from "@/lib/spraySetupStatus";
 
 type Membership = { org: { id: string; name: string } };
 type Station = {
@@ -27,6 +31,28 @@ type Block = {
   archived_at: string | null;
 };
 type Vineyard = { id: string; name: string; archived_at: string | null };
+
+const STATION_STATUS_COPY: Record<
+  StationHealth,
+  { label: string; className: string }
+> = {
+  active: {
+    label: "active",
+    className: "bg-emerald-500/15 text-emerald-300",
+  },
+  stale: {
+    label: "stale",
+    className: "bg-amber/15 text-amber",
+  },
+  never_seen: {
+    label: "never seen",
+    className: "bg-foreground/10 text-foreground/50",
+  },
+  unmapped: {
+    label: "unmapped",
+    className: "bg-red-500/15 text-red-300",
+  },
+};
 
 export default function IntegrationDetailPage() {
   const params = useParams<{ conn_id: string }>();
@@ -120,7 +146,12 @@ export default function IntegrationDetailPage() {
     setStations((prev) =>
       (prev ?? []).map((s) =>
         s.id === stationId
-          ? { ...s, linked_block_ids: [...s.linked_block_ids, blockId] }
+          ? {
+              ...s,
+              linked_block_ids: Array.from(
+                new Set([...s.linked_block_ids, blockId]),
+              ),
+            }
           : s,
       ),
     );
@@ -136,8 +167,9 @@ export default function IntegrationDetailPage() {
       </Link>
       <h1 className="mt-3 font-display text-3xl">Stations</h1>
       <p className="mt-2 text-sm text-foreground/60">
-        Link each station to one or more blocks. Once linked, the polling
-        task pulls 15-min readings into the verdict engine.
+        Link each station to the blocks it represents. Mapped stations feed
+        15-minute readings into the mildew verdict engine; stale or unmapped
+        stations lower confidence until they are fixed.
       </p>
 
       {error && (
@@ -158,59 +190,110 @@ export default function IntegrationDetailPage() {
 
       {stations && stations.length > 0 && (
         <ul className="mt-6 space-y-3">
-          {stations.map((s) => (
-            <li
-              key={s.id}
-              className="rounded-md border border-border/40 bg-background/40 p-4"
-            >
-              <div className="flex items-baseline justify-between gap-4">
-                <div>
-                  <p className="font-display text-lg">{s.name || s.vendor_station_id}</p>
-                  <p className="mt-1 text-xs text-foreground/60">
-                    {s.vendor_station_id}
-                    {s.last_seen_at &&
-                      ` · last seen ${new Date(s.last_seen_at).toLocaleString()}`}
-                  </p>
-                </div>
-                <p className="frame text-[0.65rem] uppercase tracking-wider text-foreground/50">
-                  {s.linked_block_ids.length} linked
-                </p>
-              </div>
+          {stations.map((s) => {
+            const status = getStationHealth(s);
+            const statusCopy = STATION_STATUS_COPY[status];
+            const linkedBlocks = s.linked_block_ids
+              .map((id) => blocks.find((b) => b.id === id)?.label ?? id)
+              .filter(Boolean);
+            const availableBlocks = blocks.filter(
+              (b) => !s.linked_block_ids.includes(b.id),
+            );
 
-              {blocks.length > 0 && (
-                <div className="mt-3 flex items-center gap-2">
-                  <label
-                    htmlFor={`link-${s.id}`}
-                    className="frame text-[0.65rem] uppercase tracking-wider text-foreground/50"
+            return (
+              <li
+                key={s.id}
+                className="rounded-md border border-border/40 bg-background/40 p-4"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="font-display text-lg">
+                      {s.name || s.vendor_station_id}
+                    </p>
+                    <p className="mt-1 text-xs text-foreground/60">
+                      {s.vendor_station_id} ·{" "}
+                      {s.last_seen_at
+                        ? `last seen ${new Date(s.last_seen_at).toLocaleString()}`
+                        : "no readings received yet"}
+                    </p>
+                  </div>
+                  <span
+                    className={`rounded px-2 py-1 frame text-[0.65rem] font-semibold uppercase tracking-wider ${statusCopy.className}`}
                   >
-                    Link to block
-                  </label>
-                  <select
-                    id={`link-${s.id}`}
-                    defaultValue=""
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        linkBlock(s.id, e.target.value);
-                        e.target.value = "";
-                      }
-                    }}
-                    className="rounded-md border border-border/40 bg-background/60 px-3 py-1 text-sm"
-                  >
-                    <option value="" disabled>
-                      Select a block…
-                    </option>
-                    {blocks
-                      .filter((b) => !s.linked_block_ids.includes(b.id))
-                      .map((b) => (
+                    {statusCopy.label}
+                  </span>
+                </div>
+
+                <div className="mt-4">
+                  <p className="frame text-[0.65rem] uppercase tracking-wider text-foreground/50">
+                    Linked blocks
+                  </p>
+                  {linkedBlocks.length > 0 ? (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {linkedBlocks.map((label) => (
+                        <span
+                          key={label}
+                          className="rounded border border-border/40 px-2 py-1 text-xs text-foreground/70"
+                        >
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-sm text-amber">
+                      Not mapped yet. Link this station before relying on its
+                      block-level readings.
+                    </p>
+                  )}
+                </div>
+
+                {blocks.length > 0 ? (
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <label
+                      htmlFor={`link-${s.id}`}
+                      className="frame text-[0.65rem] uppercase tracking-wider text-foreground/50"
+                    >
+                      Link station to block
+                    </label>
+                    <select
+                      id={`link-${s.id}`}
+                      defaultValue=""
+                      disabled={availableBlocks.length === 0}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          linkBlock(s.id, e.target.value);
+                          e.target.value = "";
+                        }
+                      }}
+                      className="rounded-md border border-border/40 bg-background/60 px-3 py-1 text-sm disabled:opacity-50"
+                    >
+                      <option value="" disabled>
+                        {availableBlocks.length > 0
+                          ? "Select a block..."
+                          : "All blocks linked"}
+                      </option>
+                      {availableBlocks.map((b) => (
                         <option key={b.id} value={b.id}>
                           {b.label}
                         </option>
                       ))}
-                  </select>
-                </div>
-              )}
-            </li>
-          ))}
+                    </select>
+                  </div>
+                ) : (
+                  <p className="mt-4 text-sm text-foreground/60">
+                    No blocks are available yet.{" "}
+                    <Link
+                      href="/spray/vineyards"
+                      className="font-semibold text-amber hover:text-amber/80"
+                    >
+                      Create vineyard blocks
+                    </Link>{" "}
+                    before mapping stations.
+                  </p>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

@@ -70,6 +70,11 @@ urlpatterns = [
         views.BlockDetailView.as_view(),
         name="block_detail",
     ),
+    path(
+        "orgs/<uuid:org_id>/setup-summary",
+        views.SetupSummaryView.as_view(),
+        name="setup_summary",
+    ),
     # M0-06: provider-health admin endpoint.
     path(
         "admin/provider-health",
