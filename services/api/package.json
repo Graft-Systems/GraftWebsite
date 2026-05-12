@@ -1,0 +1,12 @@
+{
+  "name": "@graft/api",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Django REST API for Graft Spray and the Graft Systems website.",
+  "scripts": {
+    "build": "python3 manage.py check",
+    "lint": "python3 manage.py check",
+    "test": "python3 -m pytest spray/tests/ -q",
+    "type-check": "python3 manage.py check"
+  }
+}

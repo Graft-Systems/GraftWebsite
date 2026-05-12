@@ -240,6 +240,8 @@ Per Spec Amendment SA-2, the target tree gains the following directories. Existi
 ```
 services/api/spray/
   aggregation/                       [N] M1.5 — §11A ensemble layer
+    weather.py                       [N]   semantic block weather-window builder
+    weather_fusion.py                [N]   source-aware field-level sensor/API fusion
     runners/                         [N]   one subpackage per mechanistic model
       gubler_thomas/                 [N]   M1.5
       caffi_primary/                 [N]   M1.5
@@ -274,6 +276,7 @@ services/api/spray/
       ses/                           [N]   Scale phase (>300 farms)
   recommendation/                    [N] M1.5/M2 — daily verdict UI + LLM brief
     daily_brief/                     [N]   M2 — LLM rendering + P-Cite verifier
+    directive.py                     [N]   explicit when/what/where/when-not spray directive
     audit_log.py                     [N]   M1.5 — audit log writer
 
 services/api/spray/providers/        [E existing, retained]
