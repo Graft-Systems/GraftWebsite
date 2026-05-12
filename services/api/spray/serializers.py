@@ -285,6 +285,13 @@ class RiskRecordSerializer(serializers.ModelSerializer):
 class BlockVerdictSerializer(serializers.ModelSerializer):
     """Read-only view of a BlockVerdict row."""
 
+    directive = serializers.SerializerMethodField()
+
+    def get_directive(self, obj):
+        from spray.recommendation.directive import directive_from_verdict
+
+        return directive_from_verdict(obj)
+
     class Meta:
         model = BlockVerdict
         fields = [
@@ -304,6 +311,7 @@ class BlockVerdictSerializer(serializers.ModelSerializer):
             "model_versions",
             "generated_at",
             "audit_hash",
+            "directive",
             "created_at",
         ]
         read_only_fields = fields

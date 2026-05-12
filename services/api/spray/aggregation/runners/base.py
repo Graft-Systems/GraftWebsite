@@ -34,6 +34,8 @@ class HourlyObservation:
     leaf_wetness_min: float | None
     wind_speed_ms: float | None
     precip_mm: float | None
+    source_summary: dict[str, Any] = field(default_factory=dict)
+    fusion_confidence: float = 0.0
 
 
 @dataclass
@@ -73,6 +75,8 @@ class WeatherWindow:
                     "leaf_wetness_min": o.leaf_wetness_min,
                     "wind_speed_ms": o.wind_speed_ms,
                     "precip_mm": o.precip_mm,
+                    "source_summary": o.source_summary,
+                    "fusion_confidence": o.fusion_confidence,
                 }
                 for o in self.observations
             ],

@@ -60,54 +60,18 @@ def compute_all_active_blocks() -> int:
 
 
 def _build_weather_window(block_id, target_date):
-    """Pull the last 24h of WeatherObservation rows for the block's
-    region-default station (best-effort) into a `WeatherWindow`.
-    """
+    """Build the last 24h disease-model weather window for the block."""
     from datetime import datetime as dt
-    from spray.aggregation.runners.base import HourlyObservation, WeatherWindow
-    from spray.models import Block, WeatherObservation, WeatherStation
+    from spray.aggregation.weather import build_block_weather_window
+    from spray.models import Block
 
     block = Block.objects.unscoped().select_related("vineyard").get(id=block_id)
-    region = block.vineyard.region
-    station = (
-        WeatherStation.objects.filter(
-            is_regional_default=True, region=region
-        )
-        .order_by("created_at")
-        .first()
-    )
     valid_to = dt.combine(target_date, dt.max.time(), tzinfo=timezone.utc)
     valid_from = valid_to - timedelta(hours=24)
-
-    obs_qs = []
-    if station is not None:
-        obs_qs = (
-            WeatherObservation.objects.filter(
-                station=station, ts__gte=valid_from, ts__lte=valid_to
-            )
-            .order_by("ts")
-        )
-
-    obs = [
-        HourlyObservation(
-            ts=o.ts,
-            temp_c=float(o.temp_c) if o.temp_c is not None else None,
-            rh_pct=float(o.rh_pct) if o.rh_pct is not None else None,
-            leaf_wetness_min=(
-                float(o.leaf_wetness_min) if o.leaf_wetness_min is not None else None
-            ),
-            wind_speed_ms=(
-                float(o.wind_speed_ms) if o.wind_speed_ms is not None else None
-            ),
-            precip_mm=float(o.precip_mm) if o.precip_mm is not None else None,
-        )
-        for o in obs_qs
-    ]
-    return WeatherWindow(
-        block_id=str(block_id),
+    return build_block_weather_window(
+        block=block,
         valid_from=valid_from,
         valid_to=valid_to,
-        observations=obs,
     )
 
 

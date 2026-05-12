@@ -41,6 +41,16 @@ export type Verdict = {
   model_versions: Record<string, string>;
   generated_at: string;
   audit_hash: string;
+  directive?: {
+    risk_level: "low" | "moderate" | "high" | "extreme";
+    risk_score_1_10: number;
+    primary_risk: string;
+    when_to_spray: string;
+    what_to_spray: string;
+    where_to_spray: string[];
+    when_not_to_spray: string[];
+    confidence_note: string;
+  };
 };
 
 const ACTION_STYLES: Record<Verdict["action"], { label: string; bg: string; fg: string }> = {
@@ -110,6 +120,7 @@ export function VerdictCard({
   const downy = num(verdict.downy_severity_1_10);
   const powderyConf = num(verdict.powdery_confidence);
   const downyConf = num(verdict.downy_confidence);
+  const directive = verdict.directive;
 
   return (
     <article className="rounded-md border border-border/40 bg-background/40 p-5">
@@ -155,6 +166,46 @@ export function VerdictCard({
         <p className="mt-4 text-xs italic text-foreground/60">
           {verdict.split_summary}
         </p>
+      )}
+
+      {directive && (
+        <section className="mt-5 space-y-3 rounded-md border border-border/30 bg-background/30 p-4">
+          <div>
+            <p className="frame text-[0.65rem] font-semibold uppercase tracking-wider text-foreground/50">
+              Directive
+            </p>
+            <p className="mt-1 text-sm text-foreground/80">
+              {directive.risk_level.toUpperCase()} risk from {directive.primary_risk} ·{" "}
+              {directive.risk_score_1_10.toFixed(1)}/10
+            </p>
+          </div>
+          <div className="grid gap-3 text-xs text-foreground/70">
+            <div>
+              <p className="font-semibold text-foreground/85">When to spray</p>
+              <p className="mt-1">{directive.when_to_spray}</p>
+            </div>
+            <div>
+              <p className="font-semibold text-foreground/85">What to spray</p>
+              <p className="mt-1">{directive.what_to_spray}</p>
+            </div>
+            <div>
+              <p className="font-semibold text-foreground/85">Where to spray</p>
+              <ul className="mt-1 list-disc space-y-1 pl-4">
+                {directive.where_to_spray.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <p className="font-semibold text-foreground/85">When not to spray</p>
+              <ul className="mt-1 list-disc space-y-1 pl-4">
+                {directive.when_not_to_spray.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </section>
       )}
 
       <button

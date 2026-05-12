@@ -34,6 +34,18 @@ const VERDICT: Verdict = {
   model_versions: { gubler_thomas: "1.0.0" },
   generated_at: "2026-05-07T12:00:00Z",
   audit_hash: "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+  directive: {
+    risk_level: "high",
+    risk_score_1_10: 7.2,
+    primary_risk: "powdery mildew",
+    when_to_spray: "Spray within 24 hours if operating conditions stay suitable.",
+    what_to_spray: "Use an effective powdery mildew material selected by label, crop stage, organic/conventional program, and FRAC rotation.",
+    where_to_spray: ["Treat Klein A."],
+    when_not_to_spray: [
+      "Do not spray if wind, rain, temperature, REI/PHI, or label restrictions are outside your program limits.",
+    ],
+    confidence_note: "Model and evidence confidence are strong enough for normal operational use.",
+  },
 };
 
 describe("VerdictCard", () => {
@@ -47,6 +59,12 @@ describe("VerdictCard", () => {
     expect(getByText(/7\.2\/10/)).toBeTruthy();
     expect(getByText(/3\.1\/10/)).toBeTruthy();
     expect(getByText("Powdery elevated; downy quiet.")).toBeTruthy();
+    expect(getByText("Directive")).toBeTruthy();
+    expect(getByText(/HIGH risk from powdery mildew/)).toBeTruthy();
+    expect(getByText(/Spray within 24 hours/)).toBeTruthy();
+    expect(getByText(/What to spray/)).toBeTruthy();
+    expect(getByText(/Where to spray/)).toBeTruthy();
+    expect(getByText(/When not to spray/)).toBeTruthy();
   });
 
   it("expands drivers with citation_id markers", () => {

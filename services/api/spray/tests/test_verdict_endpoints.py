@@ -82,6 +82,11 @@ def test_latest_verdict_returns_most_recent(auth_client, make_org, make_membersh
     assert resp.status_code == 200
     assert resp.data["id"] == str(newer.id)
     assert resp.data["action"] == "spray"
+    assert resp.data["directive"]["risk_level"] == "low"
+    assert resp.data["directive"]["when_to_spray"]
+    assert resp.data["directive"]["what_to_spray"]
+    assert resp.data["directive"]["where_to_spray"]
+    assert resp.data["directive"]["when_not_to_spray"]
 
 
 def test_latest_verdict_404_when_no_verdicts(
