@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { VerdictForecastDay } from "@/components/spray/VerdictCard";
 import { useSprayDashboard } from "@/lib/sprayApi";
 
 export default function ForecastsPage() {
@@ -43,6 +44,7 @@ export default function ForecastsPage() {
           {blocks.map((block) => {
             const verdict = block.latest_verdict;
             const forecast = verdict?.forecast_7d ?? [];
+            const settings = sprayProgram(summary?.org.settings);
             return (
               <section
                 key={block.id}
@@ -73,31 +75,42 @@ export default function ForecastsPage() {
                   </p>
                 ) : (
                   <div className="mt-5 grid gap-2 md:grid-cols-7">
-                    {forecast.slice(0, 7).map((day) => (
-                      <article
-                        key={`${block.id}-${day.date}`}
-                        className="rounded-md border border-border/40 bg-background/50 p-3"
-                      >
-                        <p className="text-xs text-foreground/50">
-                          {formatDay(day.date)}
-                        </p>
-                        <p className="mt-2 frame text-xs font-semibold uppercase tracking-wider text-amber">
-                          {day.action ?? "hold"}
-                        </p>
-                        <p className="mt-2 text-xs text-foreground/60">
-                          Powdery {day.powdery_severity_1_10 ?? "?"}/10
-                        </p>
-                        <p className="text-xs text-foreground/60">
-                          Downy {day.downy_severity_1_10 ?? "?"}/10
-                        </p>
-                      </article>
-                    ))}
+                    {forecast.slice(0, 7).map((day) => {
+                      const sprayability = evaluateDay(day, settings);
+                      return (
+                        <article
+                          key={`${block.id}-${day.date}`}
+                          className="rounded-md border border-border/40 bg-background/50 p-3"
+                        >
+                          <p className="text-xs text-foreground/50">
+                            {formatDay(day.date)}
+                          </p>
+                          <p className={`mt-2 frame text-xs font-semibold uppercase tracking-wider ${sprayability.tone}`}>
+                            {sprayability.label}
+                          </p>
+                          <p className="mt-2 text-xs text-foreground/60">
+                            Powdery {day.powdery_severity_1_10 ?? "?"}/10
+                          </p>
+                          <p className="text-xs text-foreground/60">
+                            Downy {day.downy_severity_1_10 ?? "?"}/10
+                          </p>
+                          {sprayability.reasons.length > 0 && (
+                            <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-foreground/50">
+                              {sprayability.reasons.map((reason) => (
+                                <li key={reason}>{reason}</li>
+                              ))}
+                            </ul>
+                          )}
+                        </article>
+                      );
+                    })}
                   </div>
                 )}
 
                 <p className="mt-4 text-xs text-foreground/50">
-                  Do not spray if wind, rain, temperature, REI/PHI, or label
-                  restrictions are outside the program limits.
+                  Program limits: wind &lt;= {settings.max_wind_mph} mph,
+                  temperature {settings.min_temp_f}-{settings.max_temp_f} F,
+                  no rain for {settings.avoid_rain_hours} hours after application.
                 </p>
               </section>
             );
@@ -106,6 +119,74 @@ export default function ForecastsPage() {
       )}
     </div>
   );
+}
+
+type SpraySettings = {
+  max_wind_mph: number;
+  min_temp_f: number;
+  max_temp_f: number;
+  avoid_rain_hours: number;
+};
+
+function sprayProgram(settings?: Record<string, unknown>): SpraySettings {
+  const program = (settings?.spray_program ?? {}) as Record<string, unknown>;
+  return {
+    max_wind_mph: numberOr(program.max_wind_mph, 10),
+    min_temp_f: numberOr(program.min_temp_f, 45),
+    max_temp_f: numberOr(program.max_temp_f, 85),
+    avoid_rain_hours: numberOr(program.avoid_rain_hours, 12),
+  };
+}
+
+function evaluateDay(day: VerdictForecastDay, settings: SpraySettings) {
+  const reasons: string[] = [];
+  const wind = windMph(day);
+  const temp = tempF(day);
+  const rain = rainMm(day);
+  if (wind !== null && wind > settings.max_wind_mph) {
+    reasons.push(`Wind ${Math.round(wind)} mph`);
+  }
+  if (temp !== null && temp < settings.min_temp_f) {
+    reasons.push(`Too cold: ${Math.round(temp)} F`);
+  }
+  if (temp !== null && temp > settings.max_temp_f) {
+    reasons.push(`Too hot: ${Math.round(temp)} F`);
+  }
+  if (rain !== null && rain > 0) {
+    reasons.push(`Rain in ${settings.avoid_rain_hours}h window`);
+  }
+  if (day.action === "hold") {
+    return { label: "hold", tone: "text-emerald-300", reasons };
+  }
+  if (reasons.length > 0) {
+    return { label: "blocked", tone: "text-red-300", reasons };
+  }
+  return { label: day.action, tone: day.action === "spray" ? "text-amber" : "text-sky-300", reasons };
+}
+
+function windMph(day: VerdictForecastDay) {
+  if (day.wind_mph !== undefined) return day.wind_mph;
+  if (day.wind_speed_mph !== undefined) return day.wind_speed_mph;
+  if (day.wind_speed_ms !== undefined) return day.wind_speed_ms * 2.23694;
+  return null;
+}
+
+function tempF(day: VerdictForecastDay) {
+  if (day.temp_f !== undefined) return day.temp_f;
+  if (day.max_temp_f !== undefined) return day.max_temp_f;
+  if (day.temp_c !== undefined) return day.temp_c * 9 / 5 + 32;
+  if (day.max_temp_c !== undefined) return day.max_temp_c * 9 / 5 + 32;
+  return null;
+}
+
+function rainMm(day: VerdictForecastDay) {
+  if (day.precip_mm !== undefined) return day.precip_mm;
+  if (day.rain_mm !== undefined) return day.rain_mm;
+  return null;
+}
+
+function numberOr(value: unknown, fallback: number) {
+  return typeof value === "number" ? value : fallback;
 }
 
 function formatDay(value: string) {

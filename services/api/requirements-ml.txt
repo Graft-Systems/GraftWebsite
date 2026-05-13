@@ -1,0 +1,9 @@
+# Optional CNN inference dependencies for the v2 grape weight model
+# (DINOv2 ViT-S/14 + HistGradientBoosting).
+#
+# The API lazy-imports these packages only when the v2 inference path is used.
+# Keep them out of the default spray API setup so local Django tests do not
+# depend on platform-specific PyTorch wheel availability.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.11.0
+torchvision==0.26.0

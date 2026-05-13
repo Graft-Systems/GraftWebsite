@@ -17,6 +17,7 @@ from django.conf import settings
 from django.db import transaction
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
+from django.utils.dateparse import parse_date
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
@@ -1678,6 +1679,19 @@ class SprayRecordListCreateView(APIView):
         block_id = request.query_params.get("block_id")
         if block_id:
             qs = qs.filter(block_id=block_id)
+        vineyard_id = request.query_params.get("vineyard_id")
+        if vineyard_id:
+            qs = qs.filter(block__vineyard_id=vineyard_id)
+        date_from = _parse_optional_date(request.query_params.get("date_from"), "date_from")
+        if isinstance(date_from, Response):
+            return date_from
+        if date_from:
+            qs = qs.filter(applied_at__date__gte=date_from)
+        date_to = _parse_optional_date(request.query_params.get("date_to"), "date_to")
+        if isinstance(date_to, Response):
+            return date_to
+        if date_to:
+            qs = qs.filter(applied_at__date__lte=date_to)
         return Response({"results": SprayRecordSerializer(qs[:200], many=True).data})
 
     @transaction.atomic
@@ -1816,6 +1830,18 @@ def _program_settings(org: Org) -> dict[str, Any]:
     }
     configured = org.settings.get("spray_program") or {}
     return {**defaults, **configured}
+
+
+def _parse_optional_date(value: str | None, name: str):
+    if not value:
+        return None
+    parsed = parse_date(value)
+    if parsed is None:
+        return Response(
+            {"detail": f"invalid '{name}' date; use YYYY-MM-DD"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return parsed
 
 
 # ---------------------------------------------------------------------

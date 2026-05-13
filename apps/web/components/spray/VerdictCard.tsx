@@ -7,6 +7,7 @@
  */
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 export type VerdictDriver = {
@@ -22,6 +23,15 @@ export type VerdictForecastDay = {
   powdery_severity_1_10: number;
   downy_severity_1_10: number;
   action: "spray" | "hold" | "scout";
+  wind_mph?: number;
+  wind_speed_mph?: number;
+  wind_speed_ms?: number;
+  temp_f?: number;
+  max_temp_f?: number;
+  temp_c?: number;
+  max_temp_c?: number;
+  precip_mm?: number;
+  rain_mm?: number;
 };
 
 export type Verdict = {
@@ -53,6 +63,10 @@ export type Verdict = {
     spray_window?: {
       status: string;
       label: string;
+      date?: string;
+      reason?: string;
+      blocked_reasons?: string[];
+      next_safe_window?: string;
     };
   };
 };
@@ -192,6 +206,19 @@ export function VerdictCard({
               <div>
                 <p className="font-semibold text-foreground/85">Spray window</p>
                 <p className="mt-1">{directive.spray_window.label}</p>
+                {directive.spray_window.blocked_reasons &&
+                  directive.spray_window.blocked_reasons.length > 0 && (
+                    <ul className="mt-2 list-disc space-y-1 pl-4 text-foreground/60">
+                      {directive.spray_window.blocked_reasons.map((reason) => (
+                        <li key={reason}>{reason}</li>
+                      ))}
+                    </ul>
+                  )}
+                {directive.spray_window.next_safe_window && (
+                  <p className="mt-2 text-foreground/60">
+                    Next likely safe window: {directive.spray_window.next_safe_window}
+                  </p>
+                )}
               </div>
             )}
             <div>
@@ -276,6 +303,14 @@ export function VerdictCard({
           audit {verdict.audit_hash.slice(7, 15)}…
         </span>
         <div className="flex items-center gap-3">
+          {verdict.action === "spray" && (
+            <Link
+              href={`/spray/spray-records?block=${verdict.block}&verdict=${verdict.id}&target=${dominantTarget(directive?.primary_risk)}`}
+              className="text-amber transition-colors hover:text-amber/80"
+            >
+              record spray
+            </Link>
+          )}
           {orgId && verdict.block && (
             <a
               href={`/api/spray/orgs/${orgId}/blocks/${verdict.block}/verdicts/${verdict.id}/audit.pdf`}
@@ -299,4 +334,12 @@ export function VerdictCard({
       </footer>
     </article>
   );
+}
+
+function dominantTarget(primaryRisk?: string) {
+  if (!primaryRisk) return "both";
+  const lower = primaryRisk.toLowerCase();
+  if (lower.includes("powdery")) return "powdery";
+  if (lower.includes("downy")) return "downy";
+  return "both";
 }

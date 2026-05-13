@@ -7,11 +7,12 @@ BACKEND_HOST ?= 127.0.0.1
 BACKEND_PORT ?= 8080
 BACKEND_ADDR := $(BACKEND_HOST):$(BACKEND_PORT)
 
-.PHONY: help setup setup-api setup-web migrate backend frontend dev run lint type-check test test-api test-web build check schema-check
+.PHONY: help setup setup-api setup-api-ml setup-web migrate backend frontend dev run lint type-check test test-api test-web build check schema-check
 
 help:
 	@echo "Available targets:"
 	@echo "  make setup          Install workspace and API dependencies"
+	@echo "  make setup-api-ml   Install optional API ML inference dependencies"
 	@echo "  make migrate        Run Django migrations"
 	@echo "  make backend        Start Django backend at http://$(BACKEND_ADDR)"
 	@echo "  make frontend       Start Next.js frontend (default http://localhost:3000)"
@@ -34,6 +35,9 @@ setup-api:
 		(echo "services/api/.venv is not Python 3.13. Recreate it with: cd $(API_DIR) && rm -rf .venv && $(PYTHON) -m venv .venv" >&2; exit 1); \
 	fi && \
 	.venv/bin/pip install -r requirements.txt
+
+setup-api-ml: setup-api
+	@cd $(API_DIR) && .venv/bin/pip install -r requirements-ml.txt
 
 setup-web:
 	@$(PNPM) install

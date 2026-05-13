@@ -100,6 +100,9 @@ export type SprayRecord = {
   phi_days: number | null;
   applicator: string;
   notes: string;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
 };
 
 export type ProgramSettings = {

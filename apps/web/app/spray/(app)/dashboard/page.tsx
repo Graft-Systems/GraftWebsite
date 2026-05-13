@@ -79,6 +79,7 @@ export default function SprayDashboardPage() {
           </section>
 
           <SetupChecklist setup={summary.setup} />
+          <DataHealthPanel setup={summary.setup} />
 
           {summary.blocks.length === 0 ? (
             <EmptyState
@@ -131,6 +132,51 @@ function classifyToday(blocks: DashboardBlock[]) {
       return acc;
     },
     { spray: 0, scout: 0, hold: 0 },
+  );
+}
+
+function DataHealthPanel({ setup }: { setup: SetupSummary }) {
+  const warnings = [
+    setup.counts.stale_integrations > 0
+      ? `${setup.counts.stale_integrations} provider connection(s) need a fresh health check`
+      : null,
+    setup.counts.stale_stations > 0
+      ? `${setup.counts.stale_stations} station(s) have stale readings`
+      : null,
+    setup.counts.unmapped_stations > 0
+      ? `${setup.counts.unmapped_stations} station(s) are not mapped to blocks`
+      : null,
+    setup.counts.never_seen_stations > 0
+      ? `${setup.counts.never_seen_stations} station(s) have not reported readings yet`
+      : null,
+  ].filter(Boolean) as string[];
+
+  if (warnings.length === 0) return null;
+
+  return (
+    <section className="mt-4 rounded-md border border-amber/30 bg-amber/10 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="frame text-[0.65rem] font-semibold uppercase tracking-wider text-amber">
+            Data health
+          </p>
+          <p className="mt-1 text-sm text-foreground/70">
+            Some inputs need attention before growers should fully trust new directives.
+          </p>
+        </div>
+        <Link
+          href="/spray/integrations"
+          className="frame text-xs font-semibold text-amber hover:text-amber/80"
+        >
+          Review integrations
+        </Link>
+      </div>
+      <ul className="mt-3 list-disc space-y-1 pl-4 text-xs text-amber">
+        {warnings.map((warning) => (
+          <li key={warning}>{warning}</li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

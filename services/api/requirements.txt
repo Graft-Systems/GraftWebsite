@@ -50,9 +50,3 @@ moto[s3]==5.0.28
 # tracks CVE drift.
 anthropic==0.39.0
 reportlab==4.2.5
-
-# CNN inference for v2 grape weight model (DINOv2 ViT-S/14 + HistGradientBoosting).
-# CPU-only torch wheels live on PyTorch's index (not PyPI).
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.11.0+cpu
-torchvision==0.26.0+cpu
