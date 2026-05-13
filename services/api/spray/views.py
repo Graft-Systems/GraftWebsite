@@ -15,6 +15,7 @@ from typing import Any
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Prefetch
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils.dateparse import parse_date
@@ -2242,7 +2243,12 @@ class IntegrationStationListView(APIView):
             SensorStation.objects.for_org(org_id)
             .filter(connection=connection, archived_at__isnull=True)
             .order_by("name")
-            .prefetch_related("linked_blocks")
+            .prefetch_related(
+                Prefetch(
+                    "linked_blocks",
+                    queryset=Block.objects.for_org(org_id),
+                ),
+            )
         )
         return Response({"results": SensorStationSerializer(qs, many=True).data})
 
@@ -2682,7 +2688,6 @@ def meter_webhook(request: HttpRequest) -> JsonResponse:
                 "payload_size_bytes": len(raw_body),
                 "reading_count": len(readings),
                 "accepted_at": timezone.now()
-                .astimezone(timezone.utc)
                 .isoformat()
                 .replace("+00:00", "Z"),
             },

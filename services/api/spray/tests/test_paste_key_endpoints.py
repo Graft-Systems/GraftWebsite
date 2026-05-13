@@ -47,7 +47,7 @@ def test_davis_connect_happy_path(auth_client, make_org, make_membership):
         format="json",
     )
     assert r.status_code in (200, 201)
-    assert IntegrationConnection.objects.filter(org=org, vendor="davis").exists()
+    assert IntegrationConnection.objects.for_org(org).filter(vendor="davis").exists()
 
 
 @override_settings(
@@ -68,7 +68,7 @@ def test_davis_connect_smoke_failure_surfaces_400(
         format="json",
     )
     assert r.status_code == 400
-    assert not IntegrationConnection.objects.filter(org=org, vendor="davis").exists()
+    assert not IntegrationConnection.objects.for_org(org).filter(vendor="davis").exists()
 
 
 def test_davis_connect_missing_fields_400(auth_client, make_org, make_membership):

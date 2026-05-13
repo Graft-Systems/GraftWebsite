@@ -79,7 +79,7 @@ class CaffiPrimaryRunner:
         )
 
         wetness_hours_warm = 0
-        valid_temps = []
+        valid_temps: list[float] = []
         for o in obs:
             if o.temp_c is not None:
                 valid_temps.append(o.temp_c)
@@ -91,7 +91,11 @@ class CaffiPrimaryRunner:
 
         cond_rain = cumulative_rain >= CUMULATIVE_RAIN_MM_THRESHOLD
         cond_wetness = wetness_hours_warm >= WETNESS_HOURS_REQUIRED
-        cond_temp = mean_temp >= WETNESS_TEMP_MEAN_MIN_C
+        # Mean warmth alone is not sufficient for primary infection; it only
+        # counts once rain or sustained wet-warm hours are present.
+        cond_temp = mean_temp >= WETNESS_TEMP_MEAN_MIN_C and (
+            cond_rain or cond_wetness
+        )
 
         conditions_met = sum([cond_rain, cond_wetness, cond_temp])
 

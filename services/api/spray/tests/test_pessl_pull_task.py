@@ -94,7 +94,9 @@ def test_pull_pessl_station_persists_and_emits():
     assert SensorReading.objects.unscoped().filter(station=station).count() == 2
     station.refresh_from_db()
     assert station.last_seen_at is not None
-    events = DataLakeEvent.objects.filter(category="sensor.reading_pulled")
+    events = DataLakeEvent.objects.for_org(org).filter(
+        category="sensor.reading_pulled"
+    )
     assert events.count() == 2
 
 

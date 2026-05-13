@@ -99,7 +99,7 @@ def _post_signed(client, body_dict, secret=SECRET):
 
 @override_settings(SPRAY_INTEGRATION_FERNET_KEY=TEST_KEY)
 def test_webhook_happy_path_persists_and_emits():
-    _org, _conn, station, _block = _build_meter_setup()
+    org, _conn, station, _block = _build_meter_setup()
     client = Client()
     resp = _post_signed(client, _push_payload())
     assert resp.status_code == 202
@@ -109,8 +109,18 @@ def test_webhook_happy_path_persists_and_emits():
     station.refresh_from_db()
     assert station.last_seen_at is not None
     # One reading_pulled per row + one webhook_received.
-    assert DataLakeEvent.objects.filter(category="sensor.reading_pulled").count() == 2
-    assert DataLakeEvent.objects.filter(category="sensor.webhook_received").count() == 1
+    assert (
+        DataLakeEvent.objects.for_org(org)
+        .filter(category="sensor.reading_pulled")
+        .count()
+        == 2
+    )
+    assert (
+        DataLakeEvent.objects.for_org(org)
+        .filter(category="sensor.webhook_received")
+        .count()
+        == 1
+    )
 
 
 @override_settings(SPRAY_INTEGRATION_FERNET_KEY=TEST_KEY)

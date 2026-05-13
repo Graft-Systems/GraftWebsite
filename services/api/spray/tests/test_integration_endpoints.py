@@ -139,8 +139,8 @@ def test_oauth_callback_creates_connection(
     assert r.status_code in (200, 302)
     state.refresh_from_db()
     assert state.consumed_at is not None
-    assert IntegrationConnection.objects.filter(
-        org=org, vendor="pessl", vendor_account_id="pessl-uid"
+    assert IntegrationConnection.objects.for_org(org).filter(
+        vendor="pessl", vendor_account_id="pessl-uid"
     ).exists()
 
 
