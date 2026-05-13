@@ -86,6 +86,46 @@ CLERK_JWKS_URL = os.environ.get("CLERK_JWKS_URL", "")
 # moves on (no row written, retry on next beat tick).
 VISUAL_CROSSING_API_KEY = os.environ.get("VISUAL_CROSSING_API_KEY", "")
 
+# M1.5 PR-D: sensor-connector credential encryption (Fernet) + Pessl
+# FieldClimate OAuth 2.0 partner-app credentials. Generate the Fernet key
+# via:
+#     python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# Tests override this via `override_settings` with a throwaway key; the
+# production key MUST NOT be committed to the repo or used in tests.
+SPRAY_INTEGRATION_FERNET_KEY = os.environ.get("SPRAY_INTEGRATION_FERNET_KEY", "")
+PESSL_CLIENT_ID = os.environ.get("PESSL_CLIENT_ID", "")
+PESSL_CLIENT_SECRET = os.environ.get("PESSL_CLIENT_SECRET", "")
+PESSL_REDIRECT_URI = os.environ.get(
+    "PESSL_REDIRECT_URI",
+    "https://api.graft-systems.app/api/spray/integrations/pessl/oauth/callback",
+)
+PESSL_API_BASE = os.environ.get(
+    "PESSL_API_BASE", "https://api.fieldclimate.com/v2"
+)
+# Frontend origin used for OAuth callback redirects (set in Render env).
+SPRAY_FRONTEND_BASE_URL = os.environ.get("SPRAY_FRONTEND_BASE_URL", "")
+# API origin surfaced in PR-E's METER webhook reveal flow so the user
+# can paste a complete webhook URL into METER ZENTRA Cloud.
+SPRAY_API_BASE_URL = os.environ.get(
+    "SPRAY_API_BASE_URL", "https://api.graft-systems.app"
+)
+# M1.5 PR-E: Davis WeatherLink + METER ZENTRA Cloud bases (env-overridable
+# so dev/CI can point at fixtures or a staging gateway).
+DAVIS_API_BASE = os.environ.get(
+    "DAVIS_API_BASE", "https://api.weatherlink.com/v2"
+)
+METER_API_BASE = os.environ.get(
+    "METER_API_BASE", "https://zentracloud.com/api/v4"
+)
+
+# M1.5 PR-F.5: LLM-authored daily brief. The orchestrator falls back to
+# the deterministic-template renderer when ANTHROPIC_API_KEY is unset,
+# so this is safe to leave empty in dev/CI.
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+LLM_BRIEF_ENABLED = os.environ.get("LLM_BRIEF_ENABLED", "true").lower() == "true"
+LLM_BRIEF_MODEL = os.environ.get("LLM_BRIEF_MODEL", "claude-sonnet-4-5-20251022")
+LLM_BRIEF_TIMEOUT_SEC = int(os.environ.get("LLM_BRIEF_TIMEOUT_SEC", "10"))
+
 # M1-09: Imagery bucket (separate from M0-04's data-lake bucket so
 # retention rules + KMS-CMK swaps can diverge per spec §17.1).
 AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "")

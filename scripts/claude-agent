@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+role="${1:-}"
+shift || true
+
+if [[ -z "$role" || "$#" -eq 0 ]]; then
+  cat >&2 <<'USAGE'
+Usage:
+  scripts/claude-agent <role> "<task prompt>"
+
+Roles:
+  planner, api, worker, web, reviewer, qa
+
+Example:
+  scripts/claude-agent api "Implement the Spray API endpoint. Work only in services/api."
+USAGE
+  exit 2
+fi
+
+case "$role" in
+  planner|api|worker|web|reviewer|qa) ;;
+  *)
+    echo "Unknown role: $role" >&2
+    echo "Expected one of: planner, api, worker, web, reviewer, qa" >&2
+    exit 2
+    ;;
+esac
+
+task="$*"
+session_name="graft-${role}"
+worktree_name="graft-${role}"
+
+read -r -d '' prompt <<PROMPT || true
+Load gstack before doing any work.
+
+You are the ${role} Claude agent in a Codex-led multi-agent workflow.
+Codex is the team lead and final integrator.
+
+Rules:
+- Stay inside your assigned worktree.
+- Keep changes narrowly scoped to the task.
+- Do not commit unless the prompt explicitly asks you to commit.
+- Do not revert or overwrite unrelated user or teammate changes.
+- End with a concise summary, changed files, verification run, and open risks.
+
+Repository ownership guide:
+- api: prefer services/api
+- worker: prefer services/worker
+- web: prefer apps/web
+- reviewer and qa: read broadly, change only when explicitly asked
+
+Task:
+${task}
+PROMPT
+
+exec claude \
+  --name "$session_name" \
+  --worktree "$worktree_name" \
+  --permission-mode acceptEdits \
+  "$prompt"
+

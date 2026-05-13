@@ -12,9 +12,14 @@ from rest_framework import serializers
 
 from spray.models import (
     Block,
+    BlockVerdict,
     ConsentRecord,
+    IntegrationConnection,
     Membership,
     Org,
+    RiskRecord,
+    SensorStation,
+    SprayRecord,
     User,
     Vineyard,
 )
@@ -247,3 +252,164 @@ class CaptureSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = fields
+
+
+# ---------------------------------------------------------------------
+# M1.5 PR-C: Aggregation engine — RiskRecord + BlockVerdict
+# ---------------------------------------------------------------------
+
+
+class RiskRecordSerializer(serializers.ModelSerializer):
+    """Read-only view of a RiskRecord row."""
+
+    class Meta:
+        model = RiskRecord
+        fields = [
+            "id",
+            "block",
+            "model_id",
+            "model_version",
+            "valid_from",
+            "valid_to",
+            "pathogen",
+            "severity_1_10",
+            "raw_score",
+            "thresholds_fired",
+            "input_snapshot_id",
+            "confidence",
+            "citation_id",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
+class BlockVerdictSerializer(serializers.ModelSerializer):
+    """Read-only view of a BlockVerdict row."""
+
+    directive = serializers.SerializerMethodField()
+
+    def get_directive(self, obj):
+        from spray.recommendation.directive import directive_from_verdict
+
+        return directive_from_verdict(obj)
+
+    class Meta:
+        model = BlockVerdict
+        fields = [
+            "id",
+            "block",
+            "date",
+            "powdery_severity_1_10",
+            "downy_severity_1_10",
+            "powdery_confidence",
+            "downy_confidence",
+            "action",
+            "urgency",
+            "drivers",
+            "split_summary",
+            "forecast_7d",
+            "advisory_events",
+            "model_versions",
+            "generated_at",
+            "audit_hash",
+            "directive",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
+class SprayRecordSerializer(serializers.ModelSerializer):
+    """Spray operation record for vineyard-manager audit history."""
+
+    block_name = serializers.CharField(source="block.name", read_only=True)
+    vineyard_name = serializers.CharField(source="block.vineyard.name", read_only=True)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        org_id = self.context.get("org_id")
+        if org_id is None:
+            return
+        from spray.models import Block, BlockVerdict
+
+        self.fields["block"].queryset = Block.objects.for_org(org_id).filter(
+            archived_at__isnull=True
+        )
+        self.fields["verdict"].queryset = BlockVerdict.objects.for_org(org_id).filter(
+            block__archived_at__isnull=True
+        )
+
+    class Meta:
+        model = SprayRecord
+        fields = [
+            "id",
+            "block",
+            "block_name",
+            "vineyard_name",
+            "verdict",
+            "applied_at",
+            "product",
+            "rate",
+            "target_disease",
+            "rei_hours",
+            "phi_days",
+            "applicator",
+            "notes",
+            "created_at",
+            "updated_at",
+            "archived_at",
+        ]
+        read_only_fields = [
+            "id",
+            "block_name",
+            "vineyard_name",
+            "created_at",
+            "updated_at",
+            "archived_at",
+        ]
+
+
+# ---------------------------------------------------------------------
+# M1.5 PR-D: Sensor connector serializers
+# ---------------------------------------------------------------------
+
+
+class IntegrationConnectionSerializer(serializers.ModelSerializer):
+    """Read-only view of an IntegrationConnection. Token blob NEVER serialized."""
+
+    class Meta:
+        model = IntegrationConnection
+        fields = [
+            "id",
+            "vendor",
+            "vendor_account_id",
+            "status",
+            "connected_at",
+            "disconnected_at",
+            "last_health_at",
+            "last_health_detail",
+        ]
+        read_only_fields = fields
+
+
+class SensorStationSerializer(serializers.ModelSerializer):
+    """Read-only view of a SensorStation, with linked block IDs."""
+
+    linked_block_ids = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SensorStation
+        fields = [
+            "id",
+            "connection",
+            "vendor_station_id",
+            "name",
+            "lat",
+            "lon",
+            "last_seen_at",
+            "linked_block_ids",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    def get_linked_block_ids(self, obj) -> list[str]:
+        return [str(b.id) for b in obj.linked_blocks.all()]

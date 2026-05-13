@@ -6,6 +6,312 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), wit
 
 ## Unreleased
 
+### M1.5 PR-F.5: LLM-authored daily brief + P-Cite verifier + PDF audit export
+
+PR on `graft-spray/m1.5/llm-brief`. Closes the loop on PR-F: every BlockVerdict's daily brief now picks the LLM-authored prose path when verification passes, falling back to PR-F's deterministic-template renderer on any failure. Per spec §13B.1/§13B.3, BlockVerdict is the authoritative source of numbers; the LLM produces *only* the prose narrative around them. Adds a tamper-evident audit-log PDF download for grower record-keeping + compliance (CDPR PUR etc.).
+
+#### Added
+
+- **`services/api/spray/recommendation/`**:
+  - `verifier.py` — pure-Python P-Cite verifier + hallucination guard. Tokenizes LLM output, validates every numeric atom against verdict-derived strings (severity / confidence / driver value / forecast / generic-scale numbers), validates every `[CITATION_ID]` against `sources_master.csv` AND `verdict.drivers`. Strict by default — any unverified atom or unknown citation forces fallback.
+  - `llm_brief.py` — Anthropic Claude Messages SDK wrapper. Loads prompt from `prompts/daily_brief_v1.md` (versioned + audited), maps SDK exceptions to `LLMUnavailable` / `LLMTimeout` / `LLMMalformed`, parses + validates the JSON `{headline, paragraphs}` envelope, surfaces token usage + latency for telemetry.
+  - `orchestrator.py` — picks LLM-or-fallback. 1-hour cache keyed on `audit_hash` so repeat dashboard loads within an hour are free. Returns `_telemetry` (private channel for the view layer) when LLM path served.
+  - `pdf_audit.py` — `reportlab.platypus` PDF composer. Header (block + date + headline) → verdict summary table → brief paragraphs → drivers table → resolved citations → audit footer (full hash + renderer + fallback_reason + model versions).
+  - `prompts/daily_brief_v1.md` — pinned, versioned prompt. SYSTEM + USER template split. Prompt version (`daily_brief@1.0.0`) is part of every `brief.rendered` lake event.
+  - `daily_brief.py` (PR-F) — `render_brief` is now a backward-compat alias that routes through the orchestrator. Existing callers don't break.
+- **API endpoints** (`spray/views.py` + `urls.py`):
+  - Existing `BlockVerdictBriefView` rewired through the orchestrator. Strips `_telemetry` before returning to the client; emits `brief.rendered` lake event with the metadata.
+  - `BlockVerdictAuditPdfView` (NEW) — `GET /api/spray/orgs/<org>/blocks/<block>/verdicts/<verdict>/audit.pdf`, `IsOrgViewer`-gated, regenerates on every download (no caching — audit value comes from regeneration matching the live `audit_hash`).
+- **Frontend** (`apps/web/`):
+  - `components/spray/VerdictCard.tsx` — footer adds an "audit pdf ↗" link when `orgId` is provided. Opens the PDF endpoint in a new tab.
+  - `app/spray/(app)/dashboard/page.tsx` — captures `orgId` in state and passes it through to `VerdictCard`.
+- **Lake event schema**:
+  - `brief.rendered.v1.json` — emitted on every render. Captures `renderer`, `fallback_reason`, `prompt_tokens`, `completion_tokens`, `model`, `latency_ms`. Brief content is NOT in the payload — only metadata. `additionalProperties: false`.
+- **Settings** (`graft_api/settings.py`):
+  - `ANTHROPIC_API_KEY`, `LLM_BRIEF_ENABLED` (default true), `LLM_BRIEF_MODEL`, `LLM_BRIEF_TIMEOUT_SEC`. All env-overridable.
+- **Dependencies** (`services/api/requirements.txt`):
+  - `anthropic==0.39.0` — Claude Messages SDK.
+  - `reportlab==4.2.5` — PDF generation.
+- **Tests** (~25 new):
+  - `test_brief_verifier.py` — happy path, hallucinated number, unknown citation, prose-too-long, generic-scale numbers allowed, percentage rendering, empty prose, string input.
+  - `test_brief_llm.py` (mocked Anthropic) — happy path, JSON-embedded-in-chatter extraction, malformed response, missing headline, too many paragraphs, no-key path.
+  - `test_brief_orchestrator.py` — LLM disabled / explicitly disabled / unavailable / timeout / verifier failure all route to fallback with the right reason; LLM-ok + verifier-ok returns LLM envelope; cache hit doesn't re-invoke the LLM.
+  - `test_brief_pdf.py` — PDF starts with `%PDF` magic, handles no-drivers + escaped special chars, deterministic given same input.
+  - `test_brief_endpoints.py` — brief endpoint returns fallback envelope without key, emits `brief.rendered` event, audit-pdf endpoint returns 200 + `application/pdf` + `Cache-Control: no-store`, cross-org returns 404.
+
+#### Fallback-reason taxonomy
+
+| Reason | Trigger |
+|---|---|
+| `null` | LLM path served successfully + verified |
+| `llm_disabled` | `ANTHROPIC_API_KEY` unset OR `LLM_BRIEF_ENABLED=false` |
+| `llm_unavailable` | API rejected request (auth / rate-limit / 5xx / network) |
+| `llm_timeout` | Request exceeded `LLM_BRIEF_TIMEOUT_SEC` |
+| `schema_mismatch` | LLM response was not parseable JSON or wrong shape |
+| `hallucination_guard_failed` | A numeric atom in the prose didn't match any verdict-derived value |
+| `citation_missing` | A `[CITATION_ID]` marker didn't resolve via `sources_master.csv` or wasn't in `verdict.drivers` |
+| `prose_too_long` | Combined prose exceeded `DEFAULT_MAX_PROSE_CHARS` (600) |
+
+#### Scope cuts (deferred)
+
+- Streaming LLM responses to the UI (deterministic fallback renders instantly anyway).
+- Multi-language briefs (EN-US only at MVP; ES + FR with PR-H advisory feeds).
+- Email-as-IO delivery via AgentMail (post-MVP per Q17 resolution).
+- Per-grower tone customization (formal vs casual).
+- LLM-authored structured-field fills (split_summary, driver explanations).
+- LLM model A/B testing or eval harness.
+
+#### Pre-flight (Benson, deferred)
+
+- Anthropic API key from https://console.anthropic.com → API Keys → Create Key, name "Graft Spray Production". Save to secrets doc.
+- Add `ANTHROPIC_API_KEY` to Render API env. Worker doesn't need it.
+- Brief endpoint serves the deterministic fallback when the key is unset, so this PR is safe to merge before the key lands.
+### M1.5 PR-E: Davis WeatherLink + METER ZENTRA sensor connectors
+
+PR on `graft-spray/m1.5/sensor-davis-meter`. Two more vendors plug into PR-D's `SensorConnector` Protocol with no Protocol changes, proving the abstraction generalizes. Davis (paste-key + 15-min polling) and METER (paste-token + native HTTPS Push API + 60-min poll-as-gap-fill) cover the two structurally novel shapes left after Pessl: pre-shared-key auth and webhook-first ingestion.
+
+#### Added
+
+- **`services/api/spray/connectors/sensors/davis/`** — Davis WeatherLink v2.
+  - `client.py` — two-key auth (`X-Api-Key` + `X-Api-Secret`). Endpoints: `/v2/stations`, `/v2/historic/{station_id}`. Maps Davis status codes to connector exception classes.
+  - `normalizer.py` — Davis payload → canonical schema. Converts °F→°C, mph→m/s, in→mm, and Davis's 0-15 LW scale → minutes per hour (`davis_lw_to_minutes`). Spec §12A.1's industry pitfall is called out + tested explicitly. Multi-sensor-block merge on the same timestamp.
+  - `connector.py` — `DavisConnector` implements the `SensorConnector` Protocol; persists nothing it doesn't already (no token rotation since two-key auth has no refresh).
+- **`services/api/spray/connectors/sensors/meter/`** — METER ZENTRA Cloud v4.
+  - `client.py` — bearer-token auth (`Authorization: Token <t>`). Endpoints: `/devices/`, `/readings/`. Used for poll-as-gap-fill only.
+  - `normalizer.py` — two normalizers, one per payload shape. `normalize_poll_response` for the v4 readings API; `normalize_push_payload` for the HTTPS Push API. ATMOS-41 without PHYTOS-31 → `leaf_wetness_min = None`, row still persists with the other fields.
+  - `connector.py` — `MeterConnector` implements the Protocol for gap-fill polling.
+  - `webhook.py` — pure helpers: `generate_webhook_secret` (32-byte URL-safe random), `compute_signature`/`verify_signature` (HMAC-SHA256, constant-time compare), `parse_meter_form_payload` (extracts the `data` JSON field from formdata POSTs).
+- **API endpoints** (`spray/views.py` + `urls.py`):
+  - `POST /api/spray/orgs/<org>/integrations/davis/connect` — `IsOrgAdmin`. Smoke-validates against Davis `/v2/stations` before saving the encrypted blob.
+  - `POST /api/spray/orgs/<org>/integrations/meter/connect` — `IsOrgAdmin`. Smoke-validates against METER `/devices/`. Generates per-connection `webhook_secret` and returns it ONCE in the response (paste into METER's Push setup).
+  - `POST /api/spray/integrations/meter/webhook` — public path, no Clerk auth. HMAC-validates `X-MET-Signature` against the connection's stored `webhook_secret`, looks up the `SensorStation` by `device_sn`, normalizes, upserts SensorReading rows in real time, emits per-row `sensor.reading_pulled` events plus one `sensor.webhook_received` audit event. Constant 401 reject shape across "unknown device" + "bad signature" + "disconnected connection" to defeat account enumeration.
+- **Worker** (`services/worker/`):
+  - `tasks/sensor_pull.py` (NEW) — vendor-agnostic generalization of PR-D's `pessl_pull`. `pull_all_sensor_stations(vendor_slug)` + `pull_sensor_station(station_id, vendor_slug)`. Same gap-fill rule, same idempotent upsert, same lake-event emit. Vendor-mismatch guard prevents cross-wiring.
+  - `tasks/davis_pull.py` (NEW) + `tasks/meter_pull.py` (NEW) — thin shims that delegate to `sensor_pull` so the beat schedule has stable named tasks per vendor.
+  - `tasks/pessl_pull.py` reduced to a backward-compat shim (the actual logic now lives in `sensor_pull`).
+  - Beat schedule: `davis-pull` (15 min default, env-overridable via `GRAFT_SPRAY_DAVIS_CADENCE_SEC`) + `meter-pull` (60 min default, env-overridable via `GRAFT_SPRAY_METER_CADENCE_SEC`).
+- **Frontend** (`apps/web/`):
+  - `components/spray/PasteKeyDialog.tsx` (NEW) — generic paste-credential dialog for vendors that don't do OAuth. Accepts a list of `PasteField`s + an `onSubmit` handler.
+  - `app/spray/(app)/integrations/page.tsx` — adds Davis + METER cards next to Pessl. Davis click → `PasteKeyDialog` with `api_key` + `api_secret` fields → POST connect → reloads list. METER click → token-only paste → POST connect → modal reveal of `webhook_secret` + `webhook_url` with Copy button (one-time display, never re-displayed by any other endpoint). Sencrop card now shows "Phase 2".
+- **Lake event schema**:
+  - `sensor.webhook_received.v1.json` — audit event per accepted webhook push (separate from per-row `sensor.reading_pulled.v1`). Captures `payload_size_bytes`, `reading_count`, `accepted_at`. `additionalProperties: false`.
+- **Settings** (`graft_api/settings.py`):
+  - `DAVIS_API_BASE`, `METER_API_BASE`, `SPRAY_API_BASE_URL` (used in METER reveal flow). All env-overridable, all default to production endpoints.
+- **Tests** (~50 new across 6 files):
+  - `test_davis_normalizer.py` — LW 0-15 conversion correctness + clamp + missing/malformed paths + multi-sensor-block merge.
+  - `test_davis_client.py` — list_stations happy path, 401/429 mapping, missing creds bail, fetch_historic param shape.
+  - `test_meter_normalizer.py` — poll + push variants, ATMOS-41-without-LW path, missing device_sn raises.
+  - `test_meter_webhook_unit.py` — secret generation, HMAC compute/verify round-trip, tamper rejection, wrong-secret rejection, formdata parse.
+  - `test_meter_webhook_view.py` — full Django view round-trip: happy path, missing/bad signature, unknown device, idempotent replay, disconnected-connection rejection.
+  - `test_paste_key_endpoints.py` — Davis + METER connect happy paths, smoke-validation 400 surfacing, METER one-time-secret reveal + non-leak in subsequent reads.
+  - `test_sensor_pull_task.py` — generalized polling task per-vendor isolation, gap-fill flag, vendor-mismatch guard, fan-out enqueues only the right vendor's stations.
+
+#### Scope cuts (deferred)
+
+- Sencrop OAuth (Phase 2 per spec §12A.2).
+- Pessl HMAC-SHA256 single-account fallback (still deferred).
+- Sensor-fed `WeatherWindow` enrichment for ensemble runners (PR-E.5 / PR-D.5).
+- METER v5 (2026 release; v4 ships now).
+- Per-org Davis rate-limit tracking via Redis (Phase 2 — for now we surface 429 + back off).
+
+#### Pre-flight (Benson, deferred)
+
+- Davis WeatherLink test account at https://www.weatherlink.com → API-Key + API-Secret.
+- METER ZENTRA Cloud test account at https://zentracloud.com → bearer token from Settings → API.
+- No new Render env vars required beyond PR-D's `SPRAY_INTEGRATION_FERNET_KEY`.
+
+### M1.5 PR-D: Pessl FieldClimate sensor connector (OAuth 2.0)
+
+PR on `graft-spray/m1.5/sensor-pessl`. First real customer-authenticated sensor adapter. Establishes the `services/api/spray/connectors/` namespace (per CODEBASE_PLAN.md §300 — connectors are vendor APIs the customer authenticates against; providers are read-only feeds we own the auth on) and the vendor-agnostic `SensorConnector` Protocol that PR-E (Davis + METER) will reuse without API churn. OAuth flow runs end to end against `responses`-mocked Pessl fixtures; live-smoke awaits Pessl's manual partner-app approval (D1 in plan).
+
+#### Added
+
+- **`services/api/spray/connectors/`** package.
+  - `base.py` — `SensorConnector` Protocol + `VendorStation` / `ConnectorHealth` DTOs + parallel exception classes (`ConnectorAuthError`, `ConnectorRateLimitError`, `ConnectorResponseError`) so the worker's retry policy can target the right class (mirrors `spray.providers.base`).
+  - `credentials.py` — Fernet wrapper over the OAuth/refresh token blob. `encrypt_token_blob` / `decrypt_token_blob` round-trip `dict` ↔ `bytes` for `BinaryField`. `redact()` for safe-to-log dumps. Plaintext NEVER appears in logs, Sentry, `__repr__`, or any serializer field. Key sourced from `SPRAY_INTEGRATION_FERNET_KEY` env var.
+  - `registry.py` — slug→class lookup, `@register("pessl")` decorator, eager-imports for the Pessl module.
+- **`services/api/spray/connectors/sensors/pessl/`** package.
+  - `oauth.py` — partner-app OAuth 2.0 flow: `build_authorize_url(state)`, `exchange_code(code)` (returns `{access_token, refresh_token, expires_in, vendor_account_id}`), `refresh_access_token(refresh_token)`. Maps Pessl status codes to connector exception classes; never logs response bodies (could contain secrets).
+  - `client.py` — `PesslClient` HTTP wrapper. Auto-refreshes on 401 via the `on_token_refresh` callback (caller persists the rotated blob in a single `transaction.atomic()`). Endpoints: `/user`, `/user/stations`, `/data/{station}/raw/from/.../to/...`. Second 401 after refresh → `ConnectorAuthError` (refresh-token itself dead).
+  - `normalizer.py` — Pessl payload → canonical-schema rows per spec §12A.3. Channel mapping by `ch` substring match (handles air_temp, humidity, leaf_wetness, precip, wind_speed across station model variants). Aggregator pick: `sum` for cumulative fields (LW + precip), `avg` for everything else. Forgiving on missing channels + malformed timestamps.
+  - `connector.py` — `PesslConnector` implements the Protocol. Wraps client + normalizer; persists rotated tokens; marks the connection `needs_reauth` on auth failure.
+- **Django models** (`services/api/spray/models.py`):
+  - `IntegrationConnection` — org-scoped, vendor-agnostic. `(org, vendor, vendor_account_id)` unique. `BinaryField` token ciphertext + status enum (active / needs_reauth / disconnected).
+  - `SensorStation` — vendor's station tied to one connection, optionally linked to many `Block`s via `SensorStationBlock` through-table (audit trail of who linked when).
+  - `SensorReading` — canonical sensor schema per spec §12A.3 (air_temp_c, rh_pct, leaf_wetness_min in MINUTES, precip_mm, wind_speed_ms). `(station, ts)` unique upsert. `quality_flag` enum.
+  - `OAuthState` — short-lived CSRF/state row, TTL 10 min, consumed-once at callback.
+- **Migration `0009_sensor_models`** — five tables + RLS policies on the three tenant-scoped ones (`IntegrationConnection`, `SensorStation`, `SensorReading`). Reversible.
+- **Celery polling** (`services/worker/graft_worker/tasks/pessl_pull.py`):
+  - `pull_all_pessl_stations` (beat fires every 15 min, env-overridable via `GRAFT_SPRAY_PESSL_CADENCE_SEC`) fans out per active SensorStation linked to ≥1 Block.
+  - `pull_pessl_station(station_id)` pulls readings since `station.last_seen_at` (or now-14d on first pull), `bulk_create(update_conflicts=True)` upserts, advances watermark, emits one `sensor.reading_pulled` lake event per reading. Marks readings `quality_flag = "gap_filled"` when station has been silent >4h (spec §12A.4).
+- **API endpoints** (`spray/views.py` + `urls.py`):
+  - `GET  /api/spray/orgs/<org>/integrations` — list connections (token blob never serialized).
+  - `POST /api/spray/orgs/<org>/integrations/pessl/oauth/start` — returns `{authorize_url, state}`.
+  - `GET  /api/spray/integrations/pessl/oauth/callback` — verifies state, exchanges code, encrypts blob, upserts connection, redirects to `/spray/integrations?connected=pessl` (or returns JSON when `SPRAY_FRONTEND_BASE_URL` unset).
+  - `GET  /api/spray/orgs/<org>/integrations/<conn>/stations` — live-fetches + caches SensorStations.
+  - `POST /api/spray/orgs/<org>/integrations/<conn>/stations/<station>/link-block` — body `{block_id}`.
+  - `DELETE /api/spray/orgs/<org>/integrations/<conn>` — soft-delete (status=disconnected, historical readings preserved).
+  - Permission gates: `IsOrgViewer` for list, `IsOrgAdmin` for OAuth start + disconnect, `IsOrgMember` for station ops.
+- **Lake event schemas**:
+  - `sensor.reading_pulled.v1.json` — per-station-pull transition (distinct from the existing `sensor_reading.ingested.v1.json` which is the per-block downstream form).
+  - `integration.connected.v1.json`, `integration.disconnected.v1.json` — connection-lifecycle events. All `additionalProperties: false`.
+- **Frontend** (`apps/web/`):
+  - `app/spray/(app)/integrations/page.tsx` — replaces placeholder. Lists active connections with status chips, "Connect Pessl" button kicks off the OAuth start → redirect dance, soft-disconnect with confirm.
+  - `app/spray/(app)/integrations/[conn_id]/page.tsx` — vendor-station list with per-station "Link to block" picker (org's vineyards × blocks).
+- **Settings** (`graft_api/settings.py`):
+  - `SPRAY_INTEGRATION_FERNET_KEY`, `PESSL_CLIENT_ID`, `PESSL_CLIENT_SECRET`, `PESSL_REDIRECT_URI`, `PESSL_API_BASE`, `SPRAY_FRONTEND_BASE_URL` (all env-driven, all default-empty so dev + CI run without secrets).
+- **Tests** (~30 new):
+  - `test_credentials.py` — Fernet round-trip, memoryview support, missing/invalid key, wrong-key decrypt failure, redact.
+  - `test_pessl_normalizer.py` — full + partial + null + unknown-channel + malformed-timestamp paths.
+  - `test_pessl_oauth.py` — authorize-URL shape, code exchange happy path, 400/429 mapping, refresh, missing-creds bail.
+  - `test_pessl_client.py` — list_stations happy, 401→refresh→retry, double-401 fails, 429, fetch_raw_data.
+  - `test_pessl_pull_task.py` — persists + emits events, idempotent on retry, gap-fill flag, skips disconnected connections.
+  - `test_integration_endpoints.py` — list, OAuth start, OAuth callback (mocked exchange), expired/unknown state rejection, station list (mocked connector + upsert), link-block, disconnect, cross-org isolation.
+
+#### Beat schedule
+
+`pessl-pull` registered at `services/worker/graft_worker/celery.py`, default 15 min cadence.
+
+#### Scope cuts (deferred)
+
+- Davis WeatherLink polling adapter (PR-E).
+- METER ZENTRA push webhook (PR-E).
+- Sencrop OAuth (Phase 2 per spec §12A.2).
+- HMAC-SHA256 single-account fallback for Pessl (lower priority; partner-app OAuth is the MVP path).
+- Sensor-fed `WeatherWindow` enrichment for ensemble runners (PR-D.5 or rolled into PR-E).
+- KMS-backed credential rotation (post-MVP).
+
+#### Pre-flight (Benson, deferred)
+
+- Pessl partner-app outreach to api@metos.at + support@fieldclimate.com to receive `client_id` + `client_secret`.
+- Generate `SPRAY_INTEGRATION_FERNET_KEY` via `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
+- Add to Render API + Worker env: `PESSL_CLIENT_ID`, `PESSL_CLIENT_SECRET`, `PESSL_REDIRECT_URI`, `SPRAY_INTEGRATION_FERNET_KEY`, `SPRAY_FRONTEND_BASE_URL`.
+
+### M1.5 PR-F: recommendation card UI + deterministic daily brief
+
+PR on `graft-spray/m1.5/recommendation-card`. Closes the loop from PR-C (verdicts persisted) to grower-visible UI: every BlockVerdict now renders as a `VerdictCard` on the dashboard, and a deterministic daily-brief endpoint surfaces a citation-anchored narrative built from the same schema-validated numbers. Per spec §13B.1, BlockVerdict IS the daily card; UI never originates or paraphrases numbers. The LLM-authored brief with hallucination guard ships in PR-F.5; this PR establishes the deterministic fallback path that PR-F.5 will fall back to on guard failure.
+
+#### Added
+
+- **`services/api/spray/recommendation/`** package.
+  - `citations.py` — `lookup(citation_id)` + `lookup_many(...)` resolve a citation_id to its row in `docs/research/sources_master.csv`. Cached at import; no per-request CSV reads.
+  - `daily_brief.py` — `render_brief(verdict)` returns a deterministic envelope `{headline, paragraphs, drivers, citations, fallback_reason, renderer}`. Headline branches on action × urgency. Severity paragraph surfaces schema numbers verbatim with confidence percentages. Drivers paragraph emits `[CITATION_ID]` markers per model. Action paragraph branches on action × urgency. Split paragraph slots in when ensemble splits. `renderer` field records the template version (`deterministic_template@1.0.0`) so PR-F.5 can distinguish LLM vs. fallback renders.
+- **API endpoint** (`services/api/spray/views.py` + `urls.py`):
+  - `GET /api/spray/orgs/<org_id>/blocks/<block_id>/verdicts/<verdict_id>/brief` — gated by `IsOrgViewer`; tenant-scoped via the BlockVerdict manager.
+- **Frontend** (`apps/web/`):
+  - `components/spray/VerdictCard.tsx` — grower-facing card. Severity dual-bar (powdery + downy) with confidence labels, action chip color-coded (spray red / scout amber / hold emerald), urgency label (`Today` / `Within 24h` / `Within 72h`), expandable "Why this verdict?" drivers list with `[citation_id]` markers, audit-hash footer. Renders schema-validated numbers verbatim via a `num()` parser that handles Postgres-decimal-string round-trips.
+  - `app/spray/(app)/dashboard/page.tsx` — replaces M0-02a placeholder. Resolves active org via `/orgs/me`, expands every vineyard's blocks, fetches `verdicts/latest` per block, renders `VerdictCard` grid (or empty placeholder for blocks pre-first-verdict). Loads in parallel via `Promise.all`.
+- **Tests**:
+  - `apps/web/__tests__/verdict-card.test.tsx` — schema numbers verbatim, action chip + urgency rendering, drivers expander reveals citation markers, hold-action variant.
+  - `services/api/spray/tests/test_daily_brief.py` — happy-path spray-24h brief asserts headline + verbatim numbers + citation marker, hold + scout + split-summary variants, drivers mirror passes through unchanged for the UI.
+
+#### Scope cuts (deferred to PR-F.5)
+
+- LLM-authored brief with P-Cite verifier + Jinja-fallback wiring.
+- PDF audit-log export (covered by audit_hash on the card; full PDF render lands later).
+
+### M1.5 PR-C: aggregation engine MVP (3 model runners + Year-0 ensemble + audit hash + verdict API) — READY FOR MERGE
+
+PR on `graft-spray/m1.5/aggregation-engine-v0`. The keystone milestone where the SA-2 pivot becomes real code: 3 mechanistic model runners emit `RiskRecord`s, an equal-weight soft-vote ensemble fuses them into a `BlockVerdict` per block per day, both layers persist to Postgres + emit DataLakeEvents, audit-hash makes each verdict tamper-evident, hourly Celery beat fires in-season, and verdict API endpoints surface the result to the frontend.
+
+#### Added
+
+- **`services/api/spray/aggregation/`** package — clean, self-contained, importable independently of the worker.
+  - `runners/base.py` — `ModelRunner` Protocol, `WeatherWindow` + `HourlyObservation` dataclasses, `RiskRecordResult` (mirrors event schema), deterministic `WeatherWindow.snapshot_id()` (sha256 over the observation series).
+  - `runners/registry.py` — slug→class lookup, decorator-based self-registration, `all_runner_versions()` for audit hashing, eager imports for the three runners.
+  - `runners/gubler_thomas.py` — UC Davis Powdery Mildew Risk Index 2013 revision (`docs/research/06_outbreak-prediction.md` 06-S2). 6h favourable blocks @ 21–30°C add +20; 2h lethal blocks @ >38°C subtract -10; RI capped 0–100; severity via `gt_ri_to_severity_1_10`.
+  - `runners/caffi_primary.py` — Caffi 2009 primary infection downy mildew (06-S5). Three gating conditions over 24h: cumulative rain ≥ 2 mm, wetness ≥ 8h with T ≥ 11°C, mean temp ≥ 11°C. Surrogate score 0–10 mapped to severity.
+  - `runners/caffi_secondary.py` — Caffi 2010 secondary infection (06-S6). Wet+warm hour count (T 10–25°C, LW ≥ 30 min) banded into severity 1–10.
+  - `severity_anchors.py` — three anchor functions (powdery RI, primary surrogate, secondary hours) per spec §11A.4. Monotonic, bounded, deterministic. Backward-compat plan documented for Year-1+ updates.
+  - `ensemble.py` — `equal_weight_soft_vote()` — averages severity per pathogen, computes confidence = 1.0 − σ(severities)/5.0 clipped, threshold-maps severity → action (`spray ≥ 7 ≥ scout ≥ 4 > hold`) and urgency. Emits a verdict dict matching `block_verdict.generated.v1.json` exactly. Year-1 weighted + Year-2 stacked variants flagged for later.
+  - `audit.py` — `compute_audit_hash()` returns `sha256:HEX64` over `(input_snapshot_id, model_versions, ensemble_version)`. Deterministic + stable across dict ordering.
+- **Django models** (`services/api/spray/models.py`):
+  - `RiskRecord` — one row per block per pathogen per (model_id, valid_from). Tenant-scoped via `OrgScopedManager(via="block__vineyard__org_id")`. Unique on `(block, model_id, valid_from)` for idempotent upsert.
+  - `BlockVerdict` — daily ensemble verdict consumed by the UI. Unique on `(block, date)`. Stores all fields from the schema verbatim including drivers, forecast_7d, audit_hash.
+- **Migration `0008_aggregation_models`** — creates both tables, adds RLS policies that traverse `block → vineyard → org_id` (matches M1-09 Capture pattern). Reversible.
+- **Celery worker task** (`services/worker/graft_worker/tasks/aggregation_run.py`):
+  - `compute_all_active_blocks` (hourly beat, in-season April–October UTC) fans out per-block tasks.
+  - `compute_block_verdict` runs all registered runners against the last 24h weather window for the block's region-default station, persists RiskRecords (upsert), emits `risk_record.emitted` per record, fuses via the ensemble, persists the verdict (upsert), emits `block_verdict.generated`.
+  - Cadence env-overridable via `GRAFT_SPRAY_AGGREGATION_CADENCE_SEC` (default 3600).
+  - Eagerly imported by `tasks/__init__.py` so `@shared_task` registers at worker boot.
+- **API endpoints** (`services/api/spray/views.py` + `urls.py`):
+  - `GET /api/spray/orgs/<org_id>/blocks/<block_id>/verdicts/latest` — most recent verdict; 404 if none yet.
+  - `GET /api/spray/orgs/<org_id>/blocks/<block_id>/verdicts?since=<iso>` — paginated history, default 30-day window.
+  - Both gated by `IsOrgViewer`; tenant-scoped via the manager.
+  - `BlockVerdictSerializer` + `RiskRecordSerializer` added.
+- **Frontend stub** (`apps/web/app/spray/(app)/recommendations/page.tsx`) — placeholder page that links to verdict endpoints. Real UI lands in PR-F.
+- **Tests** (~30 new):
+  - `test_aggregation_runners.py` — registry sanity, severity anchors monotonic + bounded, GT high/low/lethal scenarios, Caffi primary 3-of-3 / 0-of-3 cases, Caffi secondary high/low cases, snapshot_id determinism.
+  - `test_ensemble_and_audit.py` — audit_hash sha256 format, deterministic, changes when any input changes; ensemble action thresholding (spray/scout/hold), split_summary surfaces disagreement, empty-records still emits a valid 7-day-forecast verdict.
+  - `test_verdict_endpoints.py` — latest returns most recent, 404 when none, since-param filtering, invalid-since 400, cross-org denial, viewer role can read.
+
+#### Manual prerequisites
+
+**None.** Reuses existing Render Postgres + worker + Redis. No new infra.
+
+#### Notes
+
+- **Year-0 simplifications** (intentional, documented in each runner's docstring): GT skips biofix detection + diurnal humidity gating; Caffi runners use qualitative gates instead of full energy-balance equations; forecast_7d is a deterministic flat-line stub until forecast windows arrive in PR-G. Caveats under "PR-C.5 / M2" in code comments.
+- Adding a 4th runner is verified-by-design: drop a module under `aggregation/runners/`, decorate with `@register_runner`, add the import in `registry.py`. Tests assert this works for the three shipped runners; the PR-C plan §6 acceptance criterion mandates a stub `mills_table` runner test which we add in PR-C.5 alongside the real Mills implementation.
+- `audit_hash` is reproducible: same `(input_snapshot_id, model_versions, ensemble_version)` always produces the same hash. Mutating any of the three changes the hash. Tested.
+- The forecast in `forecast_7d` is a placeholder (every day is "hold severity 1.0"). Real 7-day forecasts require running each runner against forecast weather windows; that's wired in PR-G alongside the Sentinel-2 vigor anomaly feature.
+- All emit_event calls use the schemas from PR-B; `scripts/check_event_schemas.py` will see new producers (`risk_record.emitted`, `block_verdict.generated`) and validate them.
+
+### M1.5 PR-B: aggregation schemas (RiskRecord, BlockVerdict, AdvisoryEvent, SensorReading) — READY FOR MERGE
+
+PR on `graft-spray/m1.5/aggregation-schemas`. Pure schema-registry additions with zero behavior change. Foundation for PR-C (aggregation engine), PR-D/E (sensor connectors), and PR-H (advisory feeds).
+
+#### Added
+
+- **`risk_record/emitted/v1.json`** — per-block, per-day, per-pathogen output of a single mechanistic model runner (Gubler-Thomas, Caffi Primary, Caffi Secondary, etc.). Spec §11A.1.
+- **`block_verdict/generated/v1.json`** — daily ensemble verdict consumed by the grower-facing UI. Severity dual-track (powdery + downy), action enum (`spray|hold|scout`), urgency (`now|24h|72h|none`), drivers array with citation IDs, strict 7-day forecast (exactly 7 entries enforced), audit_hash sha256 format. Spec §11A.2.
+- **`advisory_event/ingested/v1.json`** — public/government advisory feed envelope. Source slug, ISO 3166-2 region, hazard type, severity, license string, language enum, optional EN translation. Spec §12C.2.
+- **`sensor_reading/ingested/v1.json`** — canonical sensor schema all vendor connectors (Davis, Pessl, METER, Sencrop) normalize to. Required `block_id`, `ts`, `source`, `device_id`, `quality_flag`; numeric fields nullable for graceful gap-fill. RH bounded 0–100. Quality flag enum: `ok|estimated|gap_filled|stale|bad`. Spec §12A.3.
+- 16 new pytest cases in `test_schema_registry.py` covering well-formed payloads, bounded-value rejection, enum mismatch rejection, and structural constraints (e.g. `forecast_7d` must be exactly 7 entries, `audit_hash` must match `sha256:[hex64]`).
+
+#### Changed
+
+- `docs/spec/CODEBASE_PLAN.md` Section 14 — Q17, Q18, Q19 marked RESOLVED / DEFERRED:
+  - Q17 — free-tier on CDSE + Letta; **AgentMail committed** as the email-as-IO surface (per-org feature flag at MVP+).
+  - Q18 — accept default cloud-day fallback (hold last good vigor 10 days, then drop from ensemble). Behind a feature flag.
+  - Q19 — deferred until first METER customer; default applies on arrival (gap-fill via RH heuristic).
+
+#### Notes
+
+- No Django models, no API endpoints, no producer call sites at this PR. All four schemas await consumers in PR-C (RiskRecord, BlockVerdict), PR-D/E (SensorReading), PR-H (AdvisoryEvent).
+- `scripts/check_event_schemas.py` auto-discovers from `emit_event(...)` callsites and doesn't enumerate registered schemas; no update needed. New schemas are validated via the pytest suite which runs in CI.
+- All four schemas set `additionalProperties: false` so producers can't accidentally extend the contract without amending the schema first.
+
+### Pivot amendment: decision-intelligence aggregation hub (SA-2) — IN REVIEW
+
+PR-A on `graft-spray/m1/pivot-amendment-docs`. Documentation-only amendment that locks in the strategic pivot from per-photo computer-vision detection to a per-vineyard decision-intelligence aggregation hub. CV becomes an optional Phase 3 scouting module (M3+); the M1-09 capture upload pipeline stays merged but the CV severity grading work slips behind M1.5 in priority.
+
+#### Customer signal (canonical pivot rationale)
+
+Five winery conversations independently surfaced the same insight: *"if you see mold it's already too late, but we still want something better than the smattering of sources we currently rely on."* Named: Far Niente (John McCarthy, Director Vineyard Ops), Newton Vineyards, Chandon, Sprucewood Shores, plus pattern across other Napa/Sonoma growers. McCarthy meeting was 2026-05-05 in person. This is the empirical basis for SA-2.
+
+#### Added (docs only — zero code changes)
+
+- `docs/spec/Graft-Spray-App-Spec.md` Appendix A — new SA-2 entry, plus six new sections inserted: §11A (Model Aggregation & Ensembling), §12A (Sensor Platform Integrations), §12B (Satellite & Remote Sensing), §12C (Advisory Feeds), §13A (Per-Tenant Agent Architecture), §13B (Recommendation Engine + Daily Card).
+- `docs/spec/Graft-Spray-App-Spec.md` rewrites: §1 Executive Summary (terser, aggregation-hub framing), §5.5 (model-runner orchestration replaces hybrid CV inference), §8.9 (risk heatmap is ensemble-driven, not CV-driven). Demotions: §6.3, §8.5, §10 wrapped under "Phase 3" framings.
+- `docs/spec/CODEBASE_PLAN.md` Section 2 — new directories under `services/api/spray/aggregation/`, `connectors/sensors/`, `connectors/satellite/`, `agents/`, `recommendation/`. Namespace convention locked: `providers/` for external read-only feeds, `connectors/sensors/` for vendor APIs the customer authenticates against.
+- `docs/spec/CODEBASE_PLAN.md` Section 5 — M1.5 rows for all SA-2 work; `services/ml/*` moved from M1-10 to M3+ (Phase 3 CV scouting).
+- `docs/spec/CODEBASE_PLAN.md` Section 13 — new risks R21–R26 (sensor API churn, satellite quota, model disagreement UX, agent lock-in, advisory scrape fragility, prescriptive-advice liability).
+- `docs/spec/CODEBASE_PLAN.md` Section 14 — new questions Q15 (RESOLVED: daily verdict format), Q16 (RESOLVED: phased agent architecture), Q17 (OPEN: free-tier ceiling), Q18 (OPEN: Sentinel-2 cloud-day fallback), Q19 (OPEN: METER PHYTOS-31 requirement).
+- Six new dossier files (`08_model-aggregation.md` through `13_advisory-feeds.md`) at ~500 lines each.
+- `docs/research/pivot/` — `PIVOT_AMENDMENT_PLAN.md`, `SPEC_AMENDMENT_v2.md`, `CLAUDE_CODE_DIRECTIVE_v3.md` (8-PR implementation track).
+- Updated `docs/research/00_index.md`, `glossary.md`, `paywalled_queue.md`, `sources_master.csv` (211 new pivot-related sources).
+
+#### Manual prerequisites
+
+**None.** PR-A is documentation-only. Subsequent PRs (PR-B onward) need a willing pilot grower with Pessl/Davis/METER stations to validate sensor connectors.
+
+#### Notes
+
+- Original CV-centric Executive Summary preserved in git history at commit `73a5371`.
+- 8-PR implementation sequence (PR-B schemas → PR-C aggregation engine → PR-D Pessl → PR-E Davis+METER → PR-F daily verdict UI + LLM brief → PR-G Sentinel-2 → PR-H advisory feeds EU/AR) per directive.
+- Strategist's flag: aggressive scope vs Moelis runway (June 1). PRs G + H deferable to post-Moelis without breaking the Napa-launch demo.
+
 ### M1-09: Photo/video capture upload (web) — READY FOR MERGE
 
 PR #16 on `graft-spray/m1/capture-upload-web`. The first user-visible feature in the M1 layer (Spec §8.5). Step 2 of the M0-06 → M1-09 → M1-10 → M1-12 triad that gives a Napa beta grower the visible loop before Moelis blackout.

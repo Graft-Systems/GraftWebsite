@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "block_verdict.generated.v1",
+  "title": "block_verdict.generated",
+  "description": "Per-block daily ensemble verdict synthesized from RiskRecords. The single decision-intelligence output the grower-facing UI consumes. See spec §11A.2.",
+  "type": "object",
+  "required": [
+    "block_id",
+    "date",
+    "powdery_severity_1_10",
+    "downy_severity_1_10",
+    "powdery_confidence",
+    "downy_confidence",
+    "action",
+    "urgency",
+    "drivers",
+    "split_summary",
+    "forecast_7d",
+    "advisory_events",
+    "model_versions",
+    "generated_at",
+    "audit_hash"
+  ],
+  "properties": {
+    "block_id": { "type": "string", "format": "uuid" },
+    "date": { "type": "string", "format": "date" },
+    "powdery_severity_1_10": { "type": "number", "minimum": 1.0, "maximum": 10.0 },
+    "downy_severity_1_10": { "type": "number", "minimum": 1.0, "maximum": 10.0 },
+    "powdery_confidence": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "downy_confidence": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "action": { "type": "string", "enum": ["spray", "hold", "scout"] },
+    "urgency": { "type": "string", "enum": ["now", "24h", "72h", "none"] },
+    "drivers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["model", "value", "threshold", "citation_id", "weight"],
+        "properties": {
+          "model": { "type": "string", "minLength": 1 },
+          "value": { "type": "number" },
+          "threshold": { "type": "number" },
+          "citation_id": { "type": "string", "minLength": 1 },
+          "weight": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "split_summary": { "type": "string" },
+    "forecast_7d": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "items": {
+        "type": "object",
+        "required": [
+          "date",
+          "powdery_severity_1_10",
+          "downy_severity_1_10",
+          "action"
+        ],
+        "properties": {
+          "date": { "type": "string", "format": "date" },
+          "powdery_severity_1_10": { "type": "number", "minimum": 1.0, "maximum": 10.0 },
+          "downy_severity_1_10": { "type": "number", "minimum": 1.0, "maximum": 10.0 },
+          "action": { "type": "string", "enum": ["spray", "hold", "scout"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "advisory_events": {
+      "type": "array",
+      "items": { "type": "string", "format": "uuid" }
+    },
+    "model_versions": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "audit_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    }
+  },
+  "additionalProperties": false
+}

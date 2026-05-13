@@ -10,12 +10,14 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import timedelta
 from typing import Any
 
 from django.conf import settings
 from django.db import transaction
-from django.http import HttpRequest, JsonResponse
+from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
+from django.utils.dateparse import parse_date
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
@@ -297,6 +299,12 @@ class OrgCreateView(APIView):
         serializer = OrgSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         org = serializer.save()
+
+        # Set the RLS GUC to the new Org's id so the Membership INSERT
+        # passes the `org_id = current_setting('app.current_org_id')`
+        # policy. Without this, the very first Membership for a fresh
+        # Org gets denied at the DB layer because no GUC is set yet.
+        set_current_org_id(str(org.id))
 
         Membership.objects.create(
             org=org,
@@ -776,8 +784,12 @@ class VineyardListCreateView(APIView):
             return [IsOrgMember()]
         return [IsOrgViewer()]
 
+    @transaction.atomic
     def get(self, request, org_id):
         # Set GUC explicitly because the URL kwarg already resolved here.
+        # @transaction.atomic keeps the GUC alive for subsequent ORM calls
+        # (set_config(..., true) is transaction-local and would otherwise
+        # clear before for_org() runs).
         set_current_org_id(str(org_id))
         vineyards = (
             Vineyard.objects.for_org(org_id)
@@ -832,10 +844,12 @@ class VineyardDetailView(APIView):
             Vineyard.objects.for_org(org_id), id=vineyard_id
         )
 
+    @transaction.atomic
     def get(self, request, org_id, vineyard_id):
         set_current_org_id(str(org_id))
         return Response(VineyardSerializer(self._get(org_id, vineyard_id)).data)
 
+    @transaction.atomic
     def patch(self, request, org_id, vineyard_id):
         set_current_org_id(str(org_id))
         vineyard = self._get(org_id, vineyard_id)
@@ -887,6 +901,7 @@ class BlockListCreateView(APIView):
             return [IsOrgMember()]
         return [IsOrgViewer()]
 
+    @transaction.atomic
     def get(self, request, org_id, vineyard_id):
         set_current_org_id(str(org_id))
         # Ensure the vineyard belongs to the org before listing its blocks.
@@ -940,10 +955,12 @@ class BlockDetailView(APIView):
             Block.objects.for_org(org_id), id=block_id
         )
 
+    @transaction.atomic
     def get(self, request, org_id, block_id):
         set_current_org_id(str(org_id))
         return Response(BlockSerializer(self._get(org_id, block_id)).data)
 
+    @transaction.atomic
     def patch(self, request, org_id, block_id):
         set_current_org_id(str(org_id))
         block = self._get(org_id, block_id)
@@ -979,6 +996,280 @@ class BlockDetailView(APIView):
             payload={"block_id": str(block.id)},
         )
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------------
+# Pilot setup summary
+# ---------------------------------------------------------------------
+
+
+class SetupSummaryView(APIView):
+    """GET /api/spray/orgs/<org_id>/setup-summary.
+
+    Cached-store summary for dashboard onboarding. This intentionally
+    avoids live vendor calls; integrations detail pages own vendor refresh.
+    """
+
+    permission_classes = [IsOrgViewer]
+
+    @transaction.atomic
+    def get(self, request, org_id):
+        set_current_org_id(str(org_id))
+        return Response(_setup_summary_payload(org_id))
+
+
+def _setup_summary_payload(org_id):
+    from spray.models import (
+        BlockVerdict,
+        IntegrationConnection,
+        SensorStation,
+    )
+
+    now = timezone.now()
+    station_stale_after = now - timedelta(hours=2)
+    health_stale_after = now - timedelta(hours=24)
+
+    vineyards = Vineyard.objects.for_org(org_id).filter(archived_at__isnull=True)
+    blocks = Block.objects.for_org(org_id).filter(
+        vineyard__archived_at__isnull=True,
+        archived_at__isnull=True,
+    )
+    integrations = IntegrationConnection.objects.for_org(org_id)
+    active_integrations = integrations.filter(
+        status=IntegrationConnection.Status.ACTIVE
+    )
+    stations = SensorStation.objects.for_org(org_id).filter(
+        archived_at__isnull=True
+    )
+    mapped_stations = stations.filter(
+        linked_blocks__isnull=False,
+        linked_blocks__archived_at__isnull=True,
+    ).distinct()
+    stale_stations = stations.filter(last_seen_at__lt=station_stale_after)
+    never_seen_stations = stations.filter(last_seen_at__isnull=True)
+    stale_integrations = active_integrations.filter(
+        last_health_at__lt=health_stale_after
+    )
+    never_checked_integrations = active_integrations.filter(
+        last_health_at__isnull=True
+    )
+    verdicts = BlockVerdict.objects.for_org(org_id).filter(block__in=blocks)
+
+    counts = {
+        "vineyards": vineyards.count(),
+        "blocks": blocks.count(),
+        "integrations": integrations.count(),
+        "active_integrations": active_integrations.count(),
+        "stations": stations.count(),
+        "mapped_stations": mapped_stations.count(),
+        "unmapped_stations": max(stations.count() - mapped_stations.count(), 0),
+        "stale_stations": stale_stations.count(),
+        "never_seen_stations": never_seen_stations.count(),
+        "stale_integrations": stale_integrations.count(),
+        "never_checked_integrations": never_checked_integrations.count(),
+        "verdicts": verdicts.count(),
+    }
+    steps = [
+        {
+            "id": "create_vineyard",
+            "label": "Create vineyard",
+            "complete": counts["vineyards"] > 0,
+            "href": "/spray/vineyards",
+        },
+        {
+            "id": "draw_blocks",
+            "label": "Draw blocks",
+            "complete": counts["blocks"] > 0,
+            "href": "/spray/vineyards",
+        },
+        {
+            "id": "connect_sensor",
+            "label": "Connect sensor",
+            "complete": counts["active_integrations"] > 0,
+            "href": "/spray/integrations",
+        },
+        {
+            "id": "map_station",
+            "label": "Map station to block",
+            "complete": counts["mapped_stations"] > 0,
+            "href": "/spray/integrations",
+        },
+        {
+            "id": "generate_verdict",
+            "label": "Generate verdict",
+            "complete": counts["verdicts"] > 0,
+            "href": "/spray/dashboard",
+        },
+    ]
+
+    warnings = []
+    if counts["unmapped_stations"] > 0:
+        warnings.append("Some stations are not linked to a block.")
+    if counts["stale_stations"] > 0 or counts["never_seen_stations"] > 0:
+        warnings.append("Some stations have no recent readings.")
+    if counts["stale_integrations"] > 0 or counts["never_checked_integrations"] > 0:
+        warnings.append("Some provider health checks are stale.")
+
+    return {
+        "org_id": str(org_id),
+        "counts": counts,
+        "steps": steps,
+        "warnings": warnings,
+        "generated_at": now.isoformat(),
+    }
+
+
+class DashboardSummaryView(APIView):
+    """GET /api/spray/orgs/<org_id>/dashboard-summary."""
+
+    permission_classes = [IsOrgViewer]
+
+    @transaction.atomic
+    def get(self, request, org_id):
+        from spray.models import BlockVerdict, IntegrationConnection, SensorStation
+        from spray.serializers import BlockVerdictSerializer
+
+        set_current_org_id(str(org_id))
+        org = get_object_or_404(Org, id=org_id, archived_at__isnull=True)
+        setup = _setup_summary_payload(org_id)
+        now = timezone.now()
+        station_stale_after = now - timedelta(hours=2)
+        health_stale_after = now - timedelta(hours=24)
+
+        vineyards = list(
+            Vineyard.objects.for_org(org_id)
+            .filter(archived_at__isnull=True)
+            .order_by("name")
+        )
+        blocks = list(
+            Block.objects.for_org(org_id)
+            .filter(vineyard__archived_at__isnull=True, archived_at__isnull=True)
+            .select_related("vineyard")
+            .order_by("vineyard__name", "name")
+        )
+
+        latest_by_block = {}
+        for verdict in (
+            BlockVerdict.objects.for_org(org_id)
+            .filter(block__in=blocks)
+            .order_by("block_id", "-date")
+        ):
+            latest_by_block.setdefault(str(verdict.block_id), verdict)
+
+        block_rows = []
+        for block in blocks:
+            verdict = latest_by_block.get(str(block.id))
+            block_rows.append(
+                {
+                    "id": str(block.id),
+                    "name": block.name,
+                    "vineyard_id": str(block.vineyard_id),
+                    "vineyard_name": block.vineyard.name,
+                    "variety": block.variety,
+                    "latest_verdict": (
+                        BlockVerdictSerializer(verdict).data if verdict else None
+                    ),
+                    "verdict_stale": (
+                        bool(verdict)
+                        and verdict.generated_at < now - timedelta(hours=26)
+                    ),
+                }
+            )
+
+        integrations = []
+        for conn in IntegrationConnection.objects.for_org(org_id).order_by("vendor"):
+            health_status = "disconnected"
+            if conn.status == IntegrationConnection.Status.NEEDS_REAUTH:
+                health_status = "needs_reauth"
+            elif conn.status == IntegrationConnection.Status.ACTIVE:
+                if conn.last_health_at is None:
+                    health_status = "unchecked"
+                elif conn.last_health_at < health_stale_after:
+                    health_status = "health_stale"
+                else:
+                    health_status = "active"
+            integrations.append(
+                {
+                    "id": str(conn.id),
+                    "vendor": conn.vendor,
+                    "vendor_account_id": conn.vendor_account_id,
+                    "status": conn.status,
+                    "health_status": health_status,
+                    "last_health_at": (
+                        conn.last_health_at.isoformat()
+                        if conn.last_health_at
+                        else None
+                    ),
+                    "last_health_detail": conn.last_health_detail,
+                }
+            )
+
+        stations = []
+        for station in (
+            SensorStation.objects.for_org(org_id)
+            .filter(archived_at__isnull=True)
+            .prefetch_related("linked_blocks")
+            .select_related("connection")
+        ):
+            linked = [b for b in station.linked_blocks.all() if b.archived_at is None]
+            station_status = "active"
+            if not linked:
+                station_status = "unmapped"
+            elif station.last_seen_at is None:
+                station_status = "never_seen"
+            elif station.last_seen_at < station_stale_after:
+                station_status = "stale"
+            stations.append(
+                {
+                    "id": str(station.id),
+                    "name": station.name or station.vendor_station_id,
+                    "vendor": station.connection.vendor,
+                    "last_seen_at": (
+                        station.last_seen_at.isoformat()
+                        if station.last_seen_at
+                        else None
+                    ),
+                    "status": station_status,
+                    "linked_block_ids": [str(b.id) for b in linked],
+                    "linked_block_names": [b.name for b in linked],
+                }
+            )
+
+        latest_generated_at = max(
+            (
+                row["latest_verdict"]["generated_at"]
+                for row in block_rows
+                if row["latest_verdict"]
+            ),
+            default=None,
+        )
+
+        return Response(
+            {
+                "org": {
+                    "id": str(org.id),
+                    "name": org.name,
+                    "region": org.region,
+                    "settings": org.settings,
+                    "is_demo": bool(org.settings.get("demo")),
+                },
+                "setup": setup,
+                "vineyards": [
+                    {
+                        "id": str(v.id),
+                        "name": v.name,
+                        "region": v.region,
+                        "is_demo": bool(v.settings.get("demo")),
+                    }
+                    for v in vineyards
+                ],
+                "blocks": block_rows,
+                "integrations": integrations,
+                "stations": stations,
+                "latest_generated_at": latest_generated_at,
+                "generated_at": now.isoformat(),
+            }
+        )
 
 
 # ---------------------------------------------------------------------
@@ -1174,6 +1465,7 @@ class CaptureListView(APIView):
 
     permission_classes = [IsOrgViewer]
 
+    @transaction.atomic
     def get(self, request, org_id):
         from spray.models import Capture
         from spray.serializers import CaptureSerializer
@@ -1206,6 +1498,7 @@ class CaptureDetailView(APIView):
 
     permission_classes = [IsOrgViewer]
 
+    @transaction.atomic
     def get(self, request, org_id, capture_id):
         from spray.models import Capture
         from spray.serializers import CaptureSerializer
@@ -1232,3 +1525,1170 @@ class CaptureDetailView(APIView):
         capture.archived_at = timezone.now()
         capture.save(update_fields=["archived_at"])
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------------
+# M1.5 PR-C: Aggregation engine — verdict endpoints (SA-2)
+# ---------------------------------------------------------------------
+
+
+class BlockVerdictLatestView(APIView):
+    """GET /api/spray/orgs/<org_id>/blocks/<block_id>/verdicts/latest
+
+    Returns the most recent BlockVerdict for the block. 404 if none yet.
+    """
+
+    permission_classes = [IsOrgViewer]
+
+    @transaction.atomic
+    def get(self, request, org_id, block_id):
+        from spray.models import Block, BlockVerdict
+        from spray.serializers import BlockVerdictSerializer
+
+        set_current_org_id(str(org_id))
+        # Verify block belongs to caller's org via the block's vineyard.
+        get_object_or_404(Block.objects.for_org(org_id), id=block_id)
+
+        verdict = (
+            BlockVerdict.objects.for_org(org_id)
+            .filter(block_id=block_id)
+            .order_by("-date")
+            .first()
+        )
+        if verdict is None:
+            return Response(
+                {"detail": "no verdict yet for this block"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(BlockVerdictSerializer(verdict).data)
+
+
+class BlockVerdictListView(APIView):
+    """GET /api/spray/orgs/<org_id>/blocks/<block_id>/verdicts?since=<iso>
+
+    Paginated history. `since` is an ISO date; default = last 30 days.
+    """
+
+    permission_classes = [IsOrgViewer]
+
+    @transaction.atomic
+    def get(self, request, org_id, block_id):
+        from datetime import date, timedelta
+        from spray.models import Block, BlockVerdict
+        from spray.serializers import BlockVerdictSerializer
+
+        set_current_org_id(str(org_id))
+        get_object_or_404(Block.objects.for_org(org_id), id=block_id)
+
+        since_param = request.query_params.get("since")
+        if since_param:
+            try:
+                since_date = date.fromisoformat(since_param)
+            except ValueError:
+                return Response(
+                    {"detail": "invalid 'since' date; use YYYY-MM-DD"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            since_date = timezone.now().date() - timedelta(days=30)
+
+        qs = (
+            BlockVerdict.objects.for_org(org_id)
+            .filter(block_id=block_id, date__gte=since_date)
+            .order_by("-date")
+        )
+        return Response(
+            {
+                "since": since_date.isoformat(),
+                "count": qs.count(),
+                "results": BlockVerdictSerializer(qs[:200], many=True).data,
+            }
+        )
+
+
+class BlockVerdictRecomputeView(APIView):
+    """POST /api/spray/orgs/<org_id>/blocks/<block_id>/verdicts/recompute."""
+
+    permission_classes = [IsOrgMember]
+
+    @transaction.atomic
+    def post(self, request, org_id, block_id):
+        from spray.models import Block
+
+        set_current_org_id(str(org_id))
+        block = get_object_or_404(
+            Block.objects.for_org(org_id).select_related("vineyard"),
+            id=block_id,
+            archived_at__isnull=True,
+        )
+
+        try:
+            from celery import current_app
+
+            result = current_app.send_task(
+                "graft_worker.tasks.aggregation_run.compute_block_verdict",
+                args=[str(block.id)],
+            )
+            task_id = result.id
+            queued = True
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("recompute queue failed for block=%s", block_id)
+            return Response(
+                {"detail": f"could not queue recompute: {exc}"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        logger.info(
+            "directive recompute queued org=%s block=%s user=%s task=%s",
+            org_id,
+            block_id,
+            getattr(request.user, "id", None),
+            task_id,
+        )
+        return Response(
+            {
+                "queued": queued,
+                "task_id": task_id,
+                "block_id": str(block.id),
+                "message": "Directive refresh queued.",
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+
+class SprayRecordListCreateView(APIView):
+    """GET/POST /api/spray/orgs/<org_id>/spray-records."""
+
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [IsOrgViewer()]
+        return [IsOrgMember()]
+
+    @transaction.atomic
+    def get(self, request, org_id):
+        from spray.models import SprayRecord
+        from spray.serializers import SprayRecordSerializer
+
+        set_current_org_id(str(org_id))
+        qs = (
+            SprayRecord.objects.for_org(org_id)
+            .filter(archived_at__isnull=True)
+            .select_related("block", "block__vineyard", "verdict")
+            .order_by("-applied_at", "-created_at")
+        )
+        block_id = request.query_params.get("block_id")
+        if block_id:
+            qs = qs.filter(block_id=block_id)
+        vineyard_id = request.query_params.get("vineyard_id")
+        if vineyard_id:
+            qs = qs.filter(block__vineyard_id=vineyard_id)
+        date_from = _parse_optional_date(request.query_params.get("date_from"), "date_from")
+        if isinstance(date_from, Response):
+            return date_from
+        if date_from:
+            qs = qs.filter(applied_at__date__gte=date_from)
+        date_to = _parse_optional_date(request.query_params.get("date_to"), "date_to")
+        if isinstance(date_to, Response):
+            return date_to
+        if date_to:
+            qs = qs.filter(applied_at__date__lte=date_to)
+        return Response({"results": SprayRecordSerializer(qs[:200], many=True).data})
+
+    @transaction.atomic
+    def post(self, request, org_id):
+        from spray.models import Block, BlockVerdict
+        from spray.serializers import SprayRecordSerializer
+
+        set_current_org_id(str(org_id))
+        serializer = SprayRecordSerializer(
+            data=request.data,
+            context={"org_id": org_id},
+        )
+        serializer.is_valid(raise_exception=True)
+        block = get_object_or_404(
+            Block.objects.for_org(org_id),
+            id=serializer.validated_data["block"].id,
+            archived_at__isnull=True,
+        )
+        verdict = serializer.validated_data.get("verdict")
+        if verdict is not None:
+            get_object_or_404(
+                BlockVerdict.objects.for_org(org_id),
+                id=verdict.id,
+                block=block,
+            )
+        record = serializer.save(block=block, created_by=request.user)
+        return Response(
+            SprayRecordSerializer(record).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class SprayRecordDetailView(APIView):
+    """GET/PATCH/DELETE /api/spray/orgs/<org_id>/spray-records/<record_id>."""
+
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [IsOrgViewer()]
+        return [IsOrgMember()]
+
+    def _get(self, org_id, record_id):
+        from spray.models import SprayRecord
+
+        return get_object_or_404(
+            SprayRecord.objects.for_org(org_id).select_related(
+                "block",
+                "block__vineyard",
+                "verdict",
+            ),
+            id=record_id,
+        )
+
+    @transaction.atomic
+    def get(self, request, org_id, record_id):
+        from spray.serializers import SprayRecordSerializer
+
+        set_current_org_id(str(org_id))
+        return Response(SprayRecordSerializer(self._get(org_id, record_id)).data)
+
+    @transaction.atomic
+    def patch(self, request, org_id, record_id):
+        from spray.models import Block, BlockVerdict
+        from spray.serializers import SprayRecordSerializer
+
+        set_current_org_id(str(org_id))
+        record = self._get(org_id, record_id)
+        serializer = SprayRecordSerializer(
+            record,
+            data=request.data,
+            partial=True,
+            context={"org_id": org_id},
+        )
+        serializer.is_valid(raise_exception=True)
+        block = serializer.validated_data.get("block")
+        if block is not None:
+            get_object_or_404(Block.objects.for_org(org_id), id=block.id)
+        verdict = serializer.validated_data.get("verdict")
+        if verdict is not None:
+            target_block = block or record.block
+            get_object_or_404(
+                BlockVerdict.objects.for_org(org_id),
+                id=verdict.id,
+                block=target_block,
+            )
+        serializer.save()
+        return Response(serializer.data)
+
+    @transaction.atomic
+    def delete(self, request, org_id, record_id):
+        set_current_org_id(str(org_id))
+        record = self._get(org_id, record_id)
+        if record.archived_at is not None:
+            return Response(
+                {"detail": "already archived"},
+                status=status.HTTP_409_CONFLICT,
+            )
+        record.archived_at = timezone.now()
+        record.save(update_fields=["archived_at"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class SprayProgramSettingsView(APIView):
+    """GET/PATCH /api/spray/orgs/<org_id>/program-settings."""
+
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [IsOrgViewer()]
+        return [IsOrgAdmin()]
+
+    @transaction.atomic
+    def get(self, request, org_id):
+        set_current_org_id(str(org_id))
+        org = get_object_or_404(Org, id=org_id, archived_at__isnull=True)
+        return Response(_program_settings(org))
+
+    @transaction.atomic
+    def patch(self, request, org_id):
+        set_current_org_id(str(org_id))
+        org = get_object_or_404(Org, id=org_id, archived_at__isnull=True)
+        current = _program_settings(org)
+        allowed_keys = set(current.keys())
+        incoming = {
+            key: value
+            for key, value in request.data.items()
+            if key in allowed_keys
+        }
+        next_settings = {**current, **incoming}
+        org.settings = {**org.settings, "spray_program": next_settings}
+        org.save(update_fields=["settings"])
+        return Response(next_settings)
+
+
+def _program_settings(org: Org) -> dict[str, Any]:
+    defaults = {
+        "program_type": "organic",
+        "allowed_products": "",
+        "frac_rotation": "",
+        "cultivar_sensitivity": "normal",
+        "canopy_density": "medium",
+        "max_wind_mph": 10,
+        "min_temp_f": 45,
+        "max_temp_f": 85,
+        "avoid_rain_hours": 12,
+    }
+    configured = org.settings.get("spray_program") or {}
+    return {**defaults, **configured}
+
+
+def _parse_optional_date(value: str | None, name: str):
+    if not value:
+        return None
+    parsed = parse_date(value)
+    if parsed is None:
+        return Response(
+            {"detail": f"invalid '{name}' date; use YYYY-MM-DD"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return parsed
+
+
+# ---------------------------------------------------------------------
+# M1.5 PR-F: Daily brief renderer endpoint (SA-2)
+# ---------------------------------------------------------------------
+
+
+class BlockVerdictBriefView(APIView):
+    """GET /api/spray/orgs/<org_id>/blocks/<block_id>/verdicts/<verdict_id>/brief
+
+    Returns a deterministic narrative brief for one BlockVerdict — headline,
+    paragraphs, drivers, and resolved citations from `sources_master.csv`.
+
+    LLM-authored prose lands in PR-F.5; until then this returns the
+    template-rendered output.
+    """
+
+    permission_classes = [IsOrgViewer]
+
+    @transaction.atomic
+    def get(self, request, org_id, block_id, verdict_id):
+        from spray.lake import emit_event
+        from spray.models import Block, BlockVerdict
+        from spray.recommendation.orchestrator import render_brief
+        from spray.serializers import BlockVerdictSerializer
+
+        set_current_org_id(str(org_id))
+        get_object_or_404(Block.objects.for_org(org_id), id=block_id)
+        verdict = get_object_or_404(
+            BlockVerdict.objects.for_org(org_id),
+            id=verdict_id,
+            block_id=block_id,
+        )
+
+        verdict_dict = BlockVerdictSerializer(verdict).data
+        # Coerce DRF Decimal -> float for the renderer.
+        for key in (
+            "powdery_severity_1_10",
+            "downy_severity_1_10",
+            "powdery_confidence",
+            "downy_confidence",
+        ):
+            value = verdict_dict.get(key)
+            if value is not None:
+                verdict_dict[key] = float(value)
+
+        envelope = render_brief(verdict_dict)
+
+        # Emit telemetry. Strip the internal `_telemetry` key before
+        # returning to the caller — it's a private channel between the
+        # orchestrator and this view.
+        telemetry = envelope.pop("_telemetry", {}) or {}
+        try:
+            emit_event(
+                category="brief.rendered",
+                payload={
+                    "org_id": str(org_id),
+                    "block_id": str(block_id),
+                    "verdict_id": str(verdict_id),
+                    "renderer": envelope.get("renderer", ""),
+                    "fallback_reason": envelope.get("fallback_reason"),
+                    "prompt_tokens": int(telemetry.get("prompt_tokens", 0) or 0),
+                    "completion_tokens": int(
+                        telemetry.get("completion_tokens", 0) or 0
+                    ),
+                    "model": telemetry.get("model", "")
+                    or telemetry.get("prompt_version", ""),
+                    "latency_ms": int(telemetry.get("latency_ms", 0) or 0),
+                    "generated_at": timezone.now()
+                    .isoformat()
+                    .replace("+00:00", "Z"),
+                },
+                org=verdict.block.vineyard.org,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("emit brief.rendered failed")
+
+        return Response(envelope)
+
+
+class BlockVerdictAuditPdfView(APIView):
+    """GET /api/spray/orgs/<org_id>/blocks/<block_id>/verdicts/<verdict_id>/audit.pdf
+
+    Tamper-evident audit-log PDF. Regenerated on every download — the
+    audit value comes from regeneration matching the live
+    `audit_hash`. Caching would create stale-PDF risk.
+
+    Permission: same `IsOrgViewer` gate as the brief endpoint.
+    """
+
+    permission_classes = [IsOrgViewer]
+
+    @transaction.atomic
+    def get(self, request, org_id, block_id, verdict_id):
+        from spray.models import Block, BlockVerdict
+        from spray.recommendation.orchestrator import render_brief
+        from spray.recommendation.pdf_audit import render_audit_pdf
+        from spray.serializers import BlockVerdictSerializer
+
+        set_current_org_id(str(org_id))
+        block = get_object_or_404(Block.objects.for_org(org_id), id=block_id)
+        verdict = get_object_or_404(
+            BlockVerdict.objects.for_org(org_id),
+            id=verdict_id,
+            block_id=block_id,
+        )
+
+        verdict_dict = BlockVerdictSerializer(verdict).data
+        for key in (
+            "powdery_severity_1_10",
+            "downy_severity_1_10",
+            "powdery_confidence",
+            "downy_confidence",
+        ):
+            value = verdict_dict.get(key)
+            if value is not None:
+                verdict_dict[key] = float(value)
+
+        envelope = render_brief(verdict_dict)
+        envelope.pop("_telemetry", None)
+
+        block_label = (
+            f"{block.vineyard.name} · {block.name}"
+            if hasattr(block, "vineyard")
+            else block.name
+        )
+        try:
+            pdf_bytes = render_audit_pdf(
+                verdict=verdict_dict, brief=envelope, block_label=block_label
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("audit PDF render failed for verdict=%s", verdict_id)
+            return Response(
+                {"detail": f"PDF render failed: {exc}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        resp = HttpResponse(pdf_bytes, content_type="application/pdf")
+        resp["Content-Disposition"] = (
+            f'inline; filename="graft-spray-{verdict.date}-{str(verdict.id)[:8]}.pdf"'
+        )
+        # No caching — every download regenerates against the live verdict.
+        resp["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+        resp["Pragma"] = "no-cache"
+        return resp
+
+
+# ---------------------------------------------------------------------
+# M1.5 PR-D: Sensor connector integrations (SA-2 §12A)
+# ---------------------------------------------------------------------
+
+
+def _new_oauth_state(org_id, vendor: str, ttl_minutes: int = 10):
+    """Create + persist an opaque OAuth state token. The state is a
+    URL-safe random string; we bind it to the Org by storing the row.
+    Tampering is impossible (the row is the source of truth) and replay
+    is bounded by the TTL.
+    """
+    import secrets
+    from datetime import timedelta as _td
+
+    from spray.models import OAuthState
+
+    token = secrets.token_urlsafe(32)
+    return OAuthState.objects.create(
+        state=token,
+        org_id=org_id,
+        vendor=vendor,
+        expires_at=timezone.now() + _td(minutes=ttl_minutes),
+    )
+
+
+class IntegrationListView(APIView):
+    """GET /api/spray/orgs/<org_id>/integrations
+    Returns the org's connections (any vendor). Tokens never serialized.
+    """
+
+    permission_classes = [IsOrgViewer]
+
+    @transaction.atomic
+    def get(self, request, org_id):
+        from spray.models import IntegrationConnection
+        from spray.serializers import IntegrationConnectionSerializer
+
+        set_current_org_id(str(org_id))
+        qs = (
+            IntegrationConnection.objects.for_org(org_id)
+            .order_by("-connected_at")
+        )
+        return Response(
+            {"results": IntegrationConnectionSerializer(qs, many=True).data}
+        )
+
+
+class PesslOAuthStartView(APIView):
+    """POST /api/spray/orgs/<org_id>/integrations/pessl/oauth/start
+    Returns `{authorize_url}` for the frontend to redirect to.
+    """
+
+    permission_classes = [IsOrgAdmin]
+
+    @transaction.atomic
+    def post(self, request, org_id):
+        from spray.connectors.sensors.pessl.oauth import build_authorize_url
+
+        set_current_org_id(str(org_id))
+        state_row = _new_oauth_state(org_id, vendor="pessl")
+        try:
+            url = build_authorize_url(state=state_row.state)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("PesslOAuthStartView: build_authorize_url failed")
+            return Response(
+                {"detail": f"oauth start failed: {exc}"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        return Response({"authorize_url": url, "state": state_row.state})
+
+
+class PesslOAuthCallbackView(APIView):
+    """GET /api/spray/integrations/pessl/oauth/callback?code=&state=
+
+    No org in the URL — derived from `state`. Redirects on success;
+    returns JSON error on failure (frontend handles via query param).
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from django.shortcuts import redirect
+
+        from spray.connectors import credentials as creds
+        from spray.connectors.base import (
+            ConnectorAuthError,
+            ConnectorRateLimitError,
+            ConnectorResponseError,
+        )
+        from spray.connectors.sensors.pessl.oauth import exchange_code
+        from spray.models import IntegrationConnection, OAuthState
+
+        code = request.query_params.get("code", "")
+        state = request.query_params.get("state", "")
+        error = request.query_params.get("error", "")
+
+        if error:
+            return Response(
+                {"detail": f"pessl returned error: {error}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not code or not state:
+            return Response(
+                {"detail": "missing code or state"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            state_row = OAuthState.objects.get(state=state, vendor="pessl")
+        except OAuthState.DoesNotExist:
+            return Response(
+                {"detail": "invalid or unknown state"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if state_row.consumed_at is not None:
+            return Response(
+                {"detail": "state already consumed"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if state_row.expires_at < timezone.now():
+            return Response(
+                {"detail": "state expired"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            token_blob = exchange_code(code)
+        except ConnectorAuthError as exc:
+            return Response(
+                {"detail": f"oauth code rejected: {exc}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except (ConnectorRateLimitError, ConnectorResponseError) as exc:
+            return Response(
+                {"detail": f"pessl unavailable: {exc}"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        vendor_account_id = token_blob.pop("vendor_account_id")
+        ciphertext = creds.encrypt_token_blob(token_blob)
+
+        with transaction.atomic():
+            set_current_org_id(str(state_row.org_id))
+            connection, created = IntegrationConnection.objects.unscoped().update_or_create(
+                org_id=state_row.org_id,
+                vendor=IntegrationConnection.Vendor.PESSL,
+                vendor_account_id=vendor_account_id,
+                defaults={
+                    "token_ciphertext": ciphertext,
+                    "status": IntegrationConnection.Status.ACTIVE,
+                    "disconnected_at": None,
+                },
+            )
+            state_row.consumed_at = timezone.now()
+            state_row.save(update_fields=["consumed_at"])
+
+        try:
+            _emit_lake_event(
+                org=state_row.org,
+                user=getattr(request, "spray_user", None),
+                category="integration.connected",
+                payload={
+                    "org_id": str(state_row.org_id),
+                    "connection_id": str(connection.id),
+                    "vendor": "pessl",
+                    "vendor_account_id": vendor_account_id,
+                    "created": created,
+                },
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("emit integration.connected failed")
+
+        # Redirect back to the spray app integrations page.
+        frontend_base = getattr(settings, "SPRAY_FRONTEND_BASE_URL", "")
+        if frontend_base:
+            return redirect(
+                f"{frontend_base}/spray/integrations?connected=pessl"
+            )
+        return Response(
+            {
+                "ok": True,
+                "connection_id": str(connection.id),
+                "vendor": "pessl",
+                "created": created,
+            }
+        )
+
+
+class IntegrationStationListView(APIView):
+    """GET /api/spray/orgs/<org_id>/integrations/<conn_id>/stations
+    Live-fetches the vendor's stations + upserts SensorStation rows.
+    """
+
+    permission_classes = [IsOrgMember]
+
+    @transaction.atomic
+    def get(self, request, org_id, conn_id):
+        # NB: this view makes an HTTP call to the vendor inside the
+        # atomic block. That holds the DB transaction for the duration
+        # of the call (typically <30s). Acceptable for a low-frequency
+        # connect-flow endpoint; revisit if it surfaces as contention.
+        from spray.connectors.base import (
+            ConnectorAuthError,
+            ConnectorRateLimitError,
+            ConnectorResponseError,
+        )
+        from spray.connectors.registry import get_connector
+        from spray.models import IntegrationConnection, SensorStation
+        from spray.serializers import SensorStationSerializer
+
+        set_current_org_id(str(org_id))
+        connection = get_object_or_404(
+            IntegrationConnection.objects.for_org(org_id), id=conn_id
+        )
+        connector = get_connector(connection.vendor)
+        try:
+            vendor_stations = connector.list_stations(connection)
+        except ConnectorAuthError as exc:
+            return Response(
+                {"detail": f"reauth required: {exc}"},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        except (ConnectorRateLimitError, ConnectorResponseError) as exc:
+            return Response(
+                {"detail": f"vendor unavailable: {exc}"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        with transaction.atomic():
+            for vs in vendor_stations:
+                SensorStation.objects.unscoped().update_or_create(
+                    connection=connection,
+                    vendor_station_id=vs.vendor_station_id,
+                    defaults={
+                        "name": vs.name or "",
+                        "lat": vs.lat,
+                        "lon": vs.lon,
+                    },
+                )
+
+        qs = (
+            SensorStation.objects.for_org(org_id)
+            .filter(connection=connection, archived_at__isnull=True)
+            .order_by("name")
+            .prefetch_related("linked_blocks")
+        )
+        return Response({"results": SensorStationSerializer(qs, many=True).data})
+
+
+class IntegrationStationLinkBlockView(APIView):
+    """POST /api/spray/orgs/<org_id>/integrations/<conn_id>/stations/<station_id>/link-block
+    Body: {"block_id": "uuid"}.
+    """
+
+    permission_classes = [IsOrgMember]
+
+    @transaction.atomic
+    def post(self, request, org_id, conn_id, station_id):
+        from spray.models import (
+            Block,
+            IntegrationConnection,
+            SensorStation,
+            SensorStationBlock,
+        )
+
+        set_current_org_id(str(org_id))
+        get_object_or_404(
+            IntegrationConnection.objects.for_org(org_id), id=conn_id
+        )
+        station = get_object_or_404(
+            SensorStation.objects.for_org(org_id),
+            id=station_id,
+            connection_id=conn_id,
+        )
+        block_id = request.data.get("block_id")
+        if not block_id:
+            return Response(
+                {"detail": "block_id required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        block = get_object_or_404(Block.objects.for_org(org_id), id=block_id)
+
+        SensorStationBlock.objects.get_or_create(
+            station=station,
+            block=block,
+            defaults={"linked_by": getattr(request, "spray_user", None)},
+        )
+        return Response({"ok": True}, status=status.HTTP_201_CREATED)
+
+
+class IntegrationDisconnectView(APIView):
+    """DELETE /api/spray/orgs/<org_id>/integrations/<conn_id>
+    Soft-delete: sets status=disconnected. Historical readings preserved.
+    """
+
+    permission_classes = [IsOrgAdmin]
+
+    @transaction.atomic
+    def delete(self, request, org_id, conn_id):
+        from spray.models import IntegrationConnection
+
+        set_current_org_id(str(org_id))
+        connection = get_object_or_404(
+            IntegrationConnection.objects.for_org(org_id), id=conn_id
+        )
+        connection.status = IntegrationConnection.Status.DISCONNECTED
+        connection.disconnected_at = timezone.now()
+        connection.save(update_fields=["status", "disconnected_at"])
+
+        try:
+            _emit_lake_event(
+                org=connection.org,
+                user=getattr(request, "spray_user", None),
+                category="integration.disconnected",
+                payload={
+                    "org_id": str(org_id),
+                    "connection_id": str(connection.id),
+                    "vendor": connection.vendor,
+                },
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("emit integration.disconnected failed")
+
+        return Response({"ok": True})
+
+
+# ---------------------------------------------------------------------
+# M1.5 PR-E: Davis + METER paste-key connect + METER webhook receiver
+# ---------------------------------------------------------------------
+
+
+class DavisConnectView(APIView):
+    """POST /api/spray/orgs/<org_id>/integrations/davis/connect
+
+    Body: {api_key, api_secret, label?}.
+    Validates via Davis /v2/stations smoke call before saving the
+    encrypted blob.
+    """
+
+    permission_classes = [IsOrgAdmin]
+
+    def post(self, request, org_id):
+        from spray.connectors import credentials as creds
+        from spray.connectors.base import (
+            ConnectorAuthError,
+            ConnectorRateLimitError,
+            ConnectorResponseError,
+        )
+        from spray.connectors.sensors.davis.client import DavisClient
+        from spray.models import IntegrationConnection
+
+        api_key = (request.data.get("api_key") or "").strip()
+        api_secret = (request.data.get("api_secret") or "").strip()
+        if not api_key or not api_secret:
+            return Response(
+                {"detail": "api_key and api_secret required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Smoke-validate.
+        try:
+            client = DavisClient(creds={"api_key": api_key, "api_secret": api_secret})
+            stations = client.list_stations()
+        except ConnectorAuthError as exc:
+            return Response(
+                {"detail": f"Davis rejected the credentials: {exc}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except (ConnectorRateLimitError, ConnectorResponseError) as exc:
+            return Response(
+                {"detail": f"Davis unavailable: {exc}"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        # Use the first station's account/uuid as a stable account id;
+        # fall back to a hash of the api_key.
+        import hashlib
+        account_id = ""
+        if stations and isinstance(stations[0], dict):
+            account_id = str(
+                stations[0].get("account_id")
+                or stations[0].get("station_id_uuid")
+                or stations[0].get("station_id")
+                or ""
+            )
+        if not account_id:
+            account_id = hashlib.sha256(api_key.encode()).hexdigest()[:16]
+
+        ciphertext = creds.encrypt_token_blob(
+            {"api_key": api_key, "api_secret": api_secret}
+        )
+
+        with transaction.atomic():
+            # GUC must live inside the same transaction as the write
+            # (set_config(..., true) is transaction-local).
+            set_current_org_id(str(org_id))
+            conn, created = IntegrationConnection.objects.unscoped().update_or_create(
+                org_id=org_id,
+                vendor=IntegrationConnection.Vendor.DAVIS,
+                vendor_account_id=account_id,
+                defaults={
+                    "token_ciphertext": ciphertext,
+                    "status": IntegrationConnection.Status.ACTIVE,
+                    "disconnected_at": None,
+                },
+            )
+
+        try:
+            _emit_lake_event(
+                org=conn.org,
+                user=getattr(request, "spray_user", None),
+                category="integration.connected",
+                payload={
+                    "org_id": str(org_id),
+                    "connection_id": str(conn.id),
+                    "vendor": "davis",
+                    "vendor_account_id": account_id,
+                    "created": created,
+                },
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("emit integration.connected (davis) failed")
+
+        return Response(
+            {"ok": True, "connection_id": str(conn.id), "created": created},
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+
+class MeterConnectView(APIView):
+    """POST /api/spray/orgs/<org_id>/integrations/meter/connect
+
+    Body: {token, label?}.
+    Validates via METER /devices/ smoke call before saving. Generates
+    a per-connection webhook_secret and returns it ONCE (the user pastes
+    it into METER ZENTRA Cloud's Push setup). The secret is encrypted
+    alongside the bearer token.
+    """
+
+    permission_classes = [IsOrgAdmin]
+
+    def post(self, request, org_id):
+        from spray.connectors import credentials as creds
+        from spray.connectors.base import (
+            ConnectorAuthError,
+            ConnectorRateLimitError,
+            ConnectorResponseError,
+        )
+        from spray.connectors.sensors.meter.client import MeterClient
+        from spray.connectors.sensors.meter.webhook import (
+            generate_webhook_secret,
+        )
+        from spray.models import IntegrationConnection
+
+        token = (request.data.get("token") or "").strip()
+        if not token:
+            return Response(
+                {"detail": "token required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            client = MeterClient(creds={"token": token, "webhook_secret": ""})
+            devices = client.list_devices()
+        except ConnectorAuthError as exc:
+            return Response(
+                {"detail": f"METER rejected the token: {exc}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except (ConnectorRateLimitError, ConnectorResponseError) as exc:
+            return Response(
+                {"detail": f"METER unavailable: {exc}"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        webhook_secret = generate_webhook_secret()
+        import hashlib
+        account_id = ""
+        if devices and isinstance(devices[0], dict):
+            account_id = str(
+                devices[0].get("account_id")
+                or devices[0].get("organization_id")
+                or ""
+            )
+        if not account_id:
+            account_id = hashlib.sha256(token.encode()).hexdigest()[:16]
+
+        ciphertext = creds.encrypt_token_blob(
+            {"token": token, "webhook_secret": webhook_secret}
+        )
+
+        with transaction.atomic():
+            # GUC must live inside the same transaction as the write
+            # (set_config(..., true) is transaction-local).
+            set_current_org_id(str(org_id))
+            conn, created = IntegrationConnection.objects.unscoped().update_or_create(
+                org_id=org_id,
+                vendor=IntegrationConnection.Vendor.METER,
+                vendor_account_id=account_id,
+                defaults={
+                    "token_ciphertext": ciphertext,
+                    "status": IntegrationConnection.Status.ACTIVE,
+                    "disconnected_at": None,
+                },
+            )
+
+        try:
+            _emit_lake_event(
+                org=conn.org,
+                user=getattr(request, "spray_user", None),
+                category="integration.connected",
+                payload={
+                    "org_id": str(org_id),
+                    "connection_id": str(conn.id),
+                    "vendor": "meter",
+                    "vendor_account_id": account_id,
+                    "created": created,
+                },
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("emit integration.connected (meter) failed")
+
+        return Response(
+            {
+                "ok": True,
+                "connection_id": str(conn.id),
+                "created": created,
+                # Returned ONCE — the user must paste this into METER's
+                # Push setup. Never re-displayed by any other endpoint.
+                "webhook_secret": webhook_secret,
+                "webhook_url": (
+                    f"{getattr(settings, 'SPRAY_API_BASE_URL', '')}"
+                    "/api/spray/integrations/meter/webhook"
+                ),
+            },
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+
+@csrf_exempt
+@require_POST
+def meter_webhook(request: HttpRequest) -> JsonResponse:
+    """POST /api/spray/integrations/meter/webhook
+
+    Public path. METER ZENTRA Cloud Push API delivers formdata POSTs
+    here in real time. We validate `X-MET-Signature` (HMAC-SHA256 of
+    the raw body) against the connection's stored `webhook_secret`,
+    look up the SensorStation by `device_sn`, normalize, and upsert.
+
+    Returns 202 on success. 4xx on bad signature, unknown device, or
+    malformed payload. Never reveals whether a device exists across
+    orgs (constant 4xx shape).
+    """
+    from spray.connectors import credentials as creds
+    from spray.connectors.sensors.meter.normalizer import normalize_push_payload
+    from spray.connectors.sensors.meter.webhook import (
+        SIGNATURE_HEADER,
+        parse_meter_form_payload,
+        verify_signature,
+    )
+    from spray.lake import emit_event
+    from spray.models import (
+        IntegrationConnection,
+        SensorReading,
+        SensorStation,
+    )
+
+    raw_body = request.body or b""
+    sig_header = request.headers.get(SIGNATURE_HEADER, "")
+    if not sig_header:
+        return JsonResponse(
+            {"detail": "missing signature header"}, status=400
+        )
+
+    # Parse form data first to extract device_sn → connection lookup.
+    try:
+        payload = parse_meter_form_payload(dict(request.POST.items()))
+    except ValueError as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
+
+    try:
+        device_sn, rows = normalize_push_payload(payload)
+    except ValueError as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
+
+    # Locate the SensorStation. ALL Meter connections + station rows
+    # are unscoped here (no Clerk JWT, no org context); we lock down
+    # via HMAC.
+    station = (
+        SensorStation.objects.unscoped()
+        .select_related("connection", "connection__org")
+        .filter(
+            connection__vendor=IntegrationConnection.Vendor.METER,
+            connection__status=IntegrationConnection.Status.ACTIVE,
+            vendor_station_id=device_sn,
+            archived_at__isnull=True,
+        )
+        .first()
+    )
+    if station is None:
+        # Don't disclose existence; constant 401 across all reject paths
+        # makes account enumeration harder.
+        return JsonResponse({"detail": "unauthorized"}, status=401)
+
+    try:
+        blob = creds.decrypt_token_blob(station.connection.token_ciphertext)
+    except creds.CredentialError:
+        return JsonResponse({"detail": "credential error"}, status=500)
+    secret = blob.get("webhook_secret", "")
+    if not verify_signature(secret, raw_body, sig_header):
+        return JsonResponse({"detail": "unauthorized"}, status=401)
+
+    if not rows:
+        return JsonResponse({"detail": "no readings"}, status=202)
+
+    readings = [
+        SensorReading(
+            station=station,
+            ts=row["ts"],
+            air_temp_c=row.get("air_temp_c"),
+            rh_pct=row.get("rh_pct"),
+            leaf_wetness_min=row.get("leaf_wetness_min"),
+            precip_mm=row.get("precip_mm"),
+            wind_speed_ms=row.get("wind_speed_ms"),
+            quality_flag=SensorReading.QualityFlag.OK,
+        )
+        for row in rows
+    ]
+
+    with transaction.atomic():
+        SensorReading.objects.unscoped().bulk_create(
+            readings,
+            update_conflicts=True,
+            update_fields=[
+                "air_temp_c",
+                "rh_pct",
+                "leaf_wetness_min",
+                "precip_mm",
+                "wind_speed_ms",
+                "quality_flag",
+            ],
+            unique_fields=["station", "ts"],
+        )
+        latest_ts = max(r.ts for r in readings)
+        if station.last_seen_at is None or latest_ts > station.last_seen_at:
+            station.last_seen_at = latest_ts
+            station.save(update_fields=["last_seen_at"])
+
+    org = station.connection.org
+    for r in readings:
+        try:
+            emit_event(
+                category="sensor.reading_pulled",
+                payload={
+                    "org_id": str(station.connection.org_id),
+                    "connection_id": str(station.connection.id),
+                    "station_id": str(station.id),
+                    "vendor": "meter",
+                    "vendor_station_id": station.vendor_station_id,
+                    "ts": r.ts.isoformat().replace("+00:00", "Z"),
+                    "air_temp_c": float(r.air_temp_c) if r.air_temp_c is not None else None,
+                    "rh_pct": float(r.rh_pct) if r.rh_pct is not None else None,
+                    "leaf_wetness_min": float(r.leaf_wetness_min) if r.leaf_wetness_min is not None else None,
+                    "precip_mm": float(r.precip_mm) if r.precip_mm is not None else None,
+                    "wind_speed_ms": float(r.wind_speed_ms) if r.wind_speed_ms is not None else None,
+                    "quality_flag": r.quality_flag,
+                    "source": "meter",
+                    "device_id": station.vendor_station_id,
+                },
+                org=org,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("emit sensor.reading_pulled (meter webhook) failed")
+
+    try:
+        emit_event(
+            category="sensor.webhook_received",
+            payload={
+                "org_id": str(station.connection.org_id),
+                "connection_id": str(station.connection.id),
+                "vendor": "meter",
+                "payload_size_bytes": len(raw_body),
+                "reading_count": len(readings),
+                "accepted_at": timezone.now()
+                .astimezone(timezone.utc)
+                .isoformat()
+                .replace("+00:00", "Z"),
+            },
+            org=org,
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("emit sensor.webhook_received failed")
+
+    return JsonResponse({"ok": True, "reading_count": len(readings)}, status=202)

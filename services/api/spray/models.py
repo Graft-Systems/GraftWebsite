@@ -624,3 +624,387 @@ class Capture(models.Model):
 
     def __str__(self) -> str:
         return f"{self.kind} {self.s3_key} ({self.status})"
+
+
+# =====================================================================
+# M1.5 PR-C: Aggregation engine — RiskRecord + BlockVerdict (SA-2)
+# =====================================================================
+
+
+class RiskRecord(models.Model):
+    """Single mechanistic-model output for one block per pathogen per window.
+
+    Mirrors the `risk_record.emitted.v1` event schema. Persisted so the
+    ensemble engine can audit-trail every input that fed a verdict, and
+    so future Year-1 weighted ensembles can train against historical
+    runner outputs.
+    """
+
+    class Pathogen(models.TextChoices):
+        POWDERY = "powdery", "Powdery"
+        DOWNY = "downy", "Downy"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    block = models.ForeignKey(
+        Block, on_delete=models.CASCADE, related_name="risk_records"
+    )
+    model_id = models.CharField(max_length=80)
+    model_version = models.CharField(max_length=32)
+    valid_from = models.DateTimeField()
+    valid_to = models.DateTimeField()
+    pathogen = models.CharField(max_length=10, choices=Pathogen.choices)
+    severity_1_10 = models.DecimalField(max_digits=4, decimal_places=2)
+    raw_score = models.JSONField(default=dict)
+    thresholds_fired = models.JSONField(default=list)
+    input_snapshot_id = models.CharField(max_length=80)
+    confidence = models.DecimalField(max_digits=5, decimal_places=4)
+    citation_id = models.CharField(max_length=40)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    objects = OrgScopedManager(via="block__vineyard__org_id")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["block", "model_id", "valid_from"],
+                name="unique_block_model_window",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["block", "-valid_from"]),
+            models.Index(fields=["pathogen", "-valid_from"]),
+            models.Index(fields=["model_id", "-valid_from"]),
+        ]
+
+    def __str__(self) -> str:
+        return (
+            f"{self.model_id} {self.pathogen} sev={self.severity_1_10} "
+            f"@ {self.valid_from.date()}"
+        )
+
+
+class BlockVerdict(models.Model):
+    """Daily ensemble verdict — the single decision-intelligence output
+    surfaced to growers. Mirrors `block_verdict.generated.v1`.
+    """
+
+    class Action(models.TextChoices):
+        SPRAY = "spray", "Spray"
+        HOLD = "hold", "Hold"
+        SCOUT = "scout", "Scout"
+
+    class Urgency(models.TextChoices):
+        NOW = "now", "Now"
+        H24 = "24h", "24h"
+        H72 = "72h", "72h"
+        NONE = "none", "None"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    block = models.ForeignKey(
+        Block, on_delete=models.CASCADE, related_name="verdicts"
+    )
+    date = models.DateField()
+    powdery_severity_1_10 = models.DecimalField(max_digits=4, decimal_places=2)
+    downy_severity_1_10 = models.DecimalField(max_digits=4, decimal_places=2)
+    powdery_confidence = models.DecimalField(max_digits=5, decimal_places=4)
+    downy_confidence = models.DecimalField(max_digits=5, decimal_places=4)
+    action = models.CharField(max_length=10, choices=Action.choices)
+    urgency = models.CharField(max_length=10, choices=Urgency.choices)
+    drivers = models.JSONField(default=list)
+    split_summary = models.TextField(blank=True)
+    forecast_7d = models.JSONField(default=list)
+    advisory_events = models.JSONField(default=list)
+    model_versions = models.JSONField(default=dict)
+    generated_at = models.DateTimeField()
+    audit_hash = models.CharField(max_length=80)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    objects = OrgScopedManager(via="block__vineyard__org_id")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["block", "date"], name="unique_block_date_verdict"
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["block", "-date"]),
+            models.Index(fields=["action", "-date"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.block_id} {self.date} {self.action} ({self.urgency})"
+
+
+class SprayRecord(models.Model):
+    """Manager-entered spray operation tied to a block and optional verdict."""
+
+    class TargetDisease(models.TextChoices):
+        POWDERY = "powdery", "Powdery mildew"
+        DOWNY = "downy", "Downy mildew"
+        BOTH = "both", "Powdery + downy mildew"
+        OTHER = "other", "Other"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    block = models.ForeignKey(
+        Block, on_delete=models.CASCADE, related_name="spray_records"
+    )
+    verdict = models.ForeignKey(
+        BlockVerdict,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="spray_records",
+    )
+    applied_at = models.DateTimeField()
+    product = models.CharField(max_length=160)
+    rate = models.CharField(max_length=80, blank=True)
+    target_disease = models.CharField(
+        max_length=20,
+        choices=TargetDisease.choices,
+        default=TargetDisease.BOTH,
+    )
+    rei_hours = models.PositiveIntegerField(null=True, blank=True)
+    phi_days = models.PositiveIntegerField(null=True, blank=True)
+    applicator = models.CharField(max_length=120, blank=True)
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="spray_records",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
+
+    objects = OrgScopedManager(via="block__vineyard__org_id")
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["block", "-applied_at"]),
+            models.Index(fields=["target_disease", "-applied_at"]),
+            models.Index(fields=["archived_at", "-created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.product} on {self.block_id} @ {self.applied_at}"
+
+
+# =====================================================================
+# M1.5 PR-D: Sensor connectors — IntegrationConnection + SensorStation
+# + SensorReading + OAuthState (SA-2)
+# =====================================================================
+
+
+class IntegrationConnection(models.Model):
+    """One vendor-API connection per (org, vendor, vendor_account_id).
+
+    Holds the encrypted OAuth/refresh token blob for vendors the customer
+    authenticates against (Pessl, Davis, METER, Sencrop). The plaintext
+    token never leaves `spray.connectors.credentials`; views and admin
+    surface only `status` + metadata. Spec §12A, §17.1, §20.4.
+    """
+
+    class Vendor(models.TextChoices):
+        PESSL = "pessl", "Pessl FieldClimate"
+        DAVIS = "davis", "Davis WeatherLink"
+        METER = "meter", "METER ZENTRA"
+        SENCROP = "sencrop", "Sencrop"
+
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        NEEDS_REAUTH = "needs_reauth", "Needs reauth"
+        DISCONNECTED = "disconnected", "Disconnected"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    org = models.ForeignKey(
+        Org, on_delete=models.CASCADE, related_name="integration_connections"
+    )
+    vendor = models.CharField(max_length=20, choices=Vendor.choices)
+    vendor_account_id = models.CharField(max_length=120)
+    token_ciphertext = models.BinaryField()
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.ACTIVE
+    )
+    connected_at = models.DateTimeField(auto_now_add=True)
+    disconnected_at = models.DateTimeField(null=True, blank=True)
+    last_health_at = models.DateTimeField(null=True, blank=True)
+    last_health_detail = models.CharField(max_length=200, blank=True)
+
+    objects = OrgScopedManager(via="org_id")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["org", "vendor", "vendor_account_id"],
+                name="unique_org_vendor_account",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["org", "vendor", "status"]),
+            models.Index(fields=["status", "-connected_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.vendor}:{self.vendor_account_id} ({self.status})"
+
+
+class SensorStation(models.Model):
+    """One vendor station, optionally linked to one or more Blocks.
+
+    The vendor owns `vendor_station_id`; we own the link to Blocks via the
+    `linked_blocks` M2M. A station can serve multiple Blocks within the
+    same Org (e.g. a station between two adjacent blocks).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    connection = models.ForeignKey(
+        IntegrationConnection,
+        on_delete=models.CASCADE,
+        related_name="stations",
+    )
+    vendor_station_id = models.CharField(max_length=120)
+    name = models.CharField(max_length=200, blank=True)
+    lat = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True
+    )
+    lon = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True
+    )
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+    linked_blocks = models.ManyToManyField(
+        Block,
+        through="SensorStationBlock",
+        related_name="sensor_stations",
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
+
+    objects = OrgScopedManager(via="connection__org_id")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["connection", "vendor_station_id"],
+                name="unique_connection_vendor_station",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["connection", "-last_seen_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.connection.vendor}:{self.vendor_station_id}"
+
+
+class SensorStationBlock(models.Model):
+    """Audit trail for who linked which Station to which Block when."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    station = models.ForeignKey(SensorStation, on_delete=models.CASCADE)
+    block = models.ForeignKey(Block, on_delete=models.CASCADE)
+    linked_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True
+    )
+    linked_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["station", "block"],
+                name="unique_station_block_link",
+            ),
+        ]
+
+
+class SensorReading(models.Model):
+    """Canonical sensor reading per spec §12A.3.
+
+    All vendor payloads normalize to this schema. Tenancy resolved via
+    `station.connection.org_id`; no `org_id` denorm. Hour-grain `ts`
+    (UTC) with `(station, ts)` unique upsert. Leaf wetness in MINUTES
+    (Pessl native; Davis 0-15 normalized in the connector).
+    """
+
+    class QualityFlag(models.TextChoices):
+        OK = "ok", "OK"
+        ESTIMATED = "estimated", "Estimated"
+        GAP_FILLED = "gap_filled", "Gap-filled"
+        STALE = "stale", "Stale"
+        BAD = "bad", "Bad"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    station = models.ForeignKey(
+        SensorStation, on_delete=models.CASCADE, related_name="readings"
+    )
+    ts = models.DateTimeField()
+    air_temp_c = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True
+    )
+    rh_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True
+    )
+    leaf_wetness_min = models.DecimalField(
+        max_digits=5, decimal_places=1, null=True, blank=True
+    )
+    precip_mm = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True
+    )
+    wind_speed_ms = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True
+    )
+    quality_flag = models.CharField(
+        max_length=20,
+        choices=QualityFlag.choices,
+        default=QualityFlag.OK,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    objects = OrgScopedManager(via="station__connection__org_id")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["station", "ts"], name="unique_station_ts_reading"
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["station", "-ts"]),
+            models.Index(fields=["quality_flag", "-ts"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.station_id} @ {self.ts.isoformat()}"
+
+
+class OAuthState(models.Model):
+    """Short-lived CSRF/state token for OAuth round-trips.
+
+    Created at /oauth/start; verified + consumed at /oauth/callback. TTL
+    10 minutes. Not org-scoped at the row level (callback has no org
+    context yet — state IS the link), but `state` is HMAC-signed with
+    the org_id so a tampered state can't redirect to another org.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    state = models.CharField(max_length=128, unique=True)
+    org = models.ForeignKey(
+        Org, on_delete=models.CASCADE, related_name="oauth_states"
+    )
+    vendor = models.CharField(max_length=20)
+    redirect_after = models.CharField(max_length=400, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    consumed_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField()
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["expires_at"]),
+            models.Index(fields=["org", "vendor"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.vendor} state {self.state[:8]}…"

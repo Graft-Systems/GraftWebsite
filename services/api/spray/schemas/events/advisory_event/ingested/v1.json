@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "advisory_event.ingested.v1",
+  "title": "advisory_event.ingested",
+  "description": "Public/government advisory feed event after ingestion + translation. See spec §12C.2.",
+  "type": "object",
+  "required": [
+    "advisory_id",
+    "source",
+    "region",
+    "issued_at",
+    "valid_through",
+    "hazard_type",
+    "severity",
+    "raw_url",
+    "license",
+    "language",
+    "ingested_at"
+  ],
+  "properties": {
+    "advisory_id": { "type": "string", "format": "uuid" },
+    "source": { "type": "string", "minLength": 1, "maxLength": 60 },
+    "region": {
+      "type": "string",
+      "description": "ISO 3166-2 region code or AVA cluster slug.",
+      "minLength": 1,
+      "maxLength": 40
+    },
+    "issued_at": { "type": "string", "format": "date-time" },
+    "valid_through": { "type": "string", "format": "date-time" },
+    "hazard_type": { "type": "string", "enum": ["powdery", "downy", "other"] },
+    "severity": {
+      "type": "string",
+      "enum": ["low", "moderate", "high", "extreme"]
+    },
+    "recommended_action": {
+      "type": ["string", "null"],
+      "maxLength": 1000
+    },
+    "raw_url": { "type": "string", "format": "uri" },
+    "license": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "language": { "type": "string", "enum": ["en", "fr", "es"] },
+    "translated_text_en": { "type": ["string", "null"] },
+    "ingested_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

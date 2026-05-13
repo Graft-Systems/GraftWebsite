@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+env_file="/Users/bensonklein/Desktop/graft-systems-spray-env-template.txt"
+service=""
+apply="false"
+
+usage() {
+  cat >&2 <<'USAGE'
+Usage:
+  scripts/render-env-sync --service <website|worker> [--env-file PATH] [--apply]
+
+Dry run is the default. Add --apply to push values to Render.
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --service)
+      service="${2:-}"
+      shift 2
+      ;;
+    --env-file)
+      env_file="${2:-}"
+      shift 2
+      ;;
+    --apply)
+      apply="true"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      usage
+      exit 2
+      ;;
+  esac
+done
+
+if [[ "$service" != "website" && "$service" != "worker" ]]; then
+  echo "Expected --service website or --service worker" >&2
+  usage
+  exit 2
+fi
+
+if [[ ! -f "$env_file" ]]; then
+  echo "Env file not found: $env_file" >&2
+  exit 1
+fi
+
+render_api_key="$(awk -F= '/^RENDER_API_KEY=/{value=$2; gsub(/^[[:space:]]+|[[:space:]]+$/, "", value); print value; exit}' "$env_file")"
+if [[ -z "$render_api_key" ]]; then
+  echo "Missing RENDER_API_KEY in $env_file" >&2
+  exit 1
+fi
+
+if [[ "$service" == "website" ]]; then
+  service_id_key="RENDER_WEBSITE_SERVICE_ID"
+else
+  service_id_key="RENDER_WORKER_SERVICE_ID"
+fi
+
+service_id="$(awk -F= -v key="$service_id_key" '$1 == key {value=$2; gsub(/^[[:space:]]+|[[:space:]]+$/, "", value); print value; exit}' "$env_file")"
+if [[ -z "$service_id" ]]; then
+  echo "Missing $service_id_key in $env_file" >&2
+  exit 1
+fi
+
+skip_key() {
+  case "$1" in
+    RENDER_API_KEY|RENDER_SERVICE_ID|RENDER_WORKER_SERVICE_ID|RENDER_WEBSITE_SERVICE_ID|RENDER_OWNER_ID|RENDER_DEPLOY_HOOK_URL|RENDER_WEBSITE_DEPLOY_HOOK_URL|RENDER_WORKER_DEPLOY_HOOK_URL|NODE_ENV|APP_ENV|APP_URL|PUBLIC_APP_URL|PORT)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+echo "Render target: $service ($service_id)"
+if [[ "$apply" == "true" ]]; then
+  echo "Mode: apply"
+else
+  echo "Mode: dry run"
+fi
+
+count=0
+while IFS= read -r line || [[ -n "$line" ]]; do
+  [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+  [[ "$line" =~ ^[[:space:]]*# ]] && continue
+  [[ "$line" != *"="* ]] && continue
+
+  key="${line%%=*}"
+  value="${line#*=}"
+  key="$(printf '%s' "$key" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+  value="$(printf '%s' "$value" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+
+  [[ -z "$key" || -z "$value" ]] && continue
+  skip_key "$key" && continue
+
+  count=$((count + 1))
+  if [[ "$apply" != "true" ]]; then
+    echo "Would set $key"
+    continue
+  fi
+
+  body="$(jq -n --arg value "$value" '{value: $value}')"
+  curl -fsS \
+    -X PUT \
+    -H "Authorization: Bearer ${render_api_key}" \
+    -H "Accept: application/json" \
+    -H "Content-Type: application/json" \
+    -d "$body" \
+    "https://api.render.com/v1/services/${service_id}/env-vars/${key}" \
+    >/dev/null
+  echo "Set $key"
+done < "$env_file"
+
+echo "Keys considered: $count"
+if [[ "$apply" != "true" ]]; then
+  echo "No changes pushed. Re-run with --apply to update Render."
+fi
+

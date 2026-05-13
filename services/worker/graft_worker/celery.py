@@ -57,6 +57,56 @@ app.conf.beat_schedule = {
         ),
         "schedule": schedule(3600.0),
     },
+    # M1.5 PR-C: aggregation engine. Beat fires hourly; the task itself
+    # short-circuits when out of season (April–October UTC).
+    "aggregation-run": {
+        "task": (
+            "graft_worker.tasks.aggregation_run.compute_all_active_blocks"
+        ),
+        "schedule": schedule(
+            float(
+                __import__("os").environ.get(
+                    "GRAFT_SPRAY_AGGREGATION_CADENCE_SEC", "3600"
+                )
+            )
+        ),
+    },
+    # M1.5 PR-D: Pessl FieldClimate sensor polling (15 min default).
+    # The task short-circuits when no active Pessl connections exist,
+    # so this is safe to fire even before any user has connected.
+    "pessl-pull": {
+        "task": "graft_worker.tasks.pessl_pull.pull_all_pessl_stations",
+        "schedule": schedule(
+            float(
+                __import__("os").environ.get(
+                    "GRAFT_SPRAY_PESSL_CADENCE_SEC", "900"
+                )
+            )
+        ),
+    },
+    # M1.5 PR-E: Davis WeatherLink polling (15 min default).
+    "davis-pull": {
+        "task": "graft_worker.tasks.davis_pull.pull_all_davis_stations",
+        "schedule": schedule(
+            float(
+                __import__("os").environ.get(
+                    "GRAFT_SPRAY_DAVIS_CADENCE_SEC", "900"
+                )
+            )
+        ),
+    },
+    # M1.5 PR-E: METER ZENTRA polling — gap-fill only. Real-time data
+    # flows through the webhook receiver. 60 min default cadence.
+    "meter-pull": {
+        "task": "graft_worker.tasks.meter_pull.pull_all_meter_stations",
+        "schedule": schedule(
+            float(
+                __import__("os").environ.get(
+                    "GRAFT_SPRAY_METER_CADENCE_SEC", "3600"
+                )
+            )
+        ),
+    },
 }
 
 app.conf.timezone = "UTC"

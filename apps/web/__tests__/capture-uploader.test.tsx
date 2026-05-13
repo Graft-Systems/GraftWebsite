@@ -30,8 +30,7 @@ class FakeXHR {
 describe("CaptureUploader", () => {
   beforeEach(() => {
     FakeXHR.instances = [];
-    // @ts-expect-error - test stub
-    globalThis.XMLHttpRequest = FakeXHR;
+    globalThis.XMLHttpRequest = FakeXHR as unknown as typeof XMLHttpRequest;
   });
 
   it("fires init -> S3 PUT -> finalize for a file pick", async () => {
@@ -63,8 +62,7 @@ describe("CaptureUploader", () => {
       }
       return Promise.reject(new Error(`unexpected url: ${url}`));
     });
-    // @ts-expect-error - test stub
-    globalThis.fetch = fetchMock;
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const onUploaded = vi.fn();
     const { container } = render(
@@ -90,12 +88,12 @@ describe("CaptureUploader", () => {
       { timeout: 2000 }
     );
 
-    const initCall = fetchMock.mock.calls.find(([u]: [string]) =>
+    const initCall = fetchMock.mock.calls.find(([u]) =>
       String(u).endsWith("/captures/init")
     );
     expect(initCall).toBeDefined();
 
-    const finalizeCall = fetchMock.mock.calls.find(([u]: [string]) =>
+    const finalizeCall = fetchMock.mock.calls.find(([u]) =>
       String(u).endsWith("/finalize")
     );
     expect(finalizeCall).toBeDefined();

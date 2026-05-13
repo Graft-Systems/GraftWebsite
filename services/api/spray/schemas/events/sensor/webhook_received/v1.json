@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "sensor.webhook_received.v1",
+  "title": "sensor.webhook_received",
+  "description": "Audit event emitted on every accepted sensor-vendor webhook push (METER ZENTRA today, more vendors later). Captures push identity + size; per-reading rows are emitted separately as sensor.reading_pulled.v1. Spec §12A.4.",
+  "type": "object",
+  "required": [
+    "org_id",
+    "connection_id",
+    "vendor",
+    "payload_size_bytes",
+    "reading_count",
+    "accepted_at"
+  ],
+  "properties": {
+    "org_id": { "type": "string", "format": "uuid" },
+    "connection_id": { "type": "string", "format": "uuid" },
+    "vendor": {
+      "type": "string",
+      "enum": ["davis", "pessl", "meter", "sencrop"]
+    },
+    "payload_size_bytes": { "type": "integer", "minimum": 0 },
+    "reading_count": { "type": "integer", "minimum": 0 },
+    "accepted_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

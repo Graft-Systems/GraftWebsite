@@ -8,24 +8,32 @@ This dossier is the **living brain** of the Graft Spray application. Every claim
 
 ## Status Overview
 
-- **Categories complete:** 7 of 7 brain categories + business addendum
-- **Total sources catalogued:** 405 (358 open access, 47 paywalled)
+- **Categories complete:** 13 of 13 brain categories + business addendum
+- **Pivot status (2026-05):** Computer vision (§01) demoted to optional Phase 3 scouting module. Decision-intelligence aggregation hub is now the core thesis. Six new categories (§08–§13) added.
+- **Total sources catalogued:** 616 (551 open access, 65 paywalled)
 - **Master CSV:** [`sources_master.csv`](sources_master.csv)
 - **Paywalled queue:** [`paywalled_queue.md`](paywalled_queue.md)
+- **Pivot amendment plan:** [`pivot/PIVOT_AMENDMENT_PLAN.md`](pivot/PIVOT_AMENDMENT_PLAN.md)
 
 ---
 
 ## Brain Categories
 
-| # | Category | File | Open | Paywalled | Total |
-|---|---|---|---|---|---|
-| 01 | Visual Detection | [`01_visual-detection.md`](01_visual-detection.md) | 30 | 4 | 34 |
-| 02 | Weather Impacts | [`02_weather-impacts.md`](02_weather-impacts.md) | 46 | 9 | 55 |
-| 03 | Live Weather Feeds | [`03_live-weather-feeds.md`](03_live-weather-feeds.md) | 57 | 4 | 61 |
-| 04 | Industry Publications | [`04_industry-publications.md`](04_industry-publications.md) | 50 | 4 | 54 |
-| 05 | Treatment Methods | [`05_treatment-methods.md`](05_treatment-methods.md) | 43 | 5 | 48 |
-| 06 | Outbreak Prediction | [`06_outbreak-prediction.md`](06_outbreak-prediction.md) | 32 | 10 | 42 |
-| 07 | Miscellaneous Supporting Docs | [`07_miscellaneous.md`](07_miscellaneous.md) | 53 | 5 | 58 |
+| # | Category | File | Open | Paywalled | Total | Pivot Role |
+|---|---|---|---|---|---|---|
+| 01 | Visual Detection | [`01_visual-detection.md`](01_visual-detection.md) | 30 | 4 | 34 | **Phase 3** scouting only |
+| 02 | Weather Impacts | [`02_weather-impacts.md`](02_weather-impacts.md) | 46 | 9 | 55 | Core — model thresholds |
+| 03 | Live Weather Feeds | [`03_live-weather-feeds.md`](03_live-weather-feeds.md) | 57 | 4 | 61 | Core — provider catalog |
+| 04 | Industry Publications | [`04_industry-publications.md`](04_industry-publications.md) | 50 | 4 | 54 | Core — DSS prior art |
+| 05 | Treatment Methods | [`05_treatment-methods.md`](05_treatment-methods.md) | 43 | 5 | 48 | Core — product catalog |
+| 06 | Outbreak Prediction | [`06_outbreak-prediction.md`](06_outbreak-prediction.md) | 32 | 10 | 42 | **Core — engine** |
+| 07 | Miscellaneous Supporting Docs | [`07_miscellaneous.md`](07_miscellaneous.md) | 53 | 5 | 58 | Core — UX/compliance |
+| 08 | Model Aggregation & Ensembling | [`08_model-aggregation.md`](08_model-aggregation.md) | 32 | 6 | 38 | **NEW — pivot core** |
+| 09 | Sensor Platform Integrations | [`09_sensor-integrations.md`](09_sensor-integrations.md) | 38 | 2 | 40 | **NEW — pivot core** |
+| 10 | Satellite & Remote Sensing | [`10_satellite-remote-sensing.md`](10_satellite-remote-sensing.md) | 30 | 5 | 35 | **NEW — pivot core** |
+| 11 | Per-Tenant Agent Architecture | [`11_agent-architecture.md`](11_agent-architecture.md) | 29 | 0 | 29 | **NEW — pivot core** |
+| 12 | Recommendation Engine Patterns | [`12_recommendation-engine-patterns.md`](12_recommendation-engine-patterns.md) | 30 | 5 | 35 | **NEW — pivot core** |
+| 13 | Advisory Feeds (Public/Gov) | [`13_advisory-feeds.md`](13_advisory-feeds.md) | 34 | 0 | 34 | **NEW — pivot core** |
 
 ## Category Summaries
 
@@ -83,12 +91,63 @@ Notification/alerting best practices (12–24 h spray-window lead time, 3–5/da
 
 ---
 
+## Pivot Category Summaries
+
+### 08 — Model Aggregation & Ensembling
+
+[`08_model-aggregation.md`](08_model-aggregation.md) · 32 open + 6 paywalled = **38 sources**
+
+How to fuse Gubler-Thomas, Caffi Primary/Secondary, DMCast, Mills, EPI, PLASMO, Magarey into a single per-block daily verdict + 7-day forecast. Ensembling theory (Shah 2021 plant-disease specific, Bayesian Model Averaging, stacking, conformal prediction). Commercial DSS dissection (RIMpro, VitiMeteo/Agrometeo 9-yr validation, MISFITS-DSS Italy 88% balanced accuracy — closest published precedent). Calibration with on-vineyard sensors. Two JSON schemas defined: `RiskRecord` (per-model emit) and `BlockVerdict` (ensemble out, includes confidence + 7-day forecast + split summary when models disagree). Recommended progression: Year 0 equal-weight soft vote → Year 1 calibrated weighted average → Year 2+ stacking + conformal.
+
+### 09 — Sensor Platform Integrations
+
+[`09_sensor-integrations.md`](09_sensor-integrations.md) · 38 open + 2 paywalled = **40 sources**
+
+Deep dive on the three confirmed MVP sensor partners. **Davis WeatherLink v2** — two-key auth, leaf-wetness 0–15 scale needs normalization, polling only (no webhook), 1,000 calls/hr, station-share for multi-tenant. **Pessl FieldClimate v2** — OAuth 2.0 partner app is the right MVP path, leaf wetness reported in **minutes** (model-ready), tiered limits 48/500/1500 req/station/day. **METER ZENTRA Cloud v4/v5** — only platform with **native Push API** (HTTPS POST), ATMOS-41 lacks native LW electrode (PHYTOS-31 add-on), v5 migration coming 2026. Sencrop Phase 2 (best multi-tenant elegance via OAuth module activation). Recommended architecture: webhook-first for ZENTRA, 15-minute polling for Davis + Pessl. Canonical schema with `leaf_wetness_min`, `air_temp_c`, `rh_pct`, `precip_mm`, `quality_flag`. Gap-fill with NWS/ERA5 when station offline >4h.
+
+### 10 — Satellite & Remote Sensing
+
+[`10_satellite-remote-sensing.md`](10_satellite-remote-sensing.md) · 30 open + 5 paywalled = **35 sources**
+
+Honest finding: **no satellite VI reliably detects pre-symptomatic mildew** (Kanaley et al. 2024); satellite is for canopy-vigor context, soil-moisture pre-conditioning, and post-symptomatic damage extent — not prevention. Phase-1 stack: Sentinel-2 L2A + s2cloudless (CDSE Statistical API, free) + NDRE/NDWI per-block zonal stats + ERA5-Land hourly back-fill + SMAP regional drought flag. Mission tradeoffs: Sentinel-2 (10 m, 5-day, primary), Planet PlanetScope (3 m daily, paid, Cornell GDM study showed late-season detection only), Sentinel-1 SAR (all-weather soil moisture). Atmospheric correction: prefer pre-computed L2A (Sen2Cor 84%) or MAJA (91%) for European regions. AgroShadow (Matese lab) for vineyard shadow detection.
+
+### 11 — Per-Tenant Agent Architecture
+
+[`11_agent-architecture.md`](11_agent-architecture.md) · 29 open + 0 paywalled = **29 sources**
+
+**AgentMail is real and works as imagined** but is *email plumbing only* — no LLM, no memory, no GDPR tooling. Pricing: $100/mo (50 inboxes) → $500/mo (300 inboxes) → custom. Recommended hybrid path: **MVP** = AgentMail (email I/O) + LangGraph self-hosted (orchestration) + Postgres checkpoints (memory). **Growth** = LangGraph + Postgres RLS (tenant isolation) + **Letta API** at $0.10/active agent/month for per-farm persistent memory + AgentMail until ~300 farms threshold forces SES migration. **Scale** = Custom AWS SES + LangGraph on Kubernetes + Letta self-hosted (Apache 2.0). **Pure-API baseline first sprint regardless** — get 10 farms working with simple prompt assembly before adding framework complexity.
+
+### 12 — Recommendation Engine Patterns
+
+[`12_recommendation-engine-patterns.md`](12_recommendation-engine-patterns.md) · 30 open + 5 paywalled = **35 sources**
+
+Provenance + explainability (RAG with tamper-evident audit logging, SHAP, decision-tree fallback). Ag DSS prior art (RIMpro 30-min risk indicator, Cornell NEWA 31 tools, UC IPM Gubler-Thomas RI bands, VineForecast/Metos California Risk Model, Brischetto 2021 P. viticola SEV thresholds 87% negative-prognosis reliability). Clinical decision-support transferable lessons (UpToDate GRADE, IBM Watson Health four failure modes, FDA SaMD criterion 4 — *showing the basis of a recommendation* is what keeps the system in non-device CDS territory). Liability framing (three-layer disclaimer: footer + signed onboarding ack + audit log PDF). LLM brief patterns (constrained decoding, P-Cite over G-Cite for high stakes, FRONT fine-grained citation grounding, actor-critic hallucination loop). Severity 1–10 anchor tables for both pathogens. Full daily verdict JSON schema specified.
+
+### 13 — Advisory Feeds (Public & Government)
+
+[`13_advisory-feeds.md`](13_advisory-feeds.md) · 34 open + 0 paywalled = **34 sources**
+
+25 public feeds catalogued across the four rollout regions. **California (F01–F09):** UC IPM PM Risk Index live weekly RAI, CIMIS REST API, UCCE Napa & Sonoma newsletters, CDPR CalPIP PUR data, NPDN/WPDN listserv. **Burgundy/Bordeaux (F10–F17):** BSV Vigne BFC + Nouvelle-Aquitaine weekly PDFs, IFV resistance note, ANSES e-Phy product registry, Météo-France AROME, Vigicultures. **Mendoza (F18–F21):** INTA EEA Mendoza, SENASA registry, SMN open data, INV statistics. **Global (F22–F25):** EPPO Reporting Service monthly, EPPO Global Database, OIV technical docs, CABI Compendium. Unified `advisory_event` schema (13 fields). Translation pipeline FR/ES → EN with terminology placeholder tokens + glossary integration.
+
+---
+
 ## Cross-Category Connections
 
-- **§02 Weather Impacts ↔ §03 Live Weather Feeds:** §02 sets the variables we need (temperature, RH, leaf wetness, rainfall); §03 inventories which providers actually deliver them.
+### Forecasting core
+- **§02 Weather Impacts ↔ §03 Live Weather Feeds:** §02 sets the variables we need (temperature, RH, leaf wetness, rainfall); §03 inventories which providers deliver them.
 - **§02 Weather Impacts ↔ §06 Outbreak Prediction:** the empirical thresholds in §02 are the scientific basis for the mechanistic model equations in §06.
 - **§03 Live Weather Feeds ↔ §06 Outbreak Prediction:** Gubler-Thomas, Caffi, DMCast all need hourly T/RH/LW. Provider selection per region is gated by leaf-wetness availability.
-- **§01 Visual Detection ↔ §06 Outbreak Prediction:** ML image models from §01 feed the recommendation engine alongside the mechanistic forecasts in §06.
-- **§01 Visual Detection ↔ §05 Treatment Methods:** confirmed disease + severity from §01 maps to product selection (curative vs. protectant) in §05.
-- **§04 Industry Publications ↔ §05 Treatment Methods:** FRAC rotation rules and PHI/REI tables in §04 are enforced by the recommendation engine that consumes the §05 product catalog.
-- **§07 Miscellaneous ↔ all categories:** mapping standards, GPS accuracy, compliance requirements, and outdoor UX guidance shape every product surface.
+
+### Pivot aggregation layer
+- **§06 Outbreak Prediction ↔ §08 Model Aggregation:** §06's mechanistic models are the inputs; §08 specifies how to fuse them into a single verdict and how to express disagreement.
+- **§08 Model Aggregation ↔ §12 Recommendation Engine:** §08's `BlockVerdict` schema feeds §12's daily verdict card schema; severity 1–10 anchors are agreed between them.
+- **§09 Sensor Integrations ↔ §06 + §08:** raw on-vineyard signals normalize into the canonical schema, calibrate model outputs (§08 §3), and improve confidence vs station-only data.
+- **§10 Satellite ↔ §08 Ensemble:** satellite vegetation indices contribute spatial weighting and canopy density correction; explicitly *not* a primary mildew signal.
+- **§13 Advisory Feeds ↔ §12 Recommendation Engine:** government bulletins add institutional weight and citations to the daily brief; `advisory_event` schema flows into `drivers[]`.
+
+### Architecture & UX
+- **§11 Agent Architecture ↔ §19 Data Lake / §20 Account System (spec):** per-tenant agent memory must respect data lake tenant isolation, GDPR/CCPA per-user export, and granular consent.
+- **§01 Visual Detection ↔ §10 Satellite + §06:** demoted CV becomes *post-detection localization* for scout teams — answers "where in the block is it?" once an outbreak is suspected, not "will it happen?".
+- **§04 Industry Publications ↔ §08 Aggregation:** RIMpro, VitiMeteo, Vintel are now competitors *and* model-fusion exemplars (MISFITS-DSS most aligned).
+- **§05 Treatment Methods ↔ §12 Recommendation Engine:** FRAC rotation rules + PHI/REI gates the action recommendation.
+- **§07 Miscellaneous ↔ all:** mapping standards, GPS accuracy, compliance, outdoor UX shape every product surface.

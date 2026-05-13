@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "integration.disconnected.v1",
+  "title": "integration.disconnected",
+  "description": "Emitted when a user soft-disconnects an IntegrationConnection. Historical readings are preserved; the polling task stops fanning out for the connection.",
+  "type": "object",
+  "required": ["org_id", "connection_id", "vendor"],
+  "properties": {
+    "org_id": { "type": "string", "format": "uuid" },
+    "connection_id": { "type": "string", "format": "uuid" },
+    "vendor": {
+      "type": "string",
+      "enum": ["davis", "pessl", "meter", "sencrop"]
+    }
+  },
+  "additionalProperties": false
+}
