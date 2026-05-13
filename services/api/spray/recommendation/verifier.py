@@ -220,10 +220,16 @@ def _find_unverified_atoms(text: str, allowed: set[str]) -> list[str]:
             continue
         try:
             f = float(atom)
-            if f"{f:.0f}" in allowed or f"{f:.1f}" in allowed:
-                continue
         except ValueError:
             pass
+        else:
+            if f"{f:.1f}" in allowed or f"{f:.2f}" in allowed:
+                continue
+            # Integer-only atoms may match `allowed` (e.g. severity 7, "85%").
+            # Never use round(float)→int for decimal atoms: 9.9 rounds to "10"
+            # and would match GENERIC_NUMBERS.
+            if "." not in atom and f"{f:.0f}" in allowed:
+                continue
         if atom not in found:
             found.append(atom)
     return found

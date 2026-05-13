@@ -3,6 +3,7 @@ Django settings for the Graft Systems API.
 """
 
 import os
+import sys
 from pathlib import Path
 
 import dj_database_url
@@ -293,20 +294,26 @@ PREDICTION_USE_RAW_DEPTH = _env_bool("PREDICTION_USE_RAW_DEPTH", True)
 PREDICTION_BACKBONE = os.environ.get("PREDICTION_BACKBONE", "hand").strip().lower()
 
 # ───── PostGIS / GDAL Configuration ─────
-import sys
 if sys.platform == "darwin":
     GDAL_LIBRARY_PATH = "/opt/homebrew/opt/gdal/lib/libgdal.dylib"
     GEOS_LIBRARY_PATH = "/opt/homebrew/opt/geos/lib/libgeos_c.dylib"
 
 # ───── Production hardening ─────
-# These only activate when DEBUG=False so local dev isn't affected.
+# HSTS / proxy / framing only when DEBUG=False. HTTPS redirect and secure
+# cookies stay off during DEBUG *and* under pytest so APIClient never
+# receives 301 → https://testserver/... (CI sets DJANGO_DEBUG=True, but
+# a stray .env or subprocess can still leave DEBUG=False).
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-    SECURE_SSL_REDIRECT = _env_bool("DJANGO_SECURE_SSL_REDIRECT", True)
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
     SECURE_HSTS_SECONDS = 60 * 60 * 24 * 30  # 30 days; bump later once confident
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     X_FRAME_OPTIONS = "DENY"
+
+_test_client_safe = DEBUG or ("pytest" in sys.modules)
+SECURE_SSL_REDIRECT = (not _test_client_safe) and _env_bool(
+    "DJANGO_SECURE_SSL_REDIRECT", True
+)
+SESSION_COOKIE_SECURE = not _test_client_safe
+CSRF_COOKIE_SECURE = not _test_client_safe

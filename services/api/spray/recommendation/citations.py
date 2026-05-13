@@ -31,6 +31,23 @@ _DEFAULT_PATH = (
 
 _CACHE: dict[str, dict[str, Any]] | None = None
 
+# Legacy / fixture citation tokens → canonical `NN-Sx` key in sources_master.csv.
+_CITATION_ALIASES: dict[str, str] = {
+    "GUBLER_2013": "06-S2",
+}
+
+
+def _canonical_citation_id(row: dict[str, Any]) -> str | None:
+    """Build `06-S2` from `category=06_outbreak-prediction` + `ref_id=S2`."""
+    cat = (row.get("category") or "").strip()
+    ref = (row.get("ref_id") or "").strip()
+    if not cat or not ref:
+        return None
+    head = cat.split("_", 1)[0]
+    if not head.isdigit():
+        return None
+    return f"{head}-{ref}"
+
 
 def _load(path: Path = _DEFAULT_PATH) -> dict[str, dict[str, Any]]:
     global _CACHE
@@ -43,13 +60,21 @@ def _load(path: Path = _DEFAULT_PATH) -> dict[str, dict[str, Any]]:
         return _CACHE
     with path.open("r", encoding="utf-8", newline="") as fh:
         reader = csv.DictReader(fh)
-        for row in reader:
-            cid = (row.get("citation_id") or row.get("id") or "").strip()
-            if cid:
-                rows[cid] = row
+        for raw in reader:
+            row = dict(raw)
+            canonical = _canonical_citation_id(row)
+            if canonical:
+                row["citation_id"] = canonical
+                rows[canonical] = row
+            legacy = (raw.get("citation_id") or raw.get("id") or "").strip()
+            if legacy and legacy != canonical and legacy not in rows:
+                rows[legacy] = dict(raw)
+    for alias, target in _CITATION_ALIASES.items():
+        if target in rows:
+            rows[alias] = rows[target]
     _CACHE = rows
     logger.info("citations: loaded %d entries", len(rows))
-    return rows
+    return _CACHE
 
 
 def lookup(citation_id: str) -> dict[str, Any] | None:

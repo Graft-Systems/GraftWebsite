@@ -66,9 +66,6 @@ def render_brief(verdict: dict[str, Any]) -> dict[str, Any]:
 
 def _llm_enabled() -> bool:
     """LLM path is enabled when a key is set AND not explicitly disabled."""
-    if not getattr(settings, "ANTHROPIC_API_KEY", "") or "":
-        # The `or ""` collapses None to "" so the empty-string check works.
-        pass
     if not getattr(settings, "LLM_BRIEF_ENABLED", True):
         return False
     return bool(getattr(settings, "ANTHROPIC_API_KEY", "") or "")

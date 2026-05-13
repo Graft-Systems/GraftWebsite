@@ -7,6 +7,8 @@ appearing verbatim and citation_id markers being preserved.
 
 from __future__ import annotations
 
+from django.test import override_settings
+
 from spray.recommendation.daily_brief import render_brief
 
 
@@ -41,11 +43,12 @@ BASE_VERDICT = {
 }
 
 
+@override_settings(ANTHROPIC_API_KEY="", LLM_BRIEF_ENABLED=True)
 def test_render_brief_happy_path_spray_24h():
     out = render_brief(BASE_VERDICT)
     assert out["headline"] == "Spray within 24 hours — high powdery mildew risk"
     assert out["renderer"] == "deterministic_template@1.0.0"
-    assert out["fallback_reason"] is None
+    assert out["fallback_reason"] == "llm_disabled"
     # Severity paragraph surfaces schema numbers verbatim.
     severity_p = out["paragraphs"][0]
     assert "7.2/10" in severity_p

@@ -58,22 +58,27 @@ def _regional_weather_observations(
     valid_from: datetime,
     valid_to: datetime,
 ) -> Iterable[WeatherObservation]:
-    station = (
+    """Return observations for *all* regional-default stations in the block's region.
+
+    Migrations seed `vc-region-<region>` defaults; tests and providers may add
+    additional defaults (e.g. `napa-default`). Using only `.first()` hid
+    observations attached to a non-first station.
+    """
+    station_ids = list(
         WeatherStation.objects.filter(
             is_regional_default=True,
             region=block.vineyard.region,
-        )
-        .order_by("created_at")
-        .first()
+        ).values_list("pk", flat=True)
     )
-    if station is None:
+    if not station_ids:
         return []
     return (
         WeatherObservation.objects.filter(
-            station=station,
+            station_id__in=station_ids,
             ts__gte=valid_from,
             ts__lte=valid_to,
         )
+        .select_related("station")
         .order_by("ts")
     )
 
