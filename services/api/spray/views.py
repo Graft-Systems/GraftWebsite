@@ -1700,7 +1700,10 @@ class SprayRecordListCreateView(APIView):
         from spray.serializers import SprayRecordSerializer
 
         set_current_org_id(str(org_id))
-        serializer = SprayRecordSerializer(data=request.data)
+        serializer = SprayRecordSerializer(
+            data=request.data,
+            context={"org_id": org_id},
+        )
         serializer.is_valid(raise_exception=True)
         block = get_object_or_404(
             Block.objects.for_org(org_id),
@@ -1755,7 +1758,12 @@ class SprayRecordDetailView(APIView):
 
         set_current_org_id(str(org_id))
         record = self._get(org_id, record_id)
-        serializer = SprayRecordSerializer(record, data=request.data, partial=True)
+        serializer = SprayRecordSerializer(
+            record,
+            data=request.data,
+            partial=True,
+            context={"org_id": org_id},
+        )
         serializer.is_valid(raise_exception=True)
         block = serializer.validated_data.get("block")
         if block is not None:

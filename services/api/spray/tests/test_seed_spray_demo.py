@@ -36,21 +36,21 @@ def test_seed_spray_demo_is_idempotent(make_user):
     )
 
     org = Org.objects.get(name="Demo Test Estate")
-    vineyard = Vineyard.objects.get(org=org, name="Demo Estate")
-    blocks = Block.objects.filter(vineyard=vineyard)
+    vineyard = Vineyard.objects.for_org(org).get(name="Demo Estate")
+    blocks = Block.objects.for_org(org).filter(vineyard=vineyard)
 
     assert blocks.count() == 3
-    assert IntegrationConnection.objects.filter(org=org).count() == 1
+    assert IntegrationConnection.objects.for_org(org).count() == 1
     assert SensorStationBlock.objects.filter(block__vineyard=vineyard).count() == 3
-    assert SensorReading.objects.filter(station__connection__org=org).count() == 24
+    assert SensorReading.objects.for_org(org).count() == 24
     assert (
         WeatherObservation.objects.filter(station__org=org, is_forecast=True).count()
         == 72
     )
-    assert BlockVerdict.objects.filter(block__vineyard=vineyard).count() == 3
-    assert SprayRecord.objects.filter(block__vineyard=vineyard).count() == 1
+    assert BlockVerdict.objects.for_org(org).filter(block__vineyard=vineyard).count() == 3
+    assert SprayRecord.objects.for_org(org).filter(block__vineyard=vineyard).count() == 1
     assert Membership.objects.get(org=org, user=owner).role == Membership.Role.OWNER
-    actions = BlockVerdict.objects.filter(block__vineyard=vineyard).values_list(
+    actions = BlockVerdict.objects.for_org(org).filter(block__vineyard=vineyard).values_list(
         "action",
         flat=True,
     )

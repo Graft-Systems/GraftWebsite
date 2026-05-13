@@ -68,7 +68,7 @@ class Command(BaseCommand):
         if owner_email:
             _attach_owner(self, org, owner_email)
 
-        vineyard, _ = Vineyard.objects.update_or_create(
+        vineyard, _ = Vineyard.objects.unscoped().update_or_create(
             org=org,
             name="Demo Estate",
             defaults={
@@ -102,7 +102,7 @@ class Command(BaseCommand):
             ),
         }
 
-        connection, _ = IntegrationConnection.objects.update_or_create(
+        connection, _ = IntegrationConnection.objects.unscoped().update_or_create(
             org=org,
             vendor=IntegrationConnection.Vendor.DAVIS,
             vendor_account_id="demo-davis-account",
@@ -113,7 +113,7 @@ class Command(BaseCommand):
                 "last_health_detail": "Demo connection healthy",
             },
         )
-        station, _ = SensorStation.objects.update_or_create(
+        station, _ = SensorStation.objects.unscoped().update_or_create(
             connection=connection,
             vendor_station_id="demo-north-station",
             defaults={
@@ -184,7 +184,7 @@ def _block(vineyard, name: str, lon: float, lat: float, variety: str) -> Block:
         ),
         srid=4326,
     )
-    block, _ = Block.objects.update_or_create(
+    block, _ = Block.objects.unscoped().update_or_create(
         vineyard=vineyard,
         name=name,
         defaults={
@@ -202,7 +202,7 @@ def _seed_sensor_readings(station: SensorStation, now: datetime) -> None:
     for offset in range(24):
         ts = now - timedelta(hours=23 - offset)
         warm = offset in range(10, 20)
-        SensorReading.objects.update_or_create(
+        SensorReading.objects.unscoped().update_or_create(
             station=station,
             ts=ts,
             defaults={
@@ -241,7 +241,7 @@ def _seed_verdicts(blocks: dict[str, Block], target_date: date) -> None:
         ("Home Chardonnay", Decimal("2.20"), Decimal("1.80"), "hold", "none"),
     ]
     for name, powdery, downy, action, urgency in rows:
-        BlockVerdict.objects.update_or_create(
+        BlockVerdict.objects.unscoped().update_or_create(
             block=blocks[name],
             date=target_date,
             defaults={
@@ -279,7 +279,7 @@ def _seed_verdicts(blocks: dict[str, Block], target_date: date) -> None:
 
 
 def _seed_spray_records(blocks: dict[str, Block], now: datetime) -> None:
-    SprayRecord.objects.update_or_create(
+    SprayRecord.objects.unscoped().update_or_create(
         block=blocks["Home Chardonnay"],
         applied_at=now - timedelta(days=6),
         product="Demo sulfur rotation",

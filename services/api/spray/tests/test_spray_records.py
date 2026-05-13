@@ -57,7 +57,7 @@ def test_create_and_list_spray_record(auth_client, make_org, make_membership):
 
     assert resp.status_code == 201, resp.data
     assert resp.data["block_name"] == "North"
-    assert SprayRecord.objects.filter(block=block, product="Sulfur").exists()
+    assert SprayRecord.objects.for_org(org).filter(block=block, product="Sulfur").exists()
 
     list_resp = client.get(f"/api/spray/orgs/{org.id}/spray-records")
     assert list_resp.status_code == 200

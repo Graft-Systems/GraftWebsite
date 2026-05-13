@@ -324,6 +324,20 @@ class SprayRecordSerializer(serializers.ModelSerializer):
     block_name = serializers.CharField(source="block.name", read_only=True)
     vineyard_name = serializers.CharField(source="block.vineyard.name", read_only=True)
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        org_id = self.context.get("org_id")
+        if org_id is None:
+            return
+        from spray.models import Block, BlockVerdict
+
+        self.fields["block"].queryset = Block.objects.for_org(org_id).filter(
+            archived_at__isnull=True
+        )
+        self.fields["verdict"].queryset = BlockVerdict.objects.for_org(org_id).filter(
+            block__archived_at__isnull=True
+        )
+
     class Meta:
         model = SprayRecord
         fields = [
