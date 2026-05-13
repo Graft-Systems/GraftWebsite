@@ -45,7 +45,7 @@ services:
       - key: PREDICTION_MODEL_PATH
         value: models/v4/model.joblib
       - key: PREDICTION_TOOL_ROOT
-        value: .
+        value: PredictionTool
       - key: PREDICTION_USE_RAW_DEPTH
         value: "false"
 

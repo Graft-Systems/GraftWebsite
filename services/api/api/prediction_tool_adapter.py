@@ -108,16 +108,16 @@ def _get_cached_prediction_runtime() -> tuple[Any, Any]:
     train_or_load_model, build_feature_vector = _load_prediction_modules()
 
     train_dir = Path(settings.PREDICTION_TRAIN_DIR)
-    if not train_dir.exists():
-        raise FileNotFoundError(
-            f"PREDICTION_TRAIN_DIR does not exist: {train_dir}. "
-            "Set it in backend .env."
-        )
-
     train_csv = Path(settings.PREDICTION_TRAIN_CSV) if settings.PREDICTION_TRAIN_CSV else None
     model_path = (
         Path(settings.PREDICTION_MODEL_PATH) if settings.PREDICTION_MODEL_PATH else None
     )
+
+    if not model_path and not train_dir.exists():
+        raise FileNotFoundError(
+            f"PREDICTION_TRAIN_DIR does not exist: {train_dir}. "
+            "Set it in backend .env."
+        )
     output_dir = Path(settings.PREDICTION_RUNS_DIR)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -216,7 +216,16 @@ def _load_v2_runtime() -> dict[str, Any]:
 
         if backbone == "dinov2_vits14":
             try:
-                cnn = torch.hub.load("facebookresearch/dinov2", "dinov2_vits14", verbose=False)
+                # Render can hit GitHub API/rate-limit validation issues when
+                # torch.hub verifies repos. We trust this pinned upstream repo
+                # and skip validation to avoid spurious auth failures.
+                cnn = torch.hub.load(
+                    "facebookresearch/dinov2",
+                    "dinov2_vits14",
+                    verbose=False,
+                    trust_repo=True,
+                    skip_validation=True,
+                )
             except Exception as exc:
                 raise RuntimeError(
                     f"Failed to load DINOv2 from torch.hub: {exc}. "
@@ -282,11 +291,13 @@ def _run_v2_inference(image_paths: list[Path]) -> list[dict[str, Any]]:
             feat = cnn(tensor)  # (1, 384)
         feature_vector = feat.cpu().numpy().astype(np.float32)
         prediction = float(regressor.predict(feature_vector)[0])
+        # Convert grams to kilograms since InferenceResult defaults to unit="kg"
+        prediction_kg = prediction / 1000.0
         elapsed = int((time.perf_counter() - started) * 1000)
 
         item = InferenceResult(
             filename=image_path.name,
-            prediction_weight=prediction,
+            prediction_weight=prediction_kg,
             model=model_name_str,
             depth_used=None,
             latency_ms=elapsed,
@@ -326,11 +337,13 @@ def _run_v1_inference(image_paths: list[Path]) -> list[dict[str, Any]]:
             use_raw_depth=settings.PREDICTION_USE_RAW_DEPTH,
         )
         prediction = float(model.predict(np.asarray([features]))[0])
+        # Convert grams to kilograms since InferenceResult defaults to unit="kg"
+        prediction_kg = prediction / 1000.0
         elapsed = int((time.perf_counter() - started) * 1000)
 
         item = InferenceResult(
             filename=image_path.name,
-            prediction_weight=prediction,
+            prediction_weight=prediction_kg,
             model="grape-weight-rf-v1",
             depth_used=str(depth_path) if depth_path else None,
             latency_ms=elapsed,

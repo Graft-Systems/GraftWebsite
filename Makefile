@@ -1,6 +1,7 @@
 SHELL := /bin/sh
 
 API_DIR := services/api
+FRONTEND_DIR := apps/web
 PNPM ?= corepack pnpm
 PYTHON ?= python3.13
 BACKEND_HOST ?= 127.0.0.1
@@ -46,8 +47,8 @@ migrate:
 	@cd $(API_DIR) && \
 	if [ -x ".venv/bin/python" ]; then \
 		PYTHON_BIN=".venv/bin/python"; \
-	elif [ -x "../env/bin/python" ]; then \
-		PYTHON_BIN="../env/bin/python"; \
+	elif [ -x "../../env/bin/python" ]; then \
+		PYTHON_BIN="../../env/bin/python"; \
 	else \
 		PYTHON_BIN="python3"; \
 	fi; \
@@ -57,8 +58,8 @@ backend:
 	@cd $(API_DIR) && \
 	if [ -x ".venv/bin/python" ]; then \
 		PYTHON_BIN=".venv/bin/python"; \
-	elif [ -x "../env/bin/python" ]; then \
-		PYTHON_BIN="../env/bin/python"; \
+	elif [ -x "../../env/bin/python" ]; then \
+		PYTHON_BIN="../../env/bin/python"; \
 	else \
 		PYTHON_BIN="python3"; \
 	fi; \
