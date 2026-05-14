@@ -1099,7 +1099,7 @@ def _setup_summary_payload(org_id):
             "id": "generate_verdict",
             "label": "Generate verdict",
             "complete": counts["verdicts"] > 0,
-            "href": "/spray/dashboard",
+            "href": "/spray/dashboard#spray-directives",
         },
     ]
 
@@ -1209,7 +1209,14 @@ class DashboardSummaryView(APIView):
         for station in (
             SensorStation.objects.for_org(org_id)
             .filter(archived_at__isnull=True)
-            .prefetch_related("linked_blocks")
+            .prefetch_related(
+                Prefetch(
+                    "linked_blocks",
+                    queryset=Block.objects.for_org(org_id).filter(
+                        archived_at__isnull=True
+                    ),
+                ),
+            )
             .select_related("connection")
         ):
             linked = [b for b in station.linked_blocks.all() if b.archived_at is None]
@@ -1684,8 +1691,8 @@ class BlockVerdictRecomputeView(APIView):
 
     permission_classes = [IsOrgMember]
 
-    @transaction.atomic
     def post(self, request, org_id, block_id):
+        from django.conf import settings as dj_settings
         from spray.models import Block
 
         set_current_org_id(str(org_id))
@@ -1695,6 +1702,31 @@ class BlockVerdictRecomputeView(APIView):
             archived_at__isnull=True,
         )
 
+        if getattr(dj_settings, "SPRAY_VERDICT_RECOMPUTE_SYNC", False):
+            from spray.aggregation.block_verdict_job import execute_compute_block_verdict
+
+            ok = execute_compute_block_verdict(str(block.id))
+            logger.info(
+                "directive recompute sync org=%s block=%s user=%s ok=%s",
+                org_id,
+                block_id,
+                getattr(request.user, "id", None),
+                ok,
+            )
+            return Response(
+                {
+                    "queued": False,
+                    "sync": True,
+                    "ok": ok,
+                    "block_id": str(block.id),
+                    "message": (
+                        "Directive computed in-process "
+                        "(SPRAY_VERDICT_RECOMPUTE_SYNC=true)."
+                    ),
+                },
+                status=status.HTTP_200_OK,
+            )
+
         try:
             from celery import current_app
 
@@ -1703,11 +1735,16 @@ class BlockVerdictRecomputeView(APIView):
                 args=[str(block.id)],
             )
             task_id = result.id
-            queued = True
         except Exception as exc:  # noqa: BLE001
             logger.exception("recompute queue failed for block=%s", block_id)
             return Response(
-                {"detail": f"could not queue recompute: {exc}"},
+                {
+                    "detail": (
+                        f"could not queue recompute: {exc}. "
+                        "Run the Celery worker, or set SPRAY_VERDICT_RECOMPUTE_SYNC=true "
+                        "in services/api/.env for local in-process runs."
+                    ),
+                },
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
@@ -1720,7 +1757,8 @@ class BlockVerdictRecomputeView(APIView):
         )
         return Response(
             {
-                "queued": queued,
+                "queued": True,
+                "sync": False,
                 "task_id": task_id,
                 "block_id": str(block.id),
                 "message": "Directive refresh queued.",
@@ -2366,6 +2404,146 @@ class IntegrationStationLinkBlockView(APIView):
         return Response({"ok": True}, status=status.HTTP_201_CREATED)
 
 
+class IntegrationStationPullReadingsView(APIView):
+    """POST …/integrations/<conn_id>/stations/<station_id>/pull-readings
+
+    Fetches readings from the vendor (Davis / Pessl / METER pull API) and
+    upserts ``SensorReading`` rows. By default queues Celery
+    ``pull_sensor_station``; with ``{"sync": true}`` runs
+    ``spray.sensor_reading_pull.execute_pull_sensor_station`` in the API
+    process (no ``graft_worker`` import — works with plain ``runserver``).
+    """
+
+    permission_classes = [IsOrgMember]
+
+    def post(self, request, org_id, conn_id, station_id):
+        from django.conf import settings as dj_settings
+        from spray.models import IntegrationConnection, SensorStation
+
+        set_current_org_id(str(org_id))
+        connection = get_object_or_404(
+            IntegrationConnection.objects.for_org(org_id), id=conn_id
+        )
+        station = get_object_or_404(
+            SensorStation.objects.for_org(org_id),
+            id=station_id,
+            connection_id=conn_id,
+        )
+        if connection.status != IntegrationConnection.Status.ACTIVE:
+            return Response(
+                {"detail": "connection is not active"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        raw = request.data.get("sync")
+        if raw is None:
+            sync = bool(getattr(dj_settings, "DEBUG", False))
+        else:
+            sync = raw is True or (
+                isinstance(raw, str) and raw.lower() in ("1", "true", "yes")
+            )
+
+        vendor_slug = str(connection.vendor)
+        task_name = "graft_worker.tasks.sensor_pull.pull_sensor_station"
+
+        if sync:
+            from spray.connectors.base import (
+                ConnectorRateLimitError,
+                ConnectorResponseError,
+            )
+            from spray.sensor_reading_pull import execute_pull_sensor_station
+
+            try:
+                n = int(execute_pull_sensor_station(str(station.id), vendor_slug))
+            except ConnectorRateLimitError as exc:
+                logger.warning(
+                    "station pull sync rate limited org=%s station=%s %s",
+                    org_id,
+                    station_id,
+                    exc,
+                )
+                return Response(
+                    {
+                        "detail": str(exc),
+                        "sync": True,
+                        "queued": False,
+                        "readings_upserted": 0,
+                        "station_id": str(station.id),
+                    },
+                    status=status.HTTP_429_TOO_MANY_REQUESTS,
+                )
+            except ConnectorResponseError as exc:
+                logger.warning(
+                    "station pull sync vendor response org=%s station=%s %s",
+                    org_id,
+                    station_id,
+                    exc,
+                )
+                return Response(
+                    {
+                        "detail": str(exc),
+                        "sync": True,
+                        "queued": False,
+                        "readings_upserted": 0,
+                        "station_id": str(station.id),
+                    },
+                    status=status.HTTP_502_BAD_GATEWAY,
+                )
+            logger.info(
+                "station pull sync org=%s station=%s vendor=%s wrote=%s",
+                org_id,
+                station_id,
+                vendor_slug,
+                n,
+            )
+            return Response(
+                {
+                    "sync": True,
+                    "queued": False,
+                    "readings_upserted": n,
+                    "station_id": str(station.id),
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        try:
+            from celery import current_app
+
+            result = current_app.send_task(
+                task_name,
+                args=[str(station.id), vendor_slug],
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("pull queue failed station=%s", station_id)
+            return Response(
+                {
+                    "detail": (
+                        f"could not queue pull: {exc}. "
+                        'POST again with JSON body {"sync": true} to run in-process, '
+                        "or start Redis + Celery worker."
+                    ),
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        logger.info(
+            "station pull queued org=%s station=%s vendor=%s task=%s",
+            org_id,
+            station_id,
+            vendor_slug,
+            result.id,
+        )
+        return Response(
+            {
+                "queued": True,
+                "sync": False,
+                "task_id": result.id,
+                "station_id": str(station.id),
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+
 class IntegrationDisconnectView(APIView):
     """DELETE /api/spray/orgs/<org_id>/integrations/<conn_id>
     Soft-delete: sets status=disconnected. Historical readings preserved.
@@ -2413,6 +2591,11 @@ class DavisConnectView(APIView):
     Body: {api_key, api_secret, label?}.
     Validates via Davis /v2/stations smoke call before saving the
     encrypted blob.
+
+    For integration testing against Davis's shared hardware stream, set
+    env ``DAVIS_DEMO_MODE=true`` (still requires a real WeatherLink API key +
+    secret). The client appends ``demo=true`` on each request and surfaces
+    the public demo station when the vendor list is empty.
     """
 
     permission_classes = [IsOrgAdmin]

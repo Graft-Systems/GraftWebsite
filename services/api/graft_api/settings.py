@@ -2,6 +2,8 @@
 Django settings for the Graft Systems API.
 """
 
+import base64
+import hashlib
 import os
 import sys
 from pathlib import Path
@@ -106,7 +108,21 @@ VISUAL_CROSSING_API_KEY = os.environ.get("VISUAL_CROSSING_API_KEY", "")
 #     python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 # Tests override this via `override_settings` with a throwaway key; the
 # production key MUST NOT be committed to the repo or used in tests.
-SPRAY_INTEGRATION_FERNET_KEY = os.environ.get("SPRAY_INTEGRATION_FERNET_KEY", "")
+#
+# When DJANGO_DEBUG=True and the env var is unset, derive a dev-only key from
+# DJANGO_SECRET_KEY so local integration paste/save flows work without extra
+# setup. Production (DEBUG=False) must set SPRAY_INTEGRATION_FERNET_KEY.
+def _spray_integration_fernet_key() -> str:
+    raw = os.environ.get("SPRAY_INTEGRATION_FERNET_KEY", "").strip()
+    if raw:
+        return raw
+    if DEBUG:
+        digest = hashlib.sha256(SECRET_KEY.encode("utf-8")).digest()
+        return base64.urlsafe_b64encode(digest).decode("ascii")
+    return ""
+
+
+SPRAY_INTEGRATION_FERNET_KEY = _spray_integration_fernet_key()
 PESSL_CLIENT_ID = os.environ.get("PESSL_CLIENT_ID", "")
 PESSL_CLIENT_SECRET = os.environ.get("PESSL_CLIENT_SECRET", "")
 PESSL_REDIRECT_URI = os.environ.get(
@@ -128,9 +144,17 @@ SPRAY_API_BASE_URL = os.environ.get(
 DAVIS_API_BASE = os.environ.get(
     "DAVIS_API_BASE", "https://api.weatherlink.com/v2"
 )
+# WeatherLink public demo station (append demo=true on requests). Still
+# requires a real API key + secret from developer.weatherlink.com.
+DAVIS_DEMO_MODE = _env_bool("DAVIS_DEMO_MODE", False)
 METER_API_BASE = os.environ.get(
     "METER_API_BASE", "https://zentracloud.com/api/v4"
 )
+
+# When true, POST …/verdicts/recompute runs the aggregation task in-process
+# instead of enqueueing Celery. Use for local testing without Redis/worker.
+# Never enable in production (ties up the web worker, no back-pressure).
+SPRAY_VERDICT_RECOMPUTE_SYNC = _env_bool("SPRAY_VERDICT_RECOMPUTE_SYNC", False)
 
 # M1.5 PR-F.5: LLM-authored daily brief. The orchestrator falls back to
 # the deterministic-template renderer when ANTHROPIC_API_KEY is unset,

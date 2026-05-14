@@ -238,3 +238,46 @@ def test_cross_org_connection_returns_404(
     client_b, _, _org_b = _setup_admin(auth_client, make_org, make_membership)
     r = client_b.delete(f"/api/spray/orgs/{org_a.id}/integrations/{conn.id}")
     assert r.status_code in (403, 404)
+
+
+@override_settings(SPRAY_INTEGRATION_FERNET_KEY=TEST_KEY)
+@patch("spray.sensor_reading_pull.execute_pull_sensor_station")
+def test_station_pull_readings_sync(
+    mock_exec, auth_client, make_org, make_membership
+):
+    mock_exec.return_value = 2
+    client, _, org = _setup_admin(auth_client, make_org, make_membership)
+    conn = _make_conn(org)
+    station = SensorStation.objects.create(
+        connection=conn, vendor_station_id="X", name="X"
+    )
+    resp = client.post(
+        f"/api/spray/orgs/{org.id}/integrations/{conn.id}/stations/"
+        f"{station.id}/pull-readings",
+        {"sync": True},
+        format="json",
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["sync"] is True
+    assert body["readings_upserted"] == 2
+
+
+@override_settings(SPRAY_INTEGRATION_FERNET_KEY=TEST_KEY)
+def test_station_pull_readings_inactive_returns_400(
+    auth_client, make_org, make_membership
+):
+    client, _, org = _setup_admin(auth_client, make_org, make_membership)
+    conn = _make_conn(org)
+    conn.status = IntegrationConnection.Status.DISCONNECTED
+    conn.save(update_fields=["status"])
+    station = SensorStation.objects.create(
+        connection=conn, vendor_station_id="X", name="X"
+    )
+    resp = client.post(
+        f"/api/spray/orgs/{org.id}/integrations/{conn.id}/stations/"
+        f"{station.id}/pull-readings",
+        {"sync": True},
+        format="json",
+    )
+    assert resp.status_code == 400

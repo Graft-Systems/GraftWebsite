@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+from unittest.mock import patch
+
 import pytest
 from django.contrib.gis.geos import Polygon
+from django.test import override_settings
 from django.utils import timezone
 
 from spray.models import Block, BlockVerdict, Membership, Vineyard
@@ -157,3 +160,18 @@ def test_viewer_role_can_read_verdicts(auth_client, make_org, make_membership):
         f"/api/spray/orgs/{org.id}/blocks/{block.id}/verdicts/latest"
     )
     assert resp.status_code == 200
+
+
+@override_settings(SPRAY_VERDICT_RECOMPUTE_SYNC=True)
+@patch("spray.aggregation.block_verdict_job.execute_compute_block_verdict")
+def test_verdict_recompute_sync(mock_exec, auth_client, make_org, make_membership):
+    mock_exec.return_value = True
+    client, _, org, block = _setup(auth_client, make_org, make_membership)
+    resp = client.post(
+        f"/api/spray/orgs/{org.id}/blocks/{block.id}/verdicts/recompute",
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["sync"] is True
+    assert body["ok"] is True
+    mock_exec.assert_called_once()

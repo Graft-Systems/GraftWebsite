@@ -25,11 +25,26 @@ export default function SprayDashboardPage() {
     if (!summary) return;
     setRefreshingBlock(blockId);
     try {
-      await authedFetch(
+      const res = await authedFetch(
         `/api/spray/orgs/${summary.org.id}/blocks/${blockId}/verdicts/recompute`,
         { method: "POST" },
       );
+      const data = (await res.json().catch(() => ({}))) as {
+        detail?: string;
+        message?: string;
+      };
+      if (!res.ok) {
+        window.alert(
+          data.detail ??
+            `Directive request failed (${res.status}). If Celery is not running, add SPRAY_VERDICT_RECOMPUTE_SYNC=true to services/api/.env and restart the API.`,
+        );
+        return;
+      }
       await reload();
+    } catch (e) {
+      window.alert(
+        e instanceof Error ? e.message : "Directive refresh failed",
+      );
     } finally {
       setRefreshingBlock(null);
     }
@@ -102,7 +117,7 @@ export default function SprayDashboardPage() {
               cta="Create blocks"
             />
           ) : (
-            <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div id="spray-directives" className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {summary.blocks.map((block) =>
                 block.latest_verdict ? (
                   <div key={block.id} className="space-y-2">

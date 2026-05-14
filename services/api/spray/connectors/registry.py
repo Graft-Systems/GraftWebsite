@@ -1,7 +1,7 @@
 """Vendor-slug → SensorConnector registry (M1.5 PR-D step 3).
 
-Mirrors `spray.providers.registry`. PR-D ships only Pessl; PR-E adds
-Davis + METER.
+Mirrors `spray.providers.registry`. Known vendors (Pessl, Davis, METER) are
+eager-imported on first `get_connector` / `known_slugs` so `@register` runs.
 """
 
 from __future__ import annotations
@@ -42,7 +42,12 @@ def known_slugs() -> list[str]:
 
 def _eager_import_known() -> None:
     """Force-import vendor modules so their @register decorators fire."""
-    try:
-        import spray.connectors.sensors.pessl.connector  # noqa: F401
-    except ImportError:
-        pass
+    for mod in (
+        "spray.connectors.sensors.pessl.connector",
+        "spray.connectors.sensors.davis.connector",
+        "spray.connectors.sensors.meter.connector",
+    ):
+        try:
+            __import__(mod)
+        except ImportError:
+            pass

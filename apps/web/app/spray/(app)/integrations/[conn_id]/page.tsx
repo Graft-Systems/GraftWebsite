@@ -62,6 +62,7 @@ export default function IntegrationDetailPage() {
   const [stations, setStations] = useState<Station[] | null>(null);
   const [blocks, setBlocks] = useState<{ id: string; label: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [pullingStationId, setPullingStationId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -138,6 +139,47 @@ export default function IntegrationDetailPage() {
     );
   }
 
+  async function pullReadings(stationId: string) {
+    if (!orgId) return;
+    setPullingStationId(stationId);
+    setError(null);
+    try {
+      const r = await authedFetch(
+        `/api/spray/orgs/${orgId}/integrations/${connId}/stations/${stationId}/pull-readings`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sync: true }),
+        },
+      );
+      const data = (await r.json().catch(() => ({}))) as {
+        detail?: string;
+        readings_upserted?: number;
+        queued?: boolean;
+      };
+      if (!r.ok) {
+        setError(data.detail ?? `pull readings failed (${r.status})`);
+        return;
+      }
+      const sRes = await authedFetch(
+        `/api/spray/orgs/${orgId}/integrations/${connId}/stations`,
+      );
+      if (sRes.ok) {
+        const sData = (await sRes.json()) as { results: Station[] };
+        setStations(sData.results);
+      }
+      if (data.readings_upserted === 0 && !data.queued) {
+        setError(
+          "Pull finished but vendor returned no new rows (check API keys, demo mode, or station ID).",
+        );
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "pull failed");
+    } finally {
+      setPullingStationId(null);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-4xl">
       <Link
@@ -150,7 +192,10 @@ export default function IntegrationDetailPage() {
       <p className="mt-2 text-sm text-foreground/60">
         Link each station to the blocks it represents. Mapped stations feed
         15-minute readings into the mildew verdict engine; stale or unmapped
-        stations lower confidence until they are fixed.
+        stations lower confidence until they are fixed. Use{" "}
+        <span className="font-semibold text-foreground/80">Pull readings now</span>{" "}
+        to fetch the latest points from the vendor immediately (runs in the API
+        process — fine for dev/testing).
       </p>
 
       {error && (
@@ -209,6 +254,17 @@ export default function IntegrationDetailPage() {
                   >
                     {statusCopy.label}
                   </span>
+                </div>
+
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    disabled={pullingStationId === s.id}
+                    onClick={() => pullReadings(s.id)}
+                    className="rounded-md border border-amber/50 bg-amber/10 px-3 py-1.5 frame text-xs font-semibold text-amber transition-colors hover:bg-amber/20 disabled:opacity-50"
+                  >
+                    {pullingStationId === s.id ? "Pulling…" : "Pull readings now"}
+                  </button>
                 </div>
 
                 <div className="mt-4">

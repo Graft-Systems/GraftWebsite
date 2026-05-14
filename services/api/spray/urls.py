@@ -180,6 +180,12 @@ urlpatterns = [
         name="integration_station_link_block",
     ),
     path(
+        "orgs/<uuid:org_id>/integrations/<uuid:conn_id>/stations/"
+        "<uuid:station_id>/pull-readings",
+        views.IntegrationStationPullReadingsView.as_view(),
+        name="integration_station_pull_readings",
+    ),
+    path(
         "orgs/<uuid:org_id>/integrations/<uuid:conn_id>",
         views.IntegrationDisconnectView.as_view(),
         name="integration_disconnect",

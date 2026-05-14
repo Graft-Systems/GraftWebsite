@@ -19,7 +19,7 @@ from spray.connectors.base import (
     VendorStation,
 )
 from spray.connectors.registry import register
-from spray.connectors.sensors.davis.client import DavisClient
+from spray.connectors.sensors.davis.client import DavisClient, is_davis_public_demo_station_id
 from spray.connectors.sensors.davis.normalizer import (
     normalize_historic_response,
 )
@@ -33,7 +33,7 @@ class DavisConnector(SensorConnector):
     VENDOR_SLUG = "davis"
 
     def list_stations(self, connection) -> list[VendorStation]:
-        client = self._client_for(connection)
+        client = self._client_for(connection, station_id=None)
         try:
             stations = client.list_stations()
         except ConnectorAuthError:
@@ -60,7 +60,7 @@ class DavisConnector(SensorConnector):
     def fetch_readings(self, connection, station, since: datetime) -> list:
         from spray.models import SensorReading
 
-        client = self._client_for(connection)
+        client = self._client_for(connection, station.vendor_station_id)
         try:
             payload = client.fetch_historic(
                 station_id=station.vendor_station_id, since=since
@@ -92,7 +92,7 @@ class DavisConnector(SensorConnector):
     def health(self, connection) -> ConnectorHealth:
         start = time.monotonic()
         try:
-            client = self._client_for(connection)
+            client = self._client_for(connection, station_id=None)
             ok, detail = client.health()
         except ConnectorAuthError as exc:
             return ConnectorHealth(ok=False, latency_ms=None, detail=f"auth: {exc}")
@@ -105,8 +105,13 @@ class DavisConnector(SensorConnector):
     # Internals
     # -----------------------------------------------------------------
 
-    def _client_for(self, connection) -> DavisClient:
+    def _client_for(
+        self, connection, station_id: str | None
+    ) -> DavisClient:
         creds = credentials.decrypt_token_blob(connection.token_ciphertext)
+        demo = bool(is_davis_public_demo_station_id(station_id))
+        if demo:
+            return DavisClient(creds=creds, demo_mode=True)
         return DavisClient(creds=creds)
 
     @staticmethod

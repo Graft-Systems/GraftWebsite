@@ -52,8 +52,25 @@ logger = logging.getLogger(__name__)
 # the first one that's populated.
 TEMP_KEYS = ("temp_out", "temp_avg", "temp", "air_temp_avg")
 RH_KEYS = ("hum_out", "hum_avg", "hum", "rh_avg")
-WIND_MPH_KEYS = ("wind_speed_avg", "wind_speed", "wind_speed_avg_mph")
-RAIN_IN_KEYS = ("rainfall_in", "rainfall", "rain_in", "precip_in")
+WIND_MPH_KEYS = (
+    "wind_speed_avg",
+    "wind_speed",
+    "wind_speed_avg_mph",
+    "wind_speed_avg_last_10_min",
+    "wind_speed_avg_last_2_min",
+    "wind_speed_avg_last_1_min",
+    "wind_speed_last",
+)
+RAIN_IN_KEYS = (
+    "rainfall_in",
+    "rainfall",
+    "rain_in",
+    "precip_in",
+    "rainfall_daily_in",
+    "rainfall_last_24_hr_in",
+    "rainfall_last_60_min_in",
+    "rainfall_last_15_min_in",
+)
 LW_RAW_KEYS = (
     "wet_leaf_high_1",
     "wet_leaf_avg",
