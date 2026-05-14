@@ -15,7 +15,7 @@ export default function ForecastsPage() {
           <h1 className="font-display text-3xl">Forecasts</h1>
           <p className="mt-2 max-w-2xl text-sm text-foreground/60">
             Seven-day mildew outlook by block, using the latest audited
-            directive and current sprayability constraints.
+            recommendation and current sprayability constraints.
           </p>
         </div>
         <button
@@ -58,7 +58,7 @@ export default function ForecastsPage() {
                     <p className="mt-1 text-sm text-foreground/60">
                       {verdict
                         ? `Current action: ${verdict.action}`
-                        : "No directive generated yet."}
+                        : "No recommendation generated yet."}
                     </p>
                     <div className="mt-2 flex flex-wrap gap-3 text-xs">
                       <Link
@@ -77,14 +77,14 @@ export default function ForecastsPage() {
                   </div>
                   {block.verdict_stale && (
                     <span className="rounded bg-amber/10 px-2 py-1 frame text-[0.65rem] font-semibold uppercase tracking-wider text-amber">
-                      Data is stale
+                      Data may be outdated
                     </span>
                   )}
                 </div>
 
                 {forecast.length === 0 ? (
                   <p className="mt-5 text-sm text-foreground/60">
-                    No forecast window yet. Generate a directive from the
+                    No forecast window yet. Generate a recommendation from the
                     dashboard to fill this block.
                   </p>
                 ) : (
@@ -219,7 +219,7 @@ function EmptyForecastState() {
       <h2 className="font-display text-xl">No blocks to forecast yet</h2>
       <p className="mx-auto mt-2 max-w-xl text-sm text-foreground/60">
         Draw vineyard blocks first. Forecasts appear once blocks have
-        directives.
+        recommendations.
       </p>
       <Link
         href="/spray/dashboard"

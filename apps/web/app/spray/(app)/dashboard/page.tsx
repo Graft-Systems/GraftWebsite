@@ -36,14 +36,14 @@ export default function SprayDashboardPage() {
       if (!res.ok) {
         window.alert(
           data.detail ??
-            `Directive request failed (${res.status}). If Celery is not running, add SPRAY_VERDICT_RECOMPUTE_SYNC=true to services/api/.env and restart the API.`,
+            "This recommendation took too long to compute. Try again in a moment.",
         );
         return;
       }
       await reload();
     } catch (e) {
       window.alert(
-        e instanceof Error ? e.message : "Directive refresh failed",
+        e instanceof Error ? e.message : "Recommendation refresh failed",
       );
     } finally {
       setRefreshingBlock(null);
@@ -88,7 +88,7 @@ export default function SprayDashboardPage() {
             </div>
             {summary.latest_generated_at && (
               <p className="mt-3 text-xs text-foreground/50">
-                Last directive generated{" "}
+                Last recommendation generated{" "}
                 {new Date(summary.latest_generated_at).toLocaleString()}.
               </p>
             )}
@@ -112,7 +112,7 @@ export default function SprayDashboardPage() {
           {summary.blocks.length === 0 ? (
             <EmptyState
               title="No blocks yet"
-              body="Create a vineyard and draw blocks before Graft Spray can make block-level directives."
+              body="Create a vineyard and draw blocks before Graft Spray can make block-level recommendations."
               href="/spray/vineyards"
               cta="Create blocks"
             />
@@ -308,7 +308,7 @@ function ProgramAndSavingsRow({
           {apiSavings?.footnote ||
             (typeof note === "string" && note.length > 0
               ? note
-              : "Full savings tracking (§8.13) is not wired yet — dashboard-summary exposes a pilot object from org settings.")}
+              : "Savings estimates are in beta.")}
         </p>
       </section>
     </div>
@@ -330,7 +330,7 @@ function RiskWindowsSummary({ blocks }: { blocks: DashboardBlock[] }) {
       <ul className="mt-2 list-disc space-y-1 pl-4">
         {stale > 0 && (
           <li>
-            {stale} block(s) have stale directives — refresh before trusting spray timing.
+            {stale} block(s) have stale recommendations — refresh before trusting spray timing.
           </li>
         )}
         {sprayNeedWindow > 0 && (
@@ -347,7 +347,7 @@ function RiskWindowsSummary({ blocks }: { blocks: DashboardBlock[] }) {
 function DataHealthPanel({ setup }: { setup: SetupSummary }) {
   const warnings = [
     setup.counts.stale_integrations > 0
-      ? `${setup.counts.stale_integrations} provider connection(s) need a fresh health check`
+      ? "One or more weather station connections may be stale. Check your integrations."
       : null,
     setup.counts.stale_stations > 0
       ? `${setup.counts.stale_stations} station(s) have stale readings`
@@ -370,7 +370,7 @@ function DataHealthPanel({ setup }: { setup: SetupSummary }) {
             Data health
           </p>
           <p className="mt-1 text-sm text-foreground/70">
-            Some inputs need attention before growers should fully trust new directives.
+            Some inputs need attention before you should fully trust new recommendations.
           </p>
         </div>
         <Link
@@ -421,8 +421,8 @@ function SetupChecklist({ setup }: { setup: SetupSummary }) {
           </p>
           <h2 className="mt-2 font-display text-xl">
             {completeCount === setup.steps.length
-              ? "Ready for daily directives"
-              : "15 minutes to first directive"}
+              ? "Ready for daily recommendations"
+              : "15 minutes to first recommendation"}
           </h2>
           <p className="mt-1 text-sm text-foreground/60">
             {setup.counts.blocks} block(s), {setup.counts.active_integrations} active
@@ -482,7 +482,7 @@ function CardActions({
   return (
     <div className="flex items-center justify-between rounded-md border border-border/30 bg-background/30 px-3 py-2">
       <span className={`text-xs ${stale ? "text-amber" : "text-foreground/50"}`}>
-        {stale ? "Data is stale" : "Directive is current"}
+        {stale ? "Data is stale" : "Recommendation is current"}
       </span>
       <button
         type="button"
@@ -491,7 +491,7 @@ function CardActions({
         className="inline-flex items-center gap-1 frame text-xs font-semibold text-amber hover:text-amber/80 disabled:opacity-50"
       >
         <RefreshCw className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
-        Refresh directive
+        Refresh recommendation
       </button>
     </div>
   );
@@ -516,8 +516,8 @@ function NoVerdictCard({
       </p>
       <p className="mt-3 text-sm text-foreground/60">
         {next
-          ? `No directive yet. Complete "${next.label}" to generate this block’s first recommendation.`
-          : "No directive yet. Generate one now or wait for the next scheduled run."}
+          ? `No recommendation yet. Complete "${next.label}" to get your first recommendation for this block.`
+          : "No recommendation yet. Generate one now or wait for the next scheduled run."}
       </p>
       <div className="mt-4 flex flex-wrap gap-3">
         {next && (
@@ -535,7 +535,7 @@ function NoVerdictCard({
           className="inline-flex items-center gap-1 frame text-xs font-semibold text-amber hover:text-amber/80 disabled:opacity-50"
         >
           <RefreshCw className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
-          Generate first directive
+          Get your first recommendation
         </button>
       </div>
     </article>

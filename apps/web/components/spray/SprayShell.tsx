@@ -52,14 +52,14 @@ export function SprayShell({ children }: { children: React.ReactNode }) {
     if (loading) {
       mainBody = (
         <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-center">
-          <p className="text-sm text-foreground/60">Loading your Spray workspace…</p>
+          <p className="text-sm text-foreground/60">Setting up your dashboard…</p>
         </div>
       );
     } else if (error) {
       mainBody = (
         <div className="mx-auto max-w-lg rounded-lg border border-red-500/30 bg-red-500/5 p-6 md:p-8">
           <h1 className="font-display text-2xl text-red-100">Spray is unavailable</h1>
-          <p className="mt-3 text-sm text-foreground/70 whitespace-pre-wrap">{error}</p>
+          <p className="mt-3 text-sm text-foreground/70 whitespace-pre-wrap">We couldn&apos;t reach the Spray service. Your data is safe — tap Try again or check back shortly.</p>
           <button
             type="button"
             onClick={() => void reload()}

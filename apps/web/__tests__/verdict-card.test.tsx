@@ -59,7 +59,7 @@ describe("VerdictCard", () => {
     expect(screen.getAllByText(/7\.2\/10/).length).toBeGreaterThan(0);
     expect(getByText(/3\.1\/10/)).toBeTruthy();
     expect(getByText("Powdery elevated; downy quiet.")).toBeTruthy();
-    expect(getByText("Directive")).toBeTruthy();
+    expect(getByText("Recommendation")).toBeTruthy();
     expect(getByText(/HIGH risk from powdery mildew/)).toBeTruthy();
     expect(getByText(/Spray within 24 hours/)).toBeTruthy();
     expect(getByText(/What to spray/)).toBeTruthy();
@@ -72,7 +72,7 @@ describe("VerdictCard", () => {
       <VerdictCard verdict={VERDICT} />,
     );
     expect(queryByText("gubler_thomas_2013")).toBeNull();
-    fireEvent.click(getByRole("button", { name: /why this verdict/i }));
+    fireEvent.click(getByRole("button", { name: /why this recommendation/i }));
     expect(getByText("gubler_thomas_2013")).toBeTruthy();
     expect(getByText("[GUBLER_2013]")).toBeTruthy();
   });
