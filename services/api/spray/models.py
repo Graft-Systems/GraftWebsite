@@ -393,6 +393,14 @@ class Block(models.Model):
             kwargs["geom"] = MultiPolygon(g)
         super().__init__(*args, **kwargs)
 
+    def __setattr__(self, name, value):
+        """update_or_create / queryset.update paths set fields via setattr, not __init__."""
+        if name == "geom" and value is not None and getattr(value, "geom_type", None) == "Polygon":
+            from django.contrib.gis.geos import MultiPolygon
+
+            value = MultiPolygon(value)
+        super().__setattr__(name, value)
+
     def save(self, *args, **kwargs):
         if self.geom is not None and self.geom.geom_type == "Polygon":
             from django.contrib.gis.geos import MultiPolygon
