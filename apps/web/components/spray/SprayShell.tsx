@@ -154,8 +154,8 @@ export function SprayShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border/40 bg-background/85 px-5 backdrop-blur">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between border-b border-border/40 bg-background/85 px-5 backdrop-blur">
           <div className="flex items-center gap-3">
             <span className="font-display text-lg">
               {NAV.find((n) => pathname?.startsWith(n.href))?.label ?? "Graft Spray"}
@@ -170,7 +170,9 @@ export function SprayShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto p-4 md:p-6">{mainBody}</main>
+        <main className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden overscroll-y-contain p-4 pb-24 [-webkit-overflow-scrolling:touch] md:p-6 md:pb-6">
+          {mainBody}
+        </main>
       </div>
       <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-border/40 bg-background/95 px-2 py-2 backdrop-blur md:hidden">
         {NAV.filter((item) =>

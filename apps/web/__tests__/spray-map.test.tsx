@@ -21,6 +21,22 @@ vi.mock("maplibre-gl", () => {
     getSource() {
       return { setData() {} };
     }
+    getLayer() {
+      return {};
+    }
+    setPaintProperty() {}
+    getCanvas() {
+      return { style: {} };
+    }
+    unproject() {
+      return { toArray: () => [0, 0] };
+    }
+    project() {
+      return { x: 0, y: 0 };
+    }
+    dragPan = { disable() {}, enable() {} };
+    scrollZoom = { disable() {}, enable() {} };
+    touchZoomRotate = { disable() {}, enable() {} };
     remove() {}
   }
   return {
@@ -48,5 +64,23 @@ describe("SprayMap", () => {
       />
     );
     expect(getByTestId("spray-map")).toBeInTheDocument();
+  });
+
+  it("shows extend toolbar when extendBlockId + onBlockExtend are set", () => {
+    const onExtend = vi.fn();
+    const { getByText } = render(
+      <SprayMap
+        centroid={null}
+        blocks={[]}
+        selectedBlockId="blk-1"
+        editable={false}
+        extendBlockId="blk-1"
+        onBlockExtend={onExtend}
+        onBlockSelect={() => {}}
+        onBlockCreate={() => {}}
+        onBlockUpdate={() => {}}
+      />
+    );
+    expect(getByText("Add to block footprint")).toBeInTheDocument();
   });
 });

@@ -24,6 +24,19 @@ POLYGON_A = {
     ],
 }
 POINT_A = {"type": "Point", "coordinates": [-122.295, 38.305]}
+# Disjoint from POLYGON_A — append merge should yield MultiPolygon.
+POLYGON_B = {
+    "type": "Polygon",
+    "coordinates": [
+        [
+            [-122.28, 38.30],
+            [-122.28, 38.31],
+            [-122.27, 38.31],
+            [-122.27, 38.30],
+            [-122.28, 38.30],
+        ]
+    ],
+}
 
 
 def _setup_owner(auth_client, make_org, make_membership):
@@ -180,7 +193,7 @@ def test_block_returns_geojson(
 
     resp = client.get(f"/api/spray/orgs/{org.id}/blocks/{block.id}")
     assert resp.status_code == 200
-    assert resp.data["geom"]["type"] == "Polygon"
+    assert resp.data["geom"]["type"] == "MultiPolygon"
 
 
 def test_block_list_excludes_archived(auth_client, make_org, make_membership):
@@ -265,3 +278,49 @@ def test_block_create_emits_lake_event(
         .count()
         == 1
     )
+
+
+def test_block_patch_append_geom_merges_footprint(
+    auth_client, make_org, make_membership
+):
+    from django.db import connection
+
+    if connection.vendor != "postgresql":
+        pytest.skip("append_geom merge requires PostGIS")
+
+    client, _, org = _setup_owner(auth_client, make_org, make_membership)
+    v = Vineyard.objects.unscoped().create(org=org, name="V")
+    from django.contrib.gis.geos import GEOSGeometry
+    import json
+
+    geom = GEOSGeometry(json.dumps(POLYGON_A), srid=4326)
+    block = Block.objects.unscoped().create(vineyard=v, name="B1", geom=geom)
+
+    resp = client.patch(
+        f"/api/spray/orgs/{org.id}/blocks/{block.id}",
+        {"append_geom": POLYGON_B},
+        format="json",
+    )
+    assert resp.status_code == 200, resp.data
+    assert resp.data["geom"]["type"] == "MultiPolygon"
+    block.refresh_from_db()
+    assert block.geom.geom_type == "MultiPolygon"
+
+
+def test_block_patch_geom_and_append_mutually_exclusive(
+    auth_client, make_org, make_membership
+):
+    client, _, org = _setup_owner(auth_client, make_org, make_membership)
+    v = Vineyard.objects.unscoped().create(org=org, name="V")
+    from django.contrib.gis.geos import GEOSGeometry
+    import json
+
+    geom = GEOSGeometry(json.dumps(POLYGON_A), srid=4326)
+    block = Block.objects.unscoped().create(vineyard=v, name="B1", geom=geom)
+
+    resp = client.patch(
+        f"/api/spray/orgs/{org.id}/blocks/{block.id}",
+        {"geom": POLYGON_A, "append_geom": POLYGON_B},
+        format="json",
+    )
+    assert resp.status_code == 400

@@ -365,7 +365,7 @@ class Block(models.Model):
         Vineyard, on_delete=models.CASCADE, related_name="blocks"
     )
     name = models.CharField(max_length=120)
-    geom = gis_models.PolygonField(srid=4326)
+    geom = gis_models.MultiPolygonField(srid=4326)
     variety = models.CharField(max_length=80, blank=True)
     training_system = models.CharField(max_length=80, blank=True)
     # Decimal(4,2) covers 0.01m to 99.99m. Spec section 9.1.
@@ -383,6 +383,22 @@ class Block(models.Model):
             models.Index(fields=["vineyard"]),
             models.Index(fields=["created_at"]),
         ]
+
+    def __init__(self, *args, **kwargs):
+        """MultiPolygonField rejects bare Polygon; wrap single shells at construction."""
+        g = kwargs.get("geom")
+        if g is not None and getattr(g, "geom_type", None) == "Polygon":
+            from django.contrib.gis.geos import MultiPolygon
+
+            kwargs["geom"] = MultiPolygon(g)
+        super().__init__(*args, **kwargs)
+
+    def save(self, *args, **kwargs):
+        if self.geom is not None and self.geom.geom_type == "Polygon":
+            from django.contrib.gis.geos import MultiPolygon
+
+            self.geom = MultiPolygon(self.geom)
+        super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         return f"{self.vineyard.name} / {self.name}"

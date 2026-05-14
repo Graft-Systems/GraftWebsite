@@ -24,7 +24,7 @@ type Vineyard = {
 type Block = {
   id: string;
   name: string;
-  geom: GeoJSON.Polygon;
+  geom: GeoJSON.Polygon | GeoJSON.MultiPolygon;
   variety: string;
   training_system: string;
   row_spacing_m: string | null;
@@ -40,7 +40,12 @@ export default function VineyardDetailPage() {
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [editable, setEditable] = useState(false);
+  const [footprintExtend, setFootprintExtend] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedId) setFootprintExtend(false);
+  }, [selectedId]);
 
   useEffect(() => {
     if (!org || !vineyardId) return;
@@ -85,6 +90,27 @@ export default function VineyardDetailPage() {
     return [lng, lat];
   }, [vineyard]);
 
+  async function handleBlockExtend(blockId: string, geom: GeoJSON.Polygon) {
+    if (!org) return;
+    const res = await authedFetch(`/api/spray/orgs/${org.id}/blocks/${blockId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ append_geom: geom }),
+    });
+    if (!res.ok) {
+      setError(`extend block footprint ${res.status}`);
+      return;
+    }
+    const updated = (await res.json()) as Block;
+    setBlocks((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
+    setFootprintExtend(false);
+  }
+
+  function selectBlock(blockId: string | null) {
+    if (blockId !== selectedId) setFootprintExtend(false);
+    setSelectedId(blockId);
+  }
+
   async function handleBlockCreate(geom: GeoJSON.Polygon) {
     if (!org) return;
     const name = `Block ${blocks.length + 1}`;
@@ -120,21 +146,21 @@ export default function VineyardDetailPage() {
     setBlocks((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
   }
 
-  async function archiveBlock(blockId: string) {
+  async function deleteBlock(blockId: string) {
     if (!org) return;
-    if (!confirm("Archive this block?")) return;
+    if (!confirm("Delete this block? This cannot be undone.")) return;
     const res = await authedFetch(`/api/spray/orgs/${org.id}/blocks/${blockId}`, {
       method: "DELETE",
     });
     if (!res.ok) {
-      setError(`archive ${res.status}`);
+      setError(`delete block ${res.status}`);
       return;
     }
     setBlocks((prev) => prev.filter((b) => b.id !== blockId));
     setSelectedId(null);
   }
 
-  function handleBlockUpdate(_blockId: string, _geom: GeoJSON.Polygon) {
+  function handleBlockUpdate(_geom: GeoJSON.Polygon) {
     /* vertex drag edit mode not wired — polygon replace uses PATCH from editor */
   }
 
@@ -161,8 +187,8 @@ export default function VineyardDetailPage() {
   }
 
   return (
-    <div className="-m-6 flex min-h-[50vh] flex-col md:h-[calc(100vh-4rem)]">
-      <div className="border-b border-border/40 bg-background/60 px-6 py-3">
+    <div className="-m-6 flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="shrink-0 border-b border-border/40 bg-background/60 px-6 py-3">
         <Link
           href="/spray/vineyards"
           className="frame text-xs font-semibold text-foreground/60 transition-colors hover:text-amber"
@@ -186,21 +212,24 @@ export default function VineyardDetailPage() {
         </p>
       )}
 
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-        <div className="min-h-[280px] min-h-[50vh] flex-1 min-w-0 touch-manipulation md:min-h-0">
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row md:items-stretch md:overflow-hidden">
+        <div className="h-[min(45vh,24rem)] min-h-[280px] w-full min-w-0 shrink-0 md:h-auto md:min-h-0 md:flex-1">
           <SprayMap
             centroid={centroid}
+            vineyardName={vineyard?.name ?? null}
             blocks={blockFeatures}
             selectedBlockId={selectedId}
             editable={editable}
-            onBlockSelect={setSelectedId}
+            extendBlockId={footprintExtend ? selectedId : null}
+            onBlockExtend={handleBlockExtend}
+            onBlockSelect={selectBlock}
             onBlockCreate={handleBlockCreate}
             onBlockUpdate={handleBlockUpdate}
             className="h-full min-h-[280px] w-full md:min-h-0"
           />
         </div>
 
-        <aside className="w-full shrink-0 overflow-auto border-t border-border/40 bg-background/40 p-5 md:w-80 md:border-l md:border-t-0">
+        <aside className="min-h-0 w-full shrink-0 border-t border-border/40 bg-background/40 p-5 [-webkit-overflow-scrolling:touch] [touch-action:pan-y] md:h-full md:min-h-0 md:w-80 md:max-w-[20rem] md:shrink-0 md:self-stretch md:overflow-y-auto md:overscroll-y-contain md:border-l md:border-t-0">
           {!selectedBlock && (
             <>
               <h2 className="frame text-xs font-semibold uppercase tracking-wider text-foreground/60">
@@ -213,7 +242,7 @@ export default function VineyardDetailPage() {
                     <li key={b.id}>
                       <button
                         type="button"
-                        onClick={() => setSelectedId(b.id)}
+                        onClick={() => selectBlock(b.id)}
                         className="block min-h-[44px] w-full rounded-md border border-border/40 bg-background/40 px-3 py-3 text-left text-sm transition-colors hover:border-amber/60"
                       >
                         {b.name}
@@ -223,14 +252,18 @@ export default function VineyardDetailPage() {
               </ul>
               <button
                 type="button"
-                onClick={() => setEditable((e) => !e)}
+                onClick={() => {
+                  setFootprintExtend(false);
+                  setEditable((e) => !e);
+                }}
                 className="mt-6 min-h-[44px] w-full rounded-md bg-amber px-4 py-2 frame text-xs font-semibold text-background transition-colors hover:bg-amber/90"
               >
                 {editable ? "Cancel drawing" : "Draw new block"}
               </button>
               {editable && (
                 <p className="mt-3 text-xs text-foreground/60">
-                  Tap the map to add vertices. Double-tap to close the polygon.
+                  Use the map toolbar: <strong>Rectangle</strong> (click-drag) or{" "}
+                  <strong>Polygon</strong> (tap corners, then Done). Esc cancels polygon points.
                 </p>
               )}
             </>
@@ -239,9 +272,17 @@ export default function VineyardDetailPage() {
           {selectedBlock && org && (
             <BlockEditor
               block={selectedBlock}
-              onClose={() => setSelectedId(null)}
+              footprintExtendActive={footprintExtend}
+              onToggleFootprintExtend={() => {
+                setFootprintExtend((x) => {
+                  if (x) return false;
+                  setEditable(false);
+                  return true;
+                });
+              }}
+              onClose={() => selectBlock(null)}
               onSave={(patch) => patchBlock(selectedBlock.id, patch)}
-              onArchive={() => archiveBlock(selectedBlock.id)}
+              onDelete={() => deleteBlock(selectedBlock.id)}
               onExport={() => exportGeoJSON(selectedBlock)}
               orgId={org.id}
             />
@@ -256,16 +297,20 @@ function BlockEditor({
   block,
   onClose,
   onSave,
-  onArchive,
+  onDelete,
   onExport,
   orgId,
+  footprintExtendActive,
+  onToggleFootprintExtend,
 }: {
   block: Block;
   onClose: () => void;
   onSave: (patch: Partial<Block>) => Promise<void>;
-  onArchive: () => Promise<void>;
+  onDelete: () => Promise<void>;
   onExport: () => void;
   orgId: string;
+  footprintExtendActive: boolean;
+  onToggleFootprintExtend: () => void;
 }) {
   const [name, setName] = useState(block.name);
   const [variety, setVariety] = useState(block.variety);
@@ -316,6 +361,22 @@ function BlockEditor({
         </button>
         <button
           type="button"
+          onClick={onToggleFootprintExtend}
+          className={`min-h-[44px] w-full rounded-md border px-4 py-2 frame text-xs font-semibold transition-colors ${
+            footprintExtendActive
+              ? "border-amber/70 bg-amber/15 text-foreground hover:bg-amber/25"
+              : "border-border/60 text-foreground/85 hover:bg-background/80"
+          }`}
+        >
+          {footprintExtendActive ? "Cancel extend" : "Add to footprint"}
+        </button>
+        {footprintExtendActive && (
+          <p className="text-xs text-foreground/60">
+            Draw a rectangle or polygon on the map; it merges into this block&apos;s geometry.
+          </p>
+        )}
+        <button
+          type="button"
           onClick={onExport}
           className="min-h-[44px] w-full rounded-md border border-border/60 px-4 py-2 frame text-xs font-semibold text-foreground/70 transition-colors hover:text-foreground"
         >
@@ -323,10 +384,10 @@ function BlockEditor({
         </button>
         <button
           type="button"
-          onClick={onArchive}
+          onClick={onDelete}
           className="min-h-[44px] w-full rounded-md border border-red-500/40 px-4 py-2 frame text-xs font-semibold text-red-400 transition-colors hover:border-red-500"
         >
-          Archive
+          Delete block
         </button>
       </div>
 

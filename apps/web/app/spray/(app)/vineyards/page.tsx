@@ -67,14 +67,14 @@ export default function VineyardsPage() {
 
   return (
     <div className="mx-auto max-w-5xl pb-24 md:pb-0">
-      <header className="flex items-baseline justify-between">
-        <div>
-          <h1 className="font-display text-3xl">Vineyards</h1>
+      <header className="flex flex-col gap-5 border-b border-border/30 pb-8 sm:flex-row sm:items-start sm:justify-between sm:gap-8 sm:pb-10">
+        <div className="min-w-0 space-y-2">
+          <h1 className="font-display text-3xl tracking-tight">Vineyards</h1>
           {org && (
-            <p className="mt-1 text-sm text-foreground/60">in {org.name}</p>
+            <p className="text-sm text-foreground/60">in {org.name}</p>
           )}
           {!org && !orgLoading && (
-            <p className="mt-2 max-w-xl text-sm text-foreground/55">
+            <p className="max-w-xl text-sm text-foreground/55">
               No org membership yet — complete onboarding or ask an owner to invite you.
               (Pilot uses your first org only; multi-org switching is not wired.)
             </p>
@@ -84,7 +84,7 @@ export default function VineyardsPage() {
           type="button"
           onClick={() => setShowCreate(true)}
           disabled={!org}
-          className="rounded-md bg-amber px-4 py-2 frame text-xs font-semibold text-background transition-colors hover:bg-amber/90 disabled:opacity-40"
+          className="shrink-0 self-start rounded-md bg-amber px-4 py-2.5 frame text-xs font-semibold uppercase tracking-wide text-background transition-colors hover:bg-amber/90 disabled:opacity-40"
         >
           Create vineyard
         </button>

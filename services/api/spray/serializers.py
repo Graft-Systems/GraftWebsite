@@ -177,10 +177,27 @@ class VineyardSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at", "archived_at"]
 
 
-class BlockSerializer(serializers.ModelSerializer):
-    """Block read/write. Geom is required GeoJSON Polygon in EPSG:4326."""
+def merge_block_geometries(existing, addition):
+    """Union existing + new polygon; persist as MultiPolygon (EPSG:4326)."""
+    from django.contrib.gis.geos import MultiPolygon
 
-    geom = GeometryField()
+    if addition.geom_type != "Polygon":
+        raise serializers.ValidationError("append_geom must be a Polygon")
+    merged = existing.union(addition)
+    if merged.geom_type == "Polygon":
+        return MultiPolygon(merged)
+    if merged.geom_type == "MultiPolygon":
+        return merged
+    raise serializers.ValidationError(
+        f"Could not merge footprint: union returned {merged.geom_type}"
+    )
+
+
+class BlockSerializer(serializers.ModelSerializer):
+    """Block read/write. `geom` is GeoJSON Polygon or MultiPolygon; `append_geom` merges a Polygon into the stored footprint."""
+
+    geom = GeometryField(required=False)
+    append_geom = GeometryField(write_only=True, required=False)
     vineyard_id = serializers.UUIDField(write_only=True, required=False)
 
     class Meta:
@@ -190,6 +207,7 @@ class BlockSerializer(serializers.ModelSerializer):
             "vineyard_id",
             "name",
             "geom",
+            "append_geom",
             "variety",
             "training_system",
             "row_spacing_m",
@@ -198,6 +216,25 @@ class BlockSerializer(serializers.ModelSerializer):
             "archived_at",
         ]
         read_only_fields = ["id", "created_at", "archived_at"]
+
+    def validate(self, data):
+        if data.get("geom") is not None and data.get("append_geom") is not None:
+            raise serializers.ValidationError(
+                "Send either geom (replace footprint) or append_geom (add to footprint), not both."
+            )
+        return data
+
+    def create(self, validated_data):
+        validated_data.pop("append_geom", None)
+        if "geom" not in validated_data or validated_data["geom"] is None:
+            raise serializers.ValidationError({"geom": "geom is required when creating a block"})
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        append = validated_data.pop("append_geom", None)
+        if append is not None:
+            validated_data["geom"] = merge_block_geometries(instance.geom, append)
+        return super().update(instance, validated_data)
 
 
 # ---------------------------------------------------------------------
