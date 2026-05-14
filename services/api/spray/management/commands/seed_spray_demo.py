@@ -50,6 +50,20 @@ class Command(BaseCommand):
                 "settings": {
                     "demo": True,
                     "pilot_ready": True,
+                    # Pilot dashboard placeholder until GET /api/spray/savings exists.
+                    "pilot_savings_estimate_pct": 12,
+                    "pilot_savings_estimate_note": (
+                        "Estimated ~12% fewer sprays vs a regional calendar baseline "
+                        "(demo placeholder; not financial or agronomic advice)."
+                    ),
+                    "pilot_savings": {
+                        "headline": "Estimated spray savings (YTD)",
+                        "amount_usd": 4250,
+                        "footnote": (
+                            "Illustrative demo vs regional calendar baseline — "
+                            "not financial or agronomic advice."
+                        ),
+                    },
                     "spray_program": {
                         "program_type": "organic",
                         "allowed_products": "sulfur, potassium bicarbonate, biological rotation",

@@ -65,7 +65,7 @@ You'll run two processes side by side: the Next.js dev server and the Django dev
 ### Prerequisites
 
 - Node.js 20+
-- pnpm 9+ — `npm install -g pnpm`
+- pnpm 11+ — enable Corepack (`corepack enable`) so the version in root `package.json` (`packageManager`) is used; avoids mismatches with a global install
 - Python 3.13+
 - Git (with submodule support)
 

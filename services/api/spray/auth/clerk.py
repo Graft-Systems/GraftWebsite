@@ -21,6 +21,7 @@ from urllib.request import Request, urlopen
 
 import jwt
 from django.conf import settings
+from django.db import transaction
 from jwt.algorithms import RSAAlgorithm
 from rest_framework import authentication, exceptions
 
@@ -46,8 +47,9 @@ def _resolve_jwks_url() -> str:
         host = frontend_api.lstrip("https://").lstrip("http://").rstrip("/")
         return f"https://{host}/.well-known/jwks.json"
     raise RuntimeError(
-        "Clerk JWKS URL not configured. Set CLERK_JWKS_URL or "
-        "CLERK_FRONTEND_API in the environment."
+        "Clerk JWKS URL not configured. Set CLERK_JWKS_URL or CLERK_FRONTEND_API "
+        "for the Django process (e.g. in services/api/.env, or apps/web/.env.local "
+        "in this monorepo — the API loads that file after .env in dev)."
     )
 
 
@@ -149,12 +151,41 @@ class ClerkJWTAuthentication(authentication.BaseAuthentication):
 
         try:
             user = User.objects.get(clerk_user_id=clerk_user_id)
-        except User.DoesNotExist as e:
-            # Webhook race: Clerk may have created the user, but our local
-            # User row has not been synced yet. Fail closed; client retries.
-            raise exceptions.AuthenticationFailed(
-                "user not yet synced; please retry"
-            ) from e
+        except User.DoesNotExist:
+            if not getattr(settings, "CLERK_JIT_USER_PROVISIONING", False):
+                raise exceptions.AuthenticationFailed(
+                    "user not yet synced; please retry. "
+                    "Configure the Clerk webhook to hit this API, or set "
+                    "CLERK_JIT_USER_PROVISIONING=true in services/api/.env for "
+                    "local dev (session JWT must include email: use `email` or "
+                    "`primaryEmail` claim)."
+                ) from None
+            email = (
+                (payload.get("email") or payload.get("primaryEmail") or "")
+            ).strip()
+            if not email:
+                raise exceptions.AuthenticationFailed(
+                    "user not yet synced: JWT has no email claim. "
+                    "In Clerk → Sessions → Customize session token, add claims "
+                    "such as email (or primaryEmail) and name (or fullName), "
+                    "or deliver user.created via the Clerk webhook."
+                ) from None
+            name = (
+                (payload.get("name") or payload.get("fullName") or "")
+            ).strip()
+            if len(name) > 200:
+                name = name[:200]
+            with transaction.atomic():
+                user, created = User.objects.update_or_create(
+                    clerk_user_id=clerk_user_id,
+                    defaults={"email": email, "name": name},
+                )
+            if created:
+                logger.info(
+                    "JIT-provisioned spray.User from Clerk JWT sub=%s email=%s",
+                    clerk_user_id,
+                    email,
+                )
 
         if user.deleted_at is not None:
             raise exceptions.AuthenticationFailed("user account deleted")

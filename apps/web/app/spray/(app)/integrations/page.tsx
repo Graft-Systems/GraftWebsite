@@ -13,15 +13,14 @@
 
 import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useAuth } from "@clerk/nextjs";
+import { useSearchParams } from "next/navigation";
+import { useActiveOrg } from "@/lib/sprayApi";
 import { PasteKeyDialog } from "@/components/spray/PasteKeyDialog";
 import {
   getConnectionHealth,
   type ConnectionHealth,
 } from "@/lib/spraySetupStatus";
 
-type Membership = { org: { id: string; name: string } };
 type Connection = {
   id: string;
   vendor: "pessl" | "davis" | "meter" | "sencrop";
@@ -62,12 +61,11 @@ export default function IntegrationsPage() {
 }
 
 function IntegrationsPageInner() {
-  const { getToken, isSignedIn } = useAuth();
-  const router = useRouter();
+  const { org, loading: orgLoading, authedFetch } = useActiveOrg();
   const searchParams = useSearchParams();
 
-  const [orgId, setOrgId] = useState<string | null>(null);
-  const [orgName, setOrgName] = useState<string>("");
+  const orgId = org?.id ?? null;
+  const orgName = org?.name ?? "";
   const [connections, setConnections] = useState<Connection[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -76,40 +74,24 @@ function IntegrationsPageInner() {
   const [meterReveal, setMeterReveal] = useState<
     { secret: string; url: string } | null
   >(null);
+  const [providerHealth, setProviderHealth] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
+  const showProviderHealth =
+    process.env.NEXT_PUBLIC_SHOW_PROVIDER_HEALTH === "true";
 
   const justConnected = searchParams.get("connected");
-
-  async function authedFetch(path: string, init?: RequestInit) {
-    const token = await getToken();
-    return fetch(path, {
-      ...init,
-      headers: {
-        ...(init?.headers ?? {}),
-        Authorization: `Bearer ${token}`,
-      },
-    });
-  }
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      if (!isSignedIn) return;
+      if (!orgId) {
+        if (!orgLoading) setConnections([]);
+        return;
+      }
       try {
-        const meRes = await authedFetch("/api/spray/orgs/me");
-        if (!meRes.ok) throw new Error(`orgs/me ${meRes.status}`);
-        const me = (await meRes.json()) as { memberships: Membership[] };
-        const first = me.memberships?.[0];
-        if (!first) {
-          if (!cancelled) setConnections([]);
-          return;
-        }
-        if (cancelled) return;
-        setOrgId(first.org.id);
-        setOrgName(first.org.name);
-
-        const r = await authedFetch(
-          `/api/spray/orgs/${first.org.id}/integrations`,
-        );
+        const r = await authedFetch(`/api/spray/orgs/${orgId}/integrations`);
         if (!r.ok) throw new Error(`integrations ${r.status}`);
         const data = (await r.json()) as { results: Connection[] };
         if (!cancelled) setConnections(data.results);
@@ -121,8 +103,26 @@ function IntegrationsPageInner() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSignedIn]);
+  }, [orgId, orgLoading, authedFetch]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadHealth() {
+      if (!showProviderHealth) return;
+      try {
+        const r = await authedFetch("/api/spray/admin/provider-health");
+        if (!r.ok) return;
+        const data = (await r.json()) as Record<string, unknown>;
+        if (!cancelled) setProviderHealth(data);
+      } catch {
+        if (!cancelled) setProviderHealth(null);
+      }
+    }
+    loadHealth();
+    return () => {
+      cancelled = true;
+    };
+  }, [showProviderHealth, authedFetch]);
 
   async function connectPessl() {
     if (!orgId) return;
@@ -296,15 +296,36 @@ function IntegrationsPageInner() {
           </button>
         </article>
 
-        <article className="rounded-md border border-dashed border-border/40 bg-background/30 p-5">
-          <h2 className="frame text-xs font-semibold uppercase tracking-wider text-foreground/50">
-            Sencrop
-          </h2>
-          <p className="mt-3 text-sm text-foreground/60">
-            Phase 2. OAuth handoff with module-activation flow.
+        <article className="rounded-md border border-dashed border-border/50 bg-background/25 p-5">
+          <p className="mt-3 text-sm text-foreground/70">
+            Field weather stations and rain radar aligned with Spray&apos;s advisory
+            model inputs. OAuth connector is on the roadmap after Davis, Pessl, and METER
+            hardening.
           </p>
+          <button
+            type="button"
+            disabled
+            className="mt-4 w-full rounded-md border border-border/50 px-4 py-2 frame text-xs font-semibold text-foreground/40"
+          >
+            Coming soon
+          </button>
         </article>
       </section>
+
+      {showProviderHealth && providerHealth != null ? (
+        <section className="mt-10 rounded-md border border-border/40 bg-background/30 p-5">
+          <h2 className="frame text-xs font-semibold uppercase tracking-wider text-foreground/60">
+            Provider health (internal)
+          </h2>
+          <p className="mt-2 text-xs text-foreground/50">
+            Shown only when NEXT_PUBLIC_SHOW_PROVIDER_HEALTH=true. Read-only probe of
+            registered weather providers.
+          </p>
+          <pre className="mt-4 max-h-64 overflow-auto rounded bg-foreground/5 p-3 font-mono text-[0.65rem] text-foreground/70">
+            {JSON.stringify(providerHealth, null, 2)}
+          </pre>
+        </section>
+      ) : null}
 
       {showDavisDialog && (
         <PasteKeyDialog

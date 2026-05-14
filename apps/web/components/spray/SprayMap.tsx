@@ -148,7 +148,7 @@ export function SprayMap({
         id: "blocks-stroke",
         type: "line",
         source: "blocks",
-        paint: { "line-color": DRAW_STROKE_COLOR, "line-width": 1.5 },
+        paint: { "line-color": DRAW_STROKE_COLOR, "line-width": 3 },
       });
 
       // Polygon being drawn right now.
@@ -168,14 +168,14 @@ export function SprayMap({
         type: "circle",
         source: "drawing",
         filter: ["==", ["get", "kind"], "vertex"],
-        paint: { "circle-radius": 6, "circle-color": "#ffffff" },
+        paint: { "circle-radius": 10, "circle-color": "#ffffff" },
       });
       map.addLayer({
         id: "drawing-vertex",
         type: "circle",
         source: "drawing",
         filter: ["==", ["get", "kind"], "vertex"],
-        paint: { "circle-radius": 4, "circle-color": DRAW_FILL_COLOR },
+        paint: { "circle-radius": 6, "circle-color": DRAW_FILL_COLOR },
       });
 
       setReady(true);
@@ -276,10 +276,10 @@ export function SprayMap({
   void selectedBlockId;
 
   return (
-    <div className="relative h-full w-full">
+    <div className="relative h-full min-h-[280px] w-full touch-manipulation">
       <div
         ref={containerRef}
-        className={className ?? "h-full w-full"}
+        className={className ?? "h-full min-h-[280px] w-full touch-manipulation"}
         data-testid="spray-map"
       />
       {editable && (

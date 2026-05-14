@@ -9,13 +9,12 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { useAuth } from "@clerk/nextjs";
+import { useActiveOrg } from "@/lib/sprayApi";
 import {
   getStationHealth,
   type StationHealth,
 } from "@/lib/spraySetupStatus";
 
-type Membership = { org: { id: string; name: string } };
 type Station = {
   id: string;
   vendor_station_id: string;
@@ -57,41 +56,23 @@ const STATION_STATUS_COPY: Record<
 export default function IntegrationDetailPage() {
   const params = useParams<{ conn_id: string }>();
   const connId = params.conn_id;
-  const { getToken, isSignedIn } = useAuth();
+  const { org, loading: orgLoading, authedFetch } = useActiveOrg();
+  const orgId = org?.id ?? null;
 
-  const [orgId, setOrgId] = useState<string | null>(null);
   const [stations, setStations] = useState<Station[] | null>(null);
   const [blocks, setBlocks] = useState<{ id: string; label: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  async function authedFetch(path: string, init?: RequestInit) {
-    const token = await getToken();
-    return fetch(path, {
-      ...init,
-      headers: {
-        ...(init?.headers ?? {}),
-        Authorization: `Bearer ${token}`,
-      },
-    });
-  }
-
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      if (!isSignedIn) return;
+      if (!orgId) return;
       try {
-        const meRes = await authedFetch("/api/spray/orgs/me");
-        const me = (await meRes.json()) as { memberships: Membership[] };
-        const oid = me.memberships?.[0]?.org.id;
-        if (!oid) throw new Error("no membership");
-        if (cancelled) return;
-        setOrgId(oid);
-
         const [sRes, vRes] = await Promise.all([
           authedFetch(
-            `/api/spray/orgs/${oid}/integrations/${connId}/stations`,
+            `/api/spray/orgs/${orgId}/integrations/${connId}/stations`,
           ),
-          authedFetch(`/api/spray/orgs/${oid}/vineyards`),
+          authedFetch(`/api/spray/orgs/${orgId}/vineyards`),
         ]);
         if (!sRes.ok) throw new Error(`stations ${sRes.status}`);
         const sData = (await sRes.json()) as { results: Station[] };
@@ -104,7 +85,7 @@ export default function IntegrationDetailPage() {
           const lists = await Promise.all(
             vineyards.map(async (v) => {
               const r = await authedFetch(
-                `/api/spray/orgs/${oid}/vineyards/${v.id}/blocks`,
+                `/api/spray/orgs/${orgId}/vineyards/${v.id}/blocks`,
               );
               if (!r.ok) return [] as { id: string; label: string }[];
               const bs = ((await r.json()) as Block[]).filter(
@@ -127,7 +108,7 @@ export default function IntegrationDetailPage() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSignedIn, connId]);
+  }, [orgId, connId, authedFetch]);
 
   async function linkBlock(stationId: string, blockId: string) {
     if (!orgId) return;
@@ -178,7 +159,13 @@ export default function IntegrationDetailPage() {
         </p>
       )}
 
-      {stations === null && !error && (
+      {!orgId && !orgLoading && (
+        <p className="mt-6 text-sm text-foreground/60">
+          No organization context — open Integrations from a signed-in session with a membership.
+        </p>
+      )}
+
+      {stations === null && orgId && !error && (
         <p className="mt-12 text-foreground/50">Loading…</p>
       )}
 

@@ -17,7 +17,7 @@ help:
 	@echo "  make migrate        Run Django migrations"
 	@echo "  make backend        Start Django backend at http://$(BACKEND_ADDR)"
 	@echo "  make frontend       Start Next.js frontend (default http://localhost:3000)"
-	@echo "  make dev            Start backend and frontend together"
+	@echo "  make dev            Start backend + frontend (pnpm dev / Turbo)"
 	@echo "  make lint           Run Turbo lint across workspaces"
 	@echo "  make type-check     Run Turbo type checks across workspaces"
 	@echo "  make test           Run web and API tests"
@@ -97,9 +97,6 @@ schema-check:
 check: lint type-check build test schema-check
 
 dev:
-	@trap 'kill 0' INT TERM EXIT; \
-	$(MAKE) backend & \
-	$(MAKE) frontend & \
-	wait
+	@$(PNPM) dev
 
 run: dev

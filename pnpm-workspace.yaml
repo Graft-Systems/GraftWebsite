@@ -2,3 +2,8 @@ packages:
   - "apps/*"
   - "services/*"
   - "packages/*"
+allowBuilds:
+  "@clerk/shared": true
+  esbuild: true
+  sharp: true
+  unrs-resolver: true

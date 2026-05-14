@@ -59,3 +59,15 @@ NEXT_PUBLIC_BACKEND_URL=http://127.0.0.1:8080
 | `npm run build` | Build production bundle |
 | `npm run start` | Start built app |
 | `npm run lint` | Run ESLint |
+
+## Troubleshooting
+
+### `ENOENT ... .next/server/pages/_app/build-manifest.json`
+
+The `.next` output folder is missing or from a different Next.js mode (for example `next start` after a failed build, or switching branches). From `apps/web`:
+
+```bash
+rm -rf .next && pnpm run build && pnpm run start
+```
+
+For local development use `pnpm run dev`, which recreates `.next` as needed.

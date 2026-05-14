@@ -90,6 +90,8 @@ packages/*/build/
 
 # pnpm
 .pnpm-store/
+# Stray npm lock in pnpm workspaces (confuses Next.js Turbopack root detection)
+apps/web/package-lock.json
 
 # Generated / temporary
 .tmp/

@@ -7,6 +7,7 @@ import { useUser } from "@clerk/nextjs";
 import { VerdictCard } from "@/components/spray/VerdictCard";
 import {
   type DashboardBlock,
+  type DashboardCapture,
   type SetupSummary,
   useSprayDashboard,
 } from "@/lib/sprayApi";
@@ -81,6 +82,18 @@ export default function SprayDashboardPage() {
           <SetupChecklist setup={summary.setup} />
           <DataHealthPanel setup={summary.setup} />
 
+          <RecentCapturesStrip
+            captures={summary.recent_captures ?? []}
+            blocks={summary.blocks}
+          />
+          <ProgramAndSavingsRow
+            org={summary.org}
+            fracProgram={summary.frac_program}
+            pilotSavings={summary.pilot_savings}
+          />
+
+          <RiskWindowsSummary blocks={summary.blocks} />
+
           {summary.blocks.length === 0 ? (
             <EmptyState
               title="No blocks yet"
@@ -132,6 +145,187 @@ function classifyToday(blocks: DashboardBlock[]) {
       return acc;
     },
     { spray: 0, scout: 0, hold: 0 },
+  );
+}
+
+function blockLabelForCapture(
+  blockId: string,
+  blocks: DashboardBlock[],
+): string {
+  const b = blocks.find((row) => row.id === blockId);
+  return b ? `${b.vineyard_name} · ${b.name}` : blockId.slice(0, 8);
+}
+
+function RecentCapturesStrip({
+  captures,
+  blocks,
+}: {
+  captures: DashboardCapture[];
+  blocks: DashboardBlock[];
+}) {
+  if (!captures.length) return null;
+  return (
+    <section className="mt-8 rounded-md border border-border/40 bg-background/40 p-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="frame text-[0.65rem] font-semibold uppercase tracking-wider text-foreground/50">
+            Recent captures
+          </p>
+          <h2 className="mt-1 font-display text-xl">Latest field photos</h2>
+        </div>
+        <Link
+          href="/spray/captures"
+          className="frame text-xs font-semibold text-amber transition-colors hover:text-amber/80"
+        >
+          View all →
+        </Link>
+      </div>
+      <ul className="mt-4 flex gap-3 overflow-x-auto pb-1">
+        {captures.map((c) => (
+          <li key={c.id} className="w-28 shrink-0">
+            <Link
+              href={`/spray/captures/${c.id}`}
+              className="block overflow-hidden rounded-md border border-border/40 bg-background/60 transition-colors hover:border-amber/50"
+            >
+              {c.download_url ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={c.download_url}
+                  alt=""
+                  className="aspect-square w-full object-cover"
+                />
+              ) : (
+                <div className="flex aspect-square items-center justify-center text-[0.65rem] text-foreground/40">
+                  {c.status}
+                </div>
+              )}
+              <p className="frame truncate px-1 py-1 text-[0.6rem] text-foreground/50">
+                {c.vineyard_name && c.block_name
+                  ? `${c.vineyard_name} · ${c.block_name}`
+                  : blockLabelForCapture(c.block_id, blocks)}
+              </p>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function ProgramAndSavingsRow({
+  org,
+  fracProgram,
+  pilotSavings,
+}: {
+  org: {
+    id: string;
+    name: string;
+    region: string;
+    settings: Record<string, unknown>;
+    is_demo: boolean;
+  };
+  fracProgram?: { frac_rotation: string; allowed_products: string };
+  pilotSavings?: {
+    headline?: string;
+    amount_usd?: number | null;
+    footnote?: string;
+  };
+}) {
+  const program = (org.settings?.spray_program ?? {}) as Record<string, unknown>;
+  const frac =
+    fracProgram?.frac_rotation ||
+    (typeof program.frac_rotation === "string" ? program.frac_rotation : "");
+  const products =
+    fracProgram?.allowed_products ||
+    (typeof program.allowed_products === "string" ? program.allowed_products : "");
+  const pct = org.settings?.pilot_savings_estimate_pct;
+  const note = org.settings?.pilot_savings_estimate_note;
+  const apiSavings = pilotSavings;
+
+  return (
+    <div className="mt-6 grid gap-4 md:grid-cols-2">
+      <section className="rounded-md border border-border/40 bg-background/40 p-5">
+        <p className="frame text-[0.65rem] font-semibold uppercase tracking-wider text-foreground/50">
+          Program & FRAC
+        </p>
+        <h2 className="mt-1 font-display text-lg">Spray program summary</h2>
+        <p className="mt-2 text-sm text-foreground/60">
+          {products ? (
+            <>
+              <span className="font-semibold text-foreground/75">Allowed products:</span>{" "}
+              {products}
+            </>
+          ) : (
+            "No allowed-products list yet — add materials in Settings."
+          )}
+        </p>
+        {frac ? (
+          <p className="mt-2 text-sm text-foreground/60">
+            <span className="font-semibold text-foreground/75">FRAC / rotation:</span> {frac}
+          </p>
+        ) : (
+          <p className="mt-2 text-sm text-foreground/50">No FRAC rotation notes on file.</p>
+        )}
+        <Link
+          href="/spray/settings"
+          className="mt-4 inline-flex frame text-xs font-semibold text-amber transition-colors hover:text-amber/80"
+        >
+          Edit in Settings →
+        </Link>
+      </section>
+      <section className="rounded-md border border-border/40 bg-background/40 p-5">
+        <p className="frame text-[0.65rem] font-semibold uppercase tracking-wider text-foreground/50">
+          Savings (pilot)
+        </p>
+        <h2 className="mt-1 font-display text-lg">
+          {apiSavings?.headline ?? "Estimated vs baseline"}
+        </h2>
+        {typeof apiSavings?.amount_usd === "number" ? (
+          <p className="mt-3 font-display text-3xl text-amber">
+            ${apiSavings.amount_usd.toLocaleString()}
+          </p>
+        ) : typeof pct === "number" ? (
+          <p className="mt-3 font-display text-3xl text-amber">{pct}%</p>
+        ) : (
+          <p className="mt-3 text-sm text-foreground/50">No estimate configured for this org.</p>
+        )}
+        <p className="mt-2 text-xs text-foreground/55">
+          {apiSavings?.footnote ||
+            (typeof note === "string" && note.length > 0
+              ? note
+              : "Full savings tracking (§8.13) is not wired yet — dashboard-summary exposes a pilot object from org settings.")}
+        </p>
+      </section>
+    </div>
+  );
+}
+
+function RiskWindowsSummary({ blocks }: { blocks: DashboardBlock[] }) {
+  const stale = blocks.filter((b) => b.verdict_stale).length;
+  const sprayNeedWindow = blocks.filter((b) => {
+    const w = b.latest_verdict?.directive?.spray_window;
+    return b.latest_verdict?.action === "spray" && w?.status === "blocked";
+  }).length;
+  if (!stale && !sprayNeedWindow) return null;
+  return (
+    <section className="mt-6 rounded-md border border-amber/25 bg-amber/5 p-4 text-sm text-foreground/70">
+      <p className="frame text-[0.65rem] font-semibold uppercase tracking-wider text-amber">
+        Active risk windows
+      </p>
+      <ul className="mt-2 list-disc space-y-1 pl-4">
+        {stale > 0 && (
+          <li>
+            {stale} block(s) have stale directives — refresh before trusting spray timing.
+          </li>
+        )}
+        {sprayNeedWindow > 0 && (
+          <li>
+            {sprayNeedWindow} block(s) are in spray posture but the next window looks blocked by
+            weather or program limits — review each card&apos;s spray window details.
+          </li>
+        )}
+      </ul>
+    </section>
   );
 }
 

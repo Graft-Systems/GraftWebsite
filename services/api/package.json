@@ -4,6 +4,7 @@
   "private": true,
   "description": "Django REST API for Graft Spray and the Graft Systems website.",
   "scripts": {
+    "dev": "sh scripts/run-dev.sh",
     "build": "python3 manage.py check",
     "lint": "python3 manage.py check",
     "test": "python3 -m pytest spray/tests/ -q",

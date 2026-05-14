@@ -9,7 +9,7 @@ If you are new to this repo, read `PredictionTool/HANDOFF.md` first for end-to-e
 | Method | Path | What it does |
 |---|---|---|
 | `GET` | `/` | Healthcheck — returns `{ok: true, service: "graft-api"}` |
-| `GET` | `/admin/` | Django admin panel (view contact submissions, manage users) |
+| `GET` | `/admin/` | Django admin (django-jazzmin UI): **api** (contact, waitlist, prediction batches + results) and **spray** (orgs, users, vineyards, captures, verdicts, sensors, weather, etc.). Create a superuser to log in. |
 | `POST` | `/api/contact` | Saves a contact form submission to the database and sends an email via Resend |
 | `POST` | `/api/estimate` | Runs ML inference, appends results to an optional active batch (`batch_id`), returns `batch_id` + batch summary |
 | `GET` | `/api/estimate/history?limit=10` | Returns recent saved prediction batches (most recent first) |
@@ -17,7 +17,7 @@ If you are new to this repo, read `PredictionTool/HANDOFF.md` first for end-to-e
 
 ## Stack
 
-- Python 3.12+ (tested on 3.14)
+- Python **3.13** for the `services/api` virtualenv when using the repo `Makefile` (`make setup-api` recreates `.venv` if not on 3.13). Older README references to 3.12/3.14 apply to legacy paths only.
 - Django 5.2 (plain views, no DRF — simple enough not to need it)
 - SQLite for local dev (swap to Postgres for prod)
 - `django-cors-headers` for CORS

@@ -6,9 +6,12 @@ through real-shaped responses without touching AWS.
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 from django.contrib.gis.geos import Polygon
 from django.test import override_settings
+from django.utils import timezone
 
 from spray.models import Block, Capture, DataLakeEvent, Membership, Vineyard
 
@@ -245,6 +248,51 @@ def test_list_filters_by_block(
     )
     assert resp.status_code == 200
     assert len(resp.data) == 1
+
+
+def test_list_filters_by_date_kind_and_limit(
+    s3_bucket, auth_client, make_org, make_membership
+):
+    client, user, org, v, block = _setup(auth_client, make_org, make_membership)
+    c1 = Capture.objects.unscoped().create(
+        block=block,
+        uploader=user,
+        kind=Capture.Kind.PHOTO,
+        s3_key="k_date1",
+        status=Capture.Status.UPLOADED,
+    )
+    c2 = Capture.objects.unscoped().create(
+        block=block,
+        uploader=user,
+        kind=Capture.Kind.VIDEO,
+        s3_key="k_date2",
+        status=Capture.Status.UPLOADED,
+    )
+    Capture.objects.filter(pk=c1.pk).update(
+        created_at=timezone.now() - timedelta(days=5)
+    )
+
+    today = timezone.now().date().isoformat()
+    past = (timezone.now() - timedelta(days=7)).date().isoformat()
+
+    r = client.get(
+        f"/api/spray/orgs/{org.id}/captures?date_from={past}&date_to={today}&kind=video"
+    )
+    assert r.status_code == 200
+    assert len(r.data) == 1
+    assert r.data[0]["id"] == str(c2.id)
+
+    r2 = client.get(f"/api/spray/orgs/{org.id}/captures?limit=1")
+    assert r2.status_code == 200
+    assert len(r2.data) == 1
+
+
+def test_list_rejects_invalid_date(
+    s3_bucket, auth_client, make_org, make_membership
+):
+    client, _, org, _, _ = _setup(auth_client, make_org, make_membership)
+    r = client.get(f"/api/spray/orgs/{org.id}/captures?date_from=not-a-date")
+    assert r.status_code == 400
 
 
 def test_detail_archive(

@@ -44,10 +44,18 @@ export function OrgSwitcher() {
     return () => {
       cancelled = true;
     };
-  }, [isSignedIn, getToken]);
+    // getToken is intentionally omitted — Clerk changes its identity often;
+    // listing it retriggers this effect every render and hammers /orgs/me.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSignedIn]);
 
   const active = memberships?.[0];
-  const label = active?.org.name ?? "Personal";
+  const label =
+    memberships === null
+      ? "Loading…"
+      : memberships.length === 0
+        ? "No organization"
+        : (active?.org.name ?? "Organization");
 
   return (
     <div className="relative">

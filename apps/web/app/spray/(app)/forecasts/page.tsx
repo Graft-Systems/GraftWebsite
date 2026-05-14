@@ -60,6 +60,20 @@ export default function ForecastsPage() {
                         ? `Current action: ${verdict.action}`
                         : "No directive generated yet."}
                     </p>
+                    <div className="mt-2 flex flex-wrap gap-3 text-xs">
+                      <Link
+                        href="/spray/dashboard"
+                        className="font-semibold text-amber hover:text-amber/80"
+                      >
+                        Dashboard
+                      </Link>
+                      <Link
+                        href={`/spray/vineyards/${block.vineyard_id}`}
+                        className="font-semibold text-amber hover:text-amber/80"
+                      >
+                        Vineyard map
+                      </Link>
+                    </div>
                   </div>
                   {block.verdict_stale && (
                     <span className="rounded bg-amber/10 px-2 py-1 frame text-[0.65rem] font-semibold uppercase tracking-wider text-amber">
@@ -139,6 +153,9 @@ function sprayProgram(settings?: Record<string, unknown>): SpraySettings {
 }
 
 function evaluateDay(day: VerdictForecastDay, settings: SpraySettings) {
+  /* Sprayability mirrors backend spray_window heuristics in
+   * `services/api/spray/recommendation/directive.py` — keep both in sync when
+   * changing limits or field names. */
   const reasons: string[] = [];
   const wind = windMph(day);
   const temp = tempF(day);
@@ -182,6 +199,7 @@ function tempF(day: VerdictForecastDay) {
 function rainMm(day: VerdictForecastDay) {
   if (day.precip_mm !== undefined) return day.precip_mm;
   if (day.rain_mm !== undefined) return day.rain_mm;
+  if (day.rain_next_24h_mm !== undefined) return day.rain_next_24h_mm;
   return null;
 }
 
@@ -204,8 +222,14 @@ function EmptyForecastState() {
         directives.
       </p>
       <Link
+        href="/spray/dashboard"
+        className="mt-4 inline-flex rounded-md border border-border/40 px-4 py-2 frame text-xs font-semibold text-foreground/80 hover:text-foreground"
+      >
+        Open dashboard
+      </Link>
+      <Link
         href="/spray/vineyards"
-        className="mt-5 inline-flex rounded-md bg-amber px-4 py-2 frame text-xs font-semibold text-background hover:bg-amber/90"
+        className="mt-3 inline-flex rounded-md bg-amber px-4 py-2 frame text-xs font-semibold text-background hover:bg-amber/90"
       >
         Create blocks
       </Link>

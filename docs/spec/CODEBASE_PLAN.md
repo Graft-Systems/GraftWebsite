@@ -10,6 +10,8 @@
 
 This document is the mandatory whole-codebase plan required by the Graft Spray spec ("Whole-Codebase Plan" section). **No feature branch may merge until this plan PR is approved.** The plan is a living document and is updated at every milestone closeout to reflect what shipped vs. what was planned.
 
+**Pilot shell (May 2026):** The authenticated Next.js shell under `apps/web/app/spray/(app)/` ships dashboard (incl. recent captures + program placeholders), vineyards/map, integrations (incl. Sencrop “coming soon”), captures with filters + detail route, forecasts, spray records with verdict deep-links, and multi-tab settings (consent, export, delete, members + stubs). Backend: `dashboard-summary` includes `recent_captures`; capture list supports `date_from` / `date_to` / `kind` / `limit`. Full savings API, CSV spray import, and notification routes remain deferred per spec.
+
 Sections marked **[FULL]** are populated from the existing repo audit + the spec markdown. Sections marked **[SKELETON]** carry a structural outline plus an explicit list of what they depend on; full content lands when the gating dependency clears.
 
 ---
@@ -732,6 +734,23 @@ Numbered questions that block specific milestones. Each must be answered before 
 
 19. **Q19 — METER PHYTOS-31 add-on requirement.** METER ATMOS-41 lacks native leaf wetness; require PHYTOS-31 at onboarding for METER-only customers, or accept gap-filled LW from RH-based heuristic? **Blocks:** M1.5-06 (METER connector).
    - **DEFERRED 2026-05-07 by Benson:** No METER access right now, so the question doesn't bind today. Default applies when first METER customer arrives: non-blocking warning in onboarding, gap-fill via RH heuristic, `quality_flag="gap_filled"`, plus a "for higher-confidence verdicts add a PHYTOS-31" prompt in the integrations panel. Revisit when a real METER customer signs up.
+
+---
+
+## Pilot shell — shipped vs planned (delta, 2026-05-13)
+
+This delta tracks the **authenticated pilot shell** under `apps/web/app/spray/(app)/` relative to [Graft-Spray-App-Spec.md](Graft-Spray-App-Spec.md) §7–§8 and the “Finish Graft Spray” execution plan. IA keeps the existing nav (Dashboard, Vineyards, Integrations, Captures, Forecasts, Spray records, Settings); separate top-level `/spray/map` or spec-only URLs remain optional.
+
+| Surface | Shipped (this codebase) | Explicitly deferred / pilot note |
+|---|---|---|
+| **Dashboard** | `dashboard-summary` with setup checklist, verdict, `recent_captures`, `frac_program` + `pilot_savings` placeholders, integration/station summary | Full savings tracker §8.13 (aggregation service, `GET /api/spray/savings`, PDF export); numeric FRAC “diversity score” beyond program text |
+| **Vineyards** | List + detail + `SprayMap`; archive; first-org copy when `OrgSwitcher` is display-only | Multi-org switcher driving `X-Org-Id` on all fetches (product decision) |
+| **Integrations** | Pessl OAuth, Davis/METER connect, list/detail, station link; Sencrop “Coming soon” card; optional provider-health panel behind `NEXT_PUBLIC_SHOW_PROVIDER_HEALTH` | Sencrop connector; CSV/lab import; `POST …/notifications/test` |
+| **Captures** | Filters (`block`, date range, `kind`), grid, `captures/[id]` detail, archive; ML correction UI deferred to honest “pending” copy when API lacks fields | Full disease/severity filters if not on model |
+| **Forecasts** | `forecast_7d` + program limits; deep links toward dashboard/vineyards | Long-term single source of truth vs `directive.py` (documented in code comments) |
+| **Spray records** | CRUD + filters; URL query sync for block/verdict prefill from verdict card; row REI/PHI countdown copy; lightweight rollups line from loaded page | Server `spray-records/summary`; CSV import |
+| **Settings** | Tabs: Program, Privacy & consent, Export (JSON), Delete account + Clerk sign-out, Members (invite), Notifications stub, Billing stub | Web push prefs, Stripe, async export zip |
+| **Docs / QA** | `docs/runbooks/graft-spray-pilot-qa.md` pilot checklist | Full spec PDF amend loop unchanged above |
 
 ---
 

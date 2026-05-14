@@ -37,3 +37,7 @@ PUT /v1/services/{serviceId}/env-vars/{envVarKey}
 
 Source: https://api-docs.render.com/reference/update-env-var
 
+## Graft Spray (website service)
+
+Optional client flag for internal demos: set `NEXT_PUBLIC_SHOW_PROVIDER_HEALTH=true` on the Next.js **website** service to show a read-only JSON panel on `/spray/integrations` that calls `GET /api/spray/admin/provider-health` (requires an authenticated Spray session). Leave unset in production unless operators need it.
+

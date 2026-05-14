@@ -1,6 +1,11 @@
 from django.contrib import admin
 
-from .models import ContactSubmission, PredictionBatch, PredictionResult, WaitlistEntry
+from .models import (
+    ContactSubmission,
+    PredictionBatch,
+    PredictionResult,
+    WaitlistEntry,
+)
 
 
 @admin.register(ContactSubmission)
@@ -73,6 +78,40 @@ class PredictionBatchAdmin(admin.ModelAdmin):
     readonly_fields = ("model_name", "processed_count", "created_at")
     ordering = ("-created_at",)
     inlines = (PredictionResultInline,)
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+
+@admin.register(PredictionResult)
+class PredictionResultAdmin(admin.ModelAdmin):
+    list_display = (
+        "batch",
+        "filename",
+        "prediction_weight",
+        "ground_truth_weight",
+        "absolute_error",
+        "model",
+        "latency_ms",
+        "created_at",
+    )
+    list_filter = ("model", "unit")
+    search_fields = ("filename", "model", "batch__id")
+    readonly_fields = (
+        "batch",
+        "filename",
+        "prediction_weight",
+        "ground_truth_weight",
+        "absolute_error",
+        "unit",
+        "model",
+        "depth_used",
+        "latency_ms",
+        "image",
+        "created_at",
+    )
+    ordering = ("-created_at",)
+    raw_id_fields = ("batch",)
 
     def has_add_permission(self, request) -> bool:
         return False

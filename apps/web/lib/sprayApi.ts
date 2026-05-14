@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import type { Verdict } from "@/components/spray/VerdictCard";
 
@@ -41,6 +41,32 @@ export type DashboardBlock = {
   verdict_stale: boolean;
 };
 
+export type DashboardCapture = {
+  id: string;
+  block_id: string;
+  block_name?: string;
+  vineyard_name?: string;
+  kind: string;
+  size_bytes: number | null;
+  mime_type: string;
+  taken_at: string | null;
+  uploaded_at: string | null;
+  status: string;
+  download_url: string | null;
+  created_at: string;
+};
+
+export type PilotSavingsSummary = {
+  headline?: string;
+  amount_usd?: number | null;
+  footnote?: string;
+};
+
+export type FracProgramSummary = {
+  frac_rotation: string;
+  allowed_products: string;
+};
+
 export type DashboardSummary = {
   org: {
     id: string;
@@ -77,6 +103,9 @@ export type DashboardSummary = {
   }[];
   latest_generated_at: string | null;
   generated_at: string;
+  recent_captures: DashboardCapture[];
+  frac_program?: FracProgramSummary;
+  pilot_savings?: PilotSavingsSummary;
 };
 
 export type VineyardBlock = {
@@ -119,19 +148,50 @@ export type ProgramSettings = {
 
 export function useAuthedSprayFetch() {
   const { getToken } = useAuth();
-  return useCallback(
-    async (path: string, init?: RequestInit) => {
-      const token = await getToken();
-      return fetch(path, {
-        ...init,
-        headers: {
-          ...(init?.headers ?? {}),
-          Authorization: `Bearer ${token}`,
-        },
-      });
-    },
-    [getToken],
-  );
+  // Clerk's getToken is not referentially stable; a ref keeps useCallback
+  // stable so effects that depend on authedFetch do not refetch in a loop.
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
+  return useCallback(async (path: string, init?: RequestInit) => {
+    const token = await getTokenRef.current();
+    return fetch(path, {
+      ...init,
+      headers: {
+        ...(init?.headers ?? {}),
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  }, []);
+}
+
+/** Human-readable message from a failed Spray API response (reads body once). */
+export async function formatSprayHttpError(res: Response): Promise<string> {
+  const code = res.status;
+  let snippet = "";
+  try {
+    const data: unknown = await res.json();
+    if (data && typeof data === "object") {
+      const d = data as Record<string, unknown>;
+      if (typeof d.detail === "string") snippet = d.detail;
+      else if (Array.isArray(d.detail)) snippet = JSON.stringify(d.detail);
+      else if (typeof d.message === "string") snippet = d.message;
+    }
+  } catch {
+    /* non-JSON body */
+  }
+  const prefix = `${code}`;
+  if (code >= 500) {
+    const base =
+      "The Spray service returned a server error. Your profile is fine — try again shortly. If it persists, contact support.";
+    return snippet ? `${prefix}: ${snippet}\n${base}` : `${prefix}: ${base}`;
+  }
+  if (code === 401 || code === 403) {
+    return snippet
+      ? `${prefix}: ${snippet}`
+      : `${prefix}: Session may have expired — try signing out and back in.`;
+  }
+  if (snippet) return `${prefix}: ${snippet}`;
+  return `${prefix}: Request could not be completed.`;
 }
 
 export function useActiveOrg() {
@@ -140,29 +200,52 @@ export function useActiveOrg() {
   const [org, setOrg] = useState<ActiveOrg | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /** True after a successful `orgs/me` with zero memberships (not an HTTP error). */
+  const [needsOrg, setNeedsOrg] = useState(false);
 
   const reload = useCallback(async () => {
-    if (!isSignedIn) return;
+    if (!isSignedIn) {
+      setLoading(false);
+      setOrg(null);
+      setError(null);
+      setNeedsOrg(false);
+      return;
+    }
     setLoading(true);
     setError(null);
+    setNeedsOrg(false);
     try {
       const res = await authedFetch("/api/spray/orgs/me");
-      if (!res.ok) throw new Error(`orgs/me ${res.status}`);
-      const data = (await res.json()) as { memberships: Membership[] };
-      const first = data.memberships?.[0]?.org;
+      if (!res.ok) {
+        setOrg(null);
+        setError(await formatSprayHttpError(res));
+        return;
+      }
+      const data = (await res.json()) as { memberships?: Membership[] };
+      const list = data.memberships ?? [];
+      if (list.length === 0) {
+        setOrg(null);
+        setNeedsOrg(true);
+        return;
+      }
+      const first = list[0]?.org;
       setOrg(first ? { id: first.id, name: first.name } : null);
+      setNeedsOrg(!first);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load org.");
+      setOrg(null);
+      setError(
+        e instanceof Error ? e.message : "Could not reach the Spray service.",
+      );
     } finally {
       setLoading(false);
     }
   }, [authedFetch, isSignedIn]);
 
   useEffect(() => {
-    reload();
+    void reload();
   }, [reload]);
 
-  return { org, loading, error, reload, authedFetch };
+  return { org, loading, error, needsOrg, reload, authedFetch };
 }
 
 export function useSprayDashboard() {
@@ -184,10 +267,15 @@ export function useSprayDashboard() {
       const res = await authedFetch(
         `/api/spray/orgs/${org.id}/dashboard-summary`,
       );
-      if (!res.ok) throw new Error(`dashboard-summary ${res.status}`);
+      if (!res.ok) {
+        setError(await formatSprayHttpError(res));
+        return;
+      }
       setSummary((await res.json()) as DashboardSummary);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load dashboard.");
+      setError(
+        e instanceof Error ? e.message : "Could not reach the Spray service.",
+      );
     } finally {
       setLoading(false);
     }

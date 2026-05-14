@@ -19,6 +19,8 @@ const isProtectedRoute = createRouteMatcher([
   "/spray/onboarding(.*)",
   "/spray/post-login(.*)",
   "/spray/vineyards(.*)",
+  "/spray/captures(.*)",
+  "/spray/integrations(.*)",
   "/spray/forecasts(.*)",
   "/spray/spray-records(.*)",
   "/spray/settings(.*)",

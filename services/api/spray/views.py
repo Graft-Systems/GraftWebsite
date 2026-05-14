@@ -1245,6 +1245,32 @@ class DashboardSummaryView(APIView):
             default=None,
         )
 
+        from spray.models import Capture
+        from spray.serializers import CaptureSerializer
+
+        recent_qs = (
+            Capture.objects.for_org(org_id)
+            .filter(archived_at__isnull=True)
+            .select_related("block", "block__vineyard")
+            .order_by("-created_at")[:8]
+        )
+        recent_captures = CaptureSerializer(recent_qs, many=True).data
+
+        spray_program = org.settings.get("spray_program") or {}
+        frac_program = {
+            "frac_rotation": str(spray_program.get("frac_rotation", "")),
+            "allowed_products": str(spray_program.get("allowed_products", "")),
+        }
+        pilot_savings = org.settings.get("pilot_savings")
+        if pilot_savings is None:
+            pilot_savings = {
+                "headline": "Savings vs calendar baseline",
+                "amount_usd": None,
+                "footnote": (
+                    "Placeholder until §8.13 savings aggregation is enabled."
+                ),
+            }
+
         return Response(
             {
                 "org": {
@@ -1269,6 +1295,9 @@ class DashboardSummaryView(APIView):
                 "stations": stations,
                 "latest_generated_at": latest_generated_at,
                 "generated_at": now.isoformat(),
+                "recent_captures": recent_captures,
+                "frac_program": frac_program,
+                "pilot_savings": pilot_savings,
             }
         )
 
@@ -1461,13 +1490,17 @@ class CaptureFinalizeView(APIView):
 class CaptureListView(APIView):
     """GET /api/spray/orgs/<org_id>/captures.
 
-    Filters: ?block_id=<uuid> (optional), ?status=uploaded (default).
+    Filters: ?block_id=, ?status= (default uploaded), ?date_from=YYYY-MM-DD,
+    ?date_to=YYYY-MM-DD (inclusive on created_at date), ?kind=photo|video,
+    ?limit= (default 100, max 200).
     """
 
     permission_classes = [IsOrgViewer]
 
     @transaction.atomic
     def get(self, request, org_id):
+        from django.utils.dateparse import parse_date
+
         from spray.models import Capture
         from spray.serializers import CaptureSerializer
 
@@ -1486,7 +1519,46 @@ class CaptureListView(APIView):
         if status_filter and status_filter != "all":
             qs = qs.filter(status=status_filter)
 
-        qs = qs.order_by("-created_at")[:200]
+        date_from = request.query_params.get("date_from")
+        if date_from:
+            parsed = parse_date(date_from)
+            if parsed is None:
+                return Response(
+                    {"detail": "invalid date_from; use YYYY-MM-DD"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            qs = qs.filter(created_at__date__gte=parsed)
+
+        date_to = request.query_params.get("date_to")
+        if date_to:
+            parsed = parse_date(date_to)
+            if parsed is None:
+                return Response(
+                    {"detail": "invalid date_to; use YYYY-MM-DD"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            qs = qs.filter(created_at__date__lte=parsed)
+
+        kind = request.query_params.get("kind")
+        if kind in (Capture.Kind.PHOTO, Capture.Kind.VIDEO):
+            qs = qs.filter(kind=kind)
+        elif kind:
+            return Response(
+                {"detail": "invalid kind; use photo or video"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        limit_raw = request.query_params.get("limit", "100")
+        try:
+            limit = int(limit_raw)
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "invalid limit"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        limit = max(1, min(limit, 200))
+
+        qs = qs.order_by("-created_at")[:limit]
         return Response(CaptureSerializer(qs, many=True).data)
 
 

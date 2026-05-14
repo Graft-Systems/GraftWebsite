@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useAuth, useUser } from "@clerk/nextjs";
+import { formatSprayHttpError } from "@/lib/sprayApi";
+import { SPRAY_REGION_OPTIONS } from "@/lib/sprayRegions";
 
 const CATEGORIES: { key: string; label: string; help: string }[] = [
   {
@@ -36,7 +38,7 @@ export default function OnboardingPage() {
   const [state, setState] = useState<Record<string, boolean>>({});
   const [orgId, setOrgId] = useState<string | null>(null);
   const [orgName, setOrgName] = useState("");
-  const [region, setRegion] = useState("napa");
+  const [region, setRegion] = useState(SPRAY_REGION_OPTIONS[0]?.value ?? "napa");
   const [vineyardName, setVineyardName] = useState("Home Ranch");
   const [vineyardCount, setVineyardCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -118,7 +120,10 @@ export default function OnboardingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify([{ category, granted }]),
       });
-      if (!res.ok) throw new Error(`save failed (${res.status})`);
+      if (!res.ok) {
+        setError(await formatSprayHttpError(res));
+        return;
+      }
       setState((s) => ({ ...s, [category]: granted }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "save failed");
@@ -137,7 +142,10 @@ export default function OnboardingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: orgName, region }),
       });
-      if (!res.ok) throw new Error(`create org ${res.status}`);
+      if (!res.ok) {
+        setError(await formatSprayHttpError(res));
+        return;
+      }
       const org = (await res.json()) as { id: string; name: string };
       setOrgId(org.id);
       setOrgName(org.name);
@@ -159,7 +167,10 @@ export default function OnboardingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: vineyardName, region }),
       });
-      if (!res.ok) throw new Error(`create vineyard ${res.status}`);
+      if (!res.ok) {
+        setError(await formatSprayHttpError(res));
+        return;
+      }
       setVineyardCount((count) => count + 1);
       setVineyardName("");
     } catch (e) {
@@ -256,10 +267,11 @@ export default function OnboardingPage() {
                     onChange={(e) => setRegion(e.target.value)}
                     className="mt-1 w-full rounded-md border border-border/40 bg-background/60 px-3 py-2"
                   >
-                    <option value="napa">Napa</option>
-                    <option value="sonoma">Sonoma</option>
-                    <option value="central_coast">Central Coast</option>
-                    <option value="other">Other</option>
+                    {SPRAY_REGION_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
                   </select>
                 </label>
                 <button

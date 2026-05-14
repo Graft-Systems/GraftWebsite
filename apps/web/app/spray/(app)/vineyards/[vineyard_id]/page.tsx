@@ -2,19 +2,16 @@
  * Vineyard detail + map page (M0-05 step 5).
  *
  * Renders the SprayMap on the left (~70%) and a side panel on the
- * right with the active block's editable fields. Switching to
- * draw-mode via "Draw new block" arms the polygon tool and saves
- * via POST. Selecting an existing polygon switches the side panel
- * into edit mode.
+ * right with the active block's editable fields.
  */
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { useAuth } from "@clerk/nextjs";
 import { SprayMap, type BlockFeature } from "@/components/spray/SprayMap";
 import { CaptureUploader } from "@/components/spray/CaptureUploader";
+import { useActiveOrg } from "@/lib/sprayApi";
 
 type Vineyard = {
   id: string;
@@ -37,46 +34,23 @@ type Block = {
 export default function VineyardDetailPage() {
   const params = useParams<{ vineyard_id: string }>();
   const vineyardId = params.vineyard_id;
-  const { getToken, isSignedIn } = useAuth();
+  const { org, loading: orgLoading, authedFetch } = useActiveOrg();
 
-  const [orgId, setOrgId] = useState<string | null>(null);
   const [vineyard, setVineyard] = useState<Vineyard | null>(null);
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [editable, setEditable] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  async function authedFetch(path: string, init?: RequestInit) {
-    const token = await getToken();
-    return fetch(path, {
-      ...init,
-      headers: {
-        ...(init?.headers ?? {}),
-        Authorization: `Bearer ${token}`,
-      },
-    });
-  }
-
   useEffect(() => {
+    if (!org || !vineyardId) return;
+    const orgId = org.id;
     let cancelled = false;
     async function load() {
-      if (!isSignedIn) return;
       try {
-        const meRes = await authedFetch("/api/spray/orgs/me");
-        if (!meRes.ok) throw new Error(`orgs/me ${meRes.status}`);
-        const meJson = (await meRes.json()) as {
-          memberships: { org: { id: string } }[];
-        };
-        const oid = meJson.memberships?.[0]?.org.id;
-        if (!oid) throw new Error("no membership");
-        if (cancelled) return;
-        setOrgId(oid);
-
         const [vRes, bRes] = await Promise.all([
-          authedFetch(`/api/spray/orgs/${oid}/vineyards/${vineyardId}`),
-          authedFetch(
-            `/api/spray/orgs/${oid}/vineyards/${vineyardId}/blocks`
-          ),
+          authedFetch(`/api/spray/orgs/${orgId}/vineyards/${vineyardId}`),
+          authedFetch(`/api/spray/orgs/${orgId}/vineyards/${vineyardId}/blocks`),
         ]);
         if (!vRes.ok) throw new Error(`vineyard ${vRes.status}`);
         if (!bRes.ok) throw new Error(`blocks ${bRes.status}`);
@@ -88,12 +62,11 @@ export default function VineyardDetailPage() {
         if (!cancelled) setError(e instanceof Error ? e.message : "load failed");
       }
     }
-    load();
+    void load();
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSignedIn, vineyardId]);
+  }, [authedFetch, org, vineyardId]);
 
   const blockFeatures: BlockFeature[] = useMemo(
     () =>
@@ -103,7 +76,7 @@ export default function VineyardDetailPage() {
         geom: b.geom,
         archived: b.archived_at !== null,
       })),
-    [blocks]
+    [blocks],
   );
 
   const centroid: [number, number] | null = useMemo(() => {
@@ -113,97 +86,82 @@ export default function VineyardDetailPage() {
   }, [vineyard]);
 
   async function handleBlockCreate(geom: GeoJSON.Polygon) {
-    if (!orgId) return;
+    if (!org) return;
     const name = `Block ${blocks.length + 1}`;
     const res = await authedFetch(
-      `/api/spray/orgs/${orgId}/vineyards/${vineyardId}/blocks`,
+      `/api/spray/orgs/${org.id}/vineyards/${vineyardId}/blocks`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, geom }),
-      }
+        body: JSON.stringify({ name, geom, variety: "Unknown", training_system: "VSP" }),
+      },
     );
     if (!res.ok) {
-      setError(`create block failed: ${res.status}`);
+      setError(`create block ${res.status}`);
       return;
     }
     const created = (await res.json()) as Block;
-    setBlocks((bs) => [...bs, created]);
+    setBlocks((prev) => [...prev, created]);
     setEditable(false);
-    setSelectedId(created.id);
   }
 
-  async function handleBlockUpdate(blockId: string, geom: GeoJSON.Polygon) {
-    if (!orgId) return;
-    const res = await authedFetch(
-      `/api/spray/orgs/${orgId}/blocks/${blockId}`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ geom }),
-      }
-    );
+  async function patchBlock(blockId: string, patch: Partial<Block>) {
+    if (!org) return;
+    const res = await authedFetch(`/api/spray/orgs/${org.id}/blocks/${blockId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
     if (!res.ok) {
-      setError(`update block failed: ${res.status}`);
+      setError(`patch block ${res.status}`);
       return;
     }
     const updated = (await res.json()) as Block;
-    setBlocks((bs) => bs.map((b) => (b.id === blockId ? updated : b)));
-  }
-
-  async function patchBlock(blockId: string, body: Partial<Block>) {
-    if (!orgId) return;
-    const res = await authedFetch(
-      `/api/spray/orgs/${orgId}/blocks/${blockId}`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      }
-    );
-    if (!res.ok) {
-      setError(`update block failed: ${res.status}`);
-      return;
-    }
-    const updated = (await res.json()) as Block;
-    setBlocks((bs) => bs.map((b) => (b.id === blockId ? updated : b)));
+    setBlocks((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
   }
 
   async function archiveBlock(blockId: string) {
-    if (!orgId) return;
-    const res = await authedFetch(
-      `/api/spray/orgs/${orgId}/blocks/${blockId}`,
-      { method: "DELETE" }
-    );
+    if (!org) return;
+    if (!confirm("Archive this block?")) return;
+    const res = await authedFetch(`/api/spray/orgs/${org.id}/blocks/${blockId}`, {
+      method: "DELETE",
+    });
     if (!res.ok) {
-      setError(`archive block failed: ${res.status}`);
+      setError(`archive ${res.status}`);
       return;
     }
-    setBlocks((bs) =>
-      bs.map((b) =>
-        b.id === blockId ? { ...b, archived_at: new Date().toISOString() } : b
-      )
-    );
+    setBlocks((prev) => prev.filter((b) => b.id !== blockId));
     setSelectedId(null);
   }
 
+  function handleBlockUpdate(_blockId: string, _geom: GeoJSON.Polygon) {
+    /* vertex drag edit mode not wired — polygon replace uses PATCH from editor */
+  }
+
   function exportGeoJSON(block: Block) {
-    const blob = new Blob(
-      [JSON.stringify({ type: "Feature", properties: { name: block.name }, geometry: block.geom })],
-      { type: "application/geo+json" }
-    );
+    const blob = new Blob([JSON.stringify(block.geom, null, 2)], {
+      type: "application/geo+json",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${block.name.replace(/\s+/g, "_")}.geojson`;
+    a.download = `${block.name.replace(/\s+/g, "-")}.geojson`;
     a.click();
     URL.revokeObjectURL(url);
   }
 
   const selectedBlock = blocks.find((b) => b.id === selectedId) ?? null;
 
+  if (!org && !orgLoading) {
+    return (
+      <div className="p-6">
+        <p className="text-sm text-foreground/60">Sign in to manage vineyards.</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="-m-6 flex h-[calc(100vh-4rem)] flex-col">
+    <div className="-m-6 flex min-h-[50vh] flex-col md:h-[calc(100vh-4rem)]">
       <div className="border-b border-border/40 bg-background/60 px-6 py-3">
         <Link
           href="/spray/vineyards"
@@ -222,8 +180,14 @@ export default function VineyardDetailPage() {
         </p>
       )}
 
-      <div className="flex flex-1 min-h-0">
-        <div className="flex-1 min-w-0">
+      {vineyard && !centroid && (
+        <p className="mx-6 mt-3 rounded-md border border-amber/40 bg-amber/10 p-3 text-sm text-amber">
+          This vineyard has no map centroid yet. The map defaults to Napa until coordinates are set.
+        </p>
+      )}
+
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        <div className="min-h-[280px] min-h-[50vh] flex-1 min-w-0 touch-manipulation md:min-h-0">
           <SprayMap
             centroid={centroid}
             blocks={blockFeatures}
@@ -232,10 +196,11 @@ export default function VineyardDetailPage() {
             onBlockSelect={setSelectedId}
             onBlockCreate={handleBlockCreate}
             onBlockUpdate={handleBlockUpdate}
+            className="h-full min-h-[280px] w-full md:min-h-0"
           />
         </div>
 
-        <aside className="w-80 shrink-0 overflow-auto border-l border-border/40 bg-background/40 p-5">
+        <aside className="w-full shrink-0 overflow-auto border-t border-border/40 bg-background/40 p-5 md:w-80 md:border-l md:border-t-0">
           {!selectedBlock && (
             <>
               <h2 className="frame text-xs font-semibold uppercase tracking-wider text-foreground/60">
@@ -249,7 +214,7 @@ export default function VineyardDetailPage() {
                       <button
                         type="button"
                         onClick={() => setSelectedId(b.id)}
-                        className="block w-full rounded-md border border-border/40 bg-background/40 px-3 py-2 text-left text-sm transition-colors hover:border-amber/60"
+                        className="block min-h-[44px] w-full rounded-md border border-border/40 bg-background/40 px-3 py-3 text-left text-sm transition-colors hover:border-amber/60"
                       >
                         {b.name}
                       </button>
@@ -259,26 +224,26 @@ export default function VineyardDetailPage() {
               <button
                 type="button"
                 onClick={() => setEditable((e) => !e)}
-                className="mt-6 w-full rounded-md bg-amber px-4 py-2 frame text-xs font-semibold text-background transition-colors hover:bg-amber/90"
+                className="mt-6 min-h-[44px] w-full rounded-md bg-amber px-4 py-2 frame text-xs font-semibold text-background transition-colors hover:bg-amber/90"
               >
                 {editable ? "Cancel drawing" : "Draw new block"}
               </button>
               {editable && (
                 <p className="mt-3 text-xs text-foreground/60">
-                  Click on the map to add vertices. Double-click to close the polygon.
+                  Tap the map to add vertices. Double-tap to close the polygon.
                 </p>
               )}
             </>
           )}
 
-          {selectedBlock && orgId && (
+          {selectedBlock && org && (
             <BlockEditor
               block={selectedBlock}
               onClose={() => setSelectedId(null)}
               onSave={(patch) => patchBlock(selectedBlock.id, patch)}
               onArchive={() => archiveBlock(selectedBlock.id)}
               onExport={() => exportGeoJSON(selectedBlock)}
-              orgId={orgId}
+              orgId={org.id}
             />
           )}
         </aside>
@@ -286,7 +251,6 @@ export default function VineyardDetailPage() {
     </div>
   );
 }
-
 
 function BlockEditor({
   block,
@@ -324,7 +288,7 @@ function BlockEditor({
         <button
           type="button"
           onClick={onClose}
-          className="text-xs text-foreground/50 hover:text-foreground"
+          className="min-h-[44px] min-w-[44px] text-xs text-foreground/50 hover:text-foreground"
         >
           ✕
         </button>
@@ -346,21 +310,21 @@ function BlockEditor({
         <button
           type="button"
           onClick={handleSave}
-          className="w-full rounded-md bg-amber px-4 py-2 frame text-xs font-semibold text-background transition-colors hover:bg-amber/90"
+          className="min-h-[44px] w-full rounded-md bg-amber px-4 py-2 frame text-xs font-semibold text-background transition-colors hover:bg-amber/90"
         >
           Save changes
         </button>
         <button
           type="button"
           onClick={onExport}
-          className="w-full rounded-md border border-border/60 px-4 py-2 frame text-xs font-semibold text-foreground/70 transition-colors hover:text-foreground"
+          className="min-h-[44px] w-full rounded-md border border-border/60 px-4 py-2 frame text-xs font-semibold text-foreground/70 transition-colors hover:text-foreground"
         >
           Export GeoJSON
         </button>
         <button
           type="button"
           onClick={onArchive}
-          className="w-full rounded-md border border-red-500/40 px-4 py-2 frame text-xs font-semibold text-red-400 transition-colors hover:border-red-500"
+          className="min-h-[44px] w-full rounded-md border border-red-500/40 px-4 py-2 frame text-xs font-semibold text-red-400 transition-colors hover:border-red-500"
         >
           Archive
         </button>
@@ -374,9 +338,7 @@ function BlockEditor({
           orgId={orgId}
           blockId={block.id}
           onCaptureUploaded={() => {
-            // M1-09 doesn't auto-refresh the block list — captures
-            // are visible from the /spray/captures page. M1-10 wires
-            // the per-block thumbnail strip alongside ML predictions.
+            /* list lives on /spray/captures */
           }}
         />
       </div>
@@ -397,15 +359,12 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="frame text-[0.65rem] font-semibold uppercase tracking-wider text-foreground/60">
-        {label}
-      </span>
+      <span className="text-sm text-foreground/60">{label}</span>
       <input
-        type="text"
-        inputMode={inputMode}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-1 w-full rounded-md border border-border/40 bg-background/40 px-2 py-1.5 text-sm"
+        inputMode={inputMode}
+        className="mt-1 w-full rounded-md border border-border/40 bg-background/60 px-3 py-2"
       />
     </label>
   );

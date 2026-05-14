@@ -65,10 +65,29 @@ function SprayRecordsContent() {
     date_to: "",
   });
 
+  useEffect(() => {
+    const block = searchParams.get("block") ?? "";
+    const verdict = searchParams.get("verdict") ?? "";
+    const target = searchParams.get("target") ?? "";
+    setForm((f) => ({
+      ...f,
+      block: block || f.block,
+      verdict: verdict || f.verdict,
+      target_disease: target || f.target_disease,
+    }));
+    setFilters((f) => ({ ...f, block_id: block || f.block_id }));
+  }, [searchParams]);
+
   const selectedBlock = useMemo(
     () => blocks.find((block) => block.id === form.block),
     [blocks, form.block],
   );
+
+  const recordRollup = useMemo(() => {
+    if (!records?.length) return null;
+    const products = new Set(records.map((r) => r.product).filter(Boolean));
+    return { count: records.length, products: products.size };
+  }, [records]);
 
   useEffect(() => {
     if (!org) return;
@@ -263,6 +282,12 @@ function SprayRecordsContent() {
             <p className="mt-1 text-xs text-foreground/50">
               Filter records by vineyard, block, or application date.
             </p>
+            {recordRollup && (
+              <p className="mt-2 text-xs text-foreground/55">
+                Showing {recordRollup.count} record(s) across {recordRollup.products} product
+                {recordRollup.products === 1 ? "" : "s"} (pilot client rollup — full analytics deferred).
+              </p>
+            )}
           </div>
           <button
             type="button"
@@ -333,6 +358,7 @@ function SprayRecordsContent() {
                   {record.rei_hours ? ` · REI ${record.rei_hours}h` : ""}
                   {record.phi_days ? ` · PHI ${record.phi_days}d` : ""}
                 </p>
+                <p className="mt-1 text-xs text-foreground/55">{phiReiLine(record)}</p>
                 {record.notes && (
                   <p className="mt-2 text-sm text-foreground/60">{record.notes}</p>
                 )}
@@ -381,6 +407,28 @@ function targetLabel(value: string) {
   if (value === "downy") return "Downy mildew";
   if (value === "both") return "Powdery + downy mildew";
   return "Other";
+}
+
+function phiReiLine(record: SprayRecord): string {
+  const applied = new Date(record.applied_at);
+  const now = Date.now();
+  if (record.rei_hours) {
+    const end = applied.getTime() + record.rei_hours * 3600000;
+    if (now < end) {
+      return `REI active until ${new Date(end).toLocaleString()}`;
+    }
+  }
+  if (record.phi_days) {
+    const end = new Date(applied);
+    end.setDate(end.getDate() + record.phi_days);
+    if (now < end.getTime()) {
+      return `PHI active through ${end.toLocaleDateString()}`;
+    }
+  }
+  if (record.rei_hours || record.phi_days) {
+    return "REI / PHI window clear — always verify against the product label.";
+  }
+  return "Add REI and PHI from the label to see live countdowns.";
 }
 
 function TextField({

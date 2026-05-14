@@ -32,6 +32,8 @@ export type VerdictForecastDay = {
   max_temp_c?: number;
   precip_mm?: number;
   rain_mm?: number;
+  /** Matches backend directive `_rain_mm` keys when present. */
+  rain_next_24h_mm?: number;
 };
 
 export type Verdict = {
@@ -303,12 +305,14 @@ export function VerdictCard({
           audit {verdict.audit_hash.slice(7, 15)}…
         </span>
         <div className="flex items-center gap-3">
-          {verdict.action === "spray" && (
+          {(verdict.action === "spray" ||
+            verdict.action === "scout" ||
+            verdict.action === "hold") && (
             <Link
               href={`/spray/spray-records?block=${verdict.block}&verdict=${verdict.id}&target=${dominantTarget(directive?.primary_risk)}`}
               className="text-amber transition-colors hover:text-amber/80"
             >
-              record spray
+              {verdict.action === "spray" ? "record spray" : "open spray log"}
             </Link>
           )}
           {orgId && verdict.block && (

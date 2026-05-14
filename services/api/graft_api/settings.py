@@ -12,6 +12,13 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 load_dotenv(BASE_DIR / ".env")
+# Local monorepo dev: Next reads `apps/web/.env.local`; Django does not unless
+# we load it here. `override=False` keeps `services/api/.env` as the source of
+# truth when the same key exists in both files.
+_monorepo_root = BASE_DIR.parent.parent
+_web_env_local = _monorepo_root / "apps" / "web" / ".env.local"
+if _web_env_local.is_file():
+    load_dotenv(_web_env_local, override=False)
 
 
 def _env_list(name: str, default: str = "") -> list[str]:
@@ -44,6 +51,7 @@ CSRF_TRUSTED_ORIGINS = _env_list("CSRF_TRUSTED_ORIGINS", "")
 
 
 INSTALLED_APPS = [
+    "jazzmin",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -81,6 +89,11 @@ CLERK_SECRET_KEY = os.environ.get("CLERK_SECRET_KEY", "")
 CLERK_WEBHOOK_SIGNING_SECRET = os.environ.get("CLERK_WEBHOOK_SIGNING_SECRET", "")
 CLERK_FRONTEND_API = os.environ.get("CLERK_FRONTEND_API", "")
 CLERK_JWKS_URL = os.environ.get("CLERK_JWKS_URL", "")
+# When True, a verified Clerk JWT can create a local User if the Clerk webhook
+# has not run yet (typical local dev without ngrok). Requires an `email` claim
+# in the session JWT (Clerk → Configure → Sessions → Customize session token).
+# Default off so production and tests stay webhook-authoritative unless enabled.
+CLERK_JIT_USER_PROVISIONING = _env_bool("CLERK_JIT_USER_PROVISIONING", False)
 
 # M0-06: Visual Crossing weather provider. Free tier covers M0; the
 # adapter raises ProviderAuthError if unset, which the worker logs and
@@ -218,6 +231,31 @@ STORAGES = {
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# django-jazzmin — https://django-jazzmin.readthedocs.io/
+JAZZMIN_SETTINGS = {
+    "site_title": "Graft API Admin",
+    "site_header": "Graft Systems",
+    "site_brand": "Graft",
+    "welcome_sign": "Staff admin — Spray, predictions, and marketing data",
+    "copyright": "Graft Systems",
+    "search_model": ["spray.User", "spray.Org", "api.ContactSubmission"],
+    "show_sidebar": True,
+    "navigation_expanded": False,
+    "hide_apps": [],
+    "hide_models": [],
+    "order_with_respect_to": ["spray", "api", "auth", "contenttypes"],
+}
+
+JAZZMIN_UI_TWEAKS = {
+    "theme": "flatly",
+    "dark_mode_theme": "darkly",
+    "navbar_small_text": False,
+    "footer_small_text": True,
+    "body_small_text": False,
+    "brand_small_text": False,
+    "accent": "accent-primary",
+}
 
 
 # CORS — allow the frontend origin(s) to call this API.

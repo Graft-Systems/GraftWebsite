@@ -10,6 +10,7 @@
  */
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -21,8 +22,10 @@ import {
   Cable,
   Settings as SettingsIcon,
 } from "lucide-react";
-import { UserButton } from "@clerk/nextjs";
+import { UserButton, useAuth } from "@clerk/nextjs";
 import { OrgSwitcher } from "@/components/spray/OrgSwitcher";
+import { CreateSprayOrgForm } from "@/components/spray/CreateSprayOrgForm";
+import { useActiveOrg } from "@/lib/sprayApi";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -37,6 +40,65 @@ const NAV = [
 
 export function SprayShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { isSignedIn } = useAuth();
+  const { org, loading, error, needsOrg, reload, authedFetch } = useActiveOrg();
+
+  const skipOrgGate =
+    pathname === "/spray/onboarding" ||
+    pathname?.startsWith("/spray/onboarding/");
+
+  let mainBody: ReactNode = children;
+  if (isSignedIn && !skipOrgGate) {
+    if (loading) {
+      mainBody = (
+        <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-center">
+          <p className="text-sm text-foreground/60">Loading your Spray workspace…</p>
+        </div>
+      );
+    } else if (error) {
+      mainBody = (
+        <div className="mx-auto max-w-lg rounded-lg border border-red-500/30 bg-red-500/5 p-6 md:p-8">
+          <h1 className="font-display text-2xl text-red-100">Spray is unavailable</h1>
+          <p className="mt-3 text-sm text-foreground/70 whitespace-pre-wrap">{error}</p>
+          <button
+            type="button"
+            onClick={() => void reload()}
+            className="mt-6 rounded-md bg-amber px-4 py-2 frame text-xs font-semibold text-background hover:bg-amber/90"
+          >
+            Try again
+          </button>
+          <p className="mt-4 text-xs text-foreground/50">
+            If you just created your profile, the API may still be syncing. Wait a few
+            seconds and retry, or open{" "}
+            <Link href="/spray/onboarding" className="text-amber hover:underline">
+              onboarding
+            </Link>
+            .
+          </p>
+        </div>
+      );
+    } else if (needsOrg && !org) {
+      mainBody = (
+        <div className="mx-auto max-w-lg rounded-lg border border-amber/40 bg-background/60 p-6 md:p-8">
+          <p className="frame text-xs font-semibold uppercase tracking-wider text-amber">
+            Organization required
+          </p>
+          <h1 className="mt-2 font-display text-2xl">Create your winery workspace</h1>
+          <p className="mt-3 text-sm text-foreground/70">
+            Your account is active, but you are not in a Spray organization yet. Without
+            one, vineyard and sensor data cannot load and the API will return errors. Create
+            an organization below (same as onboarding), then continue to the dashboard.
+          </p>
+          <div className="mt-8">
+            <CreateSprayOrgForm
+              authedFetch={authedFetch}
+              onCreated={() => void reload()}
+            />
+          </div>
+        </div>
+      );
+    }
+  }
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">
@@ -108,7 +170,7 @@ export function SprayShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
+        <main className="flex-1 overflow-auto p-4 md:p-6">{mainBody}</main>
       </div>
       <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-border/40 bg-background/95 px-2 py-2 backdrop-blur md:hidden">
         {NAV.filter((item) =>

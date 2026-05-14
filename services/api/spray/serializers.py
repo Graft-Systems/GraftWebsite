@@ -223,6 +223,10 @@ class CaptureSerializer(serializers.ModelSerializer):
 
     download_url = serializers.SerializerMethodField()
     block_id = serializers.UUIDField(source="block.id", read_only=True)
+    block_name = serializers.CharField(source="block.name", read_only=True)
+    vineyard_name = serializers.CharField(
+        source="block.vineyard.name", read_only=True
+    )
 
     def get_download_url(self, obj):
         from spray.models import Capture as _Capture
@@ -242,6 +246,8 @@ class CaptureSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "block_id",
+            "block_name",
+            "vineyard_name",
             "kind",
             "size_bytes",
             "mime_type",
