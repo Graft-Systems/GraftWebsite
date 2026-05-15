@@ -2611,6 +2611,169 @@ class PesslOAuthCallbackView(APIView):
         )
 
 
+def _resolve_org_weather_feed_station(org):
+    """Org-owned virtual station, else regional default for the org's AVA."""
+    from spray.models import WeatherStation
+
+    org_station = WeatherStation.objects.filter(org_id=org.id).first()
+    if org_station:
+        return org_station
+    return WeatherStation.objects.filter(
+        is_regional_default=True,
+        region=org.region,
+        provider="visual_crossing",
+    ).first()
+
+
+def _cached_weather_current(station):
+    """Most recent stored observation (fallback when live fetch fails)."""
+    from datetime import timedelta
+
+    from spray.models import WeatherObservation
+
+    obs = (
+        WeatherObservation.objects.filter(
+            station=station,
+            is_forecast=False,
+            temp_c__isnull=False,
+            ts__gte=timezone.now() - timedelta(hours=6),
+        )
+        .order_by("-ts")
+        .first()
+    )
+    if not obs:
+        return None
+    temp_c = float(obs.temp_c)
+    rh_pct = float(obs.rh_pct) if obs.rh_pct is not None else None
+    return {
+        "temp_c": round(temp_c, 1),
+        "temp_f": round(temp_c * 9.0 / 5.0 + 32.0, 1),
+        "rh_pct": round(rh_pct, 1) if rh_pct is not None else None,
+        "observed_at": obs.ts.isoformat(),
+        "source": "cached",
+    }
+
+
+def _weather_station_get_payload(org):
+    from spray.providers.visual_crossing import fetch_current_conditions
+    from spray.serializers import WeatherStationSerializer
+
+    from spray.models import WeatherStation
+
+    org_station = WeatherStation.objects.filter(org_id=org.id).first()
+    feed_station = _resolve_org_weather_feed_station(org)
+
+    results = (
+        [WeatherStationSerializer(org_station).data] if org_station else []
+    )
+
+    current = {
+        "available": False,
+        "temp_c": None,
+        "temp_f": None,
+        "rh_pct": None,
+        "observed_at": None,
+        "source": None,
+        "detail": None,
+    }
+    feed = None
+
+    if feed_station:
+        lon, lat = feed_station.location.x, feed_station.location.y
+        feed = {
+            "name": feed_station.name,
+            "coordinates": [lon, lat],
+            "provider": feed_station.provider,
+            "is_regional_default": bool(
+                feed_station.is_regional_default and not org_station
+            ),
+        }
+        live, err = fetch_current_conditions(lat, lon)
+        if live:
+            current = {**current, **live, "available": True}
+        else:
+            cached = _cached_weather_current(feed_station)
+            if cached:
+                current = {**current, **cached, "available": True}
+                current["detail"] = err
+            else:
+                current["detail"] = err or "No recent weather data."
+    else:
+        current["detail"] = "No weather feed configured for this region."
+
+    return {"results": results, "feed": feed, "current": current}
+
+
+class OrgWeatherStationView(APIView):
+    """GET/POST /api/spray/orgs/<org_id>/weather-station
+    Manage the organization's virtual (gridded) weather station.
+    """
+
+    permission_classes = [IsOrgMember]
+
+    def get(self, request, org_id):
+        from spray.models import Org
+
+        set_current_org_id(str(org_id))
+        org = get_object_or_404(Org, id=org_id)
+        return Response(_weather_station_get_payload(org))
+
+    @transaction.atomic
+    def post(self, request, org_id):
+        from spray.models import WeatherStation, Membership, Org
+        from spray.serializers import WeatherStationSerializer
+
+        org = get_object_or_404(Org, id=org_id)
+        if not request.user.memberships.filter(
+            org_id=org_id,
+            role__in=[Membership.Role.OWNER, Membership.Role.ADMIN],
+        ).exists():
+            return Response(
+                {"detail": "Only admins can set the weather location."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        set_current_org_id(str(org_id))
+        existing = WeatherStation.objects.filter(org_id=org_id).first()
+        serializer = (
+            WeatherStationSerializer(existing, data=request.data)
+            if existing
+            else WeatherStationSerializer(data=request.data)
+        )
+        serializer.is_valid(raise_exception=True)
+
+        validated = serializer.validated_data
+        if existing:
+            existing.provider = validated["provider"]
+            existing.station_id = validated["station_id"]
+            existing.name = validated.get("name", "")
+            existing.location = validated["location"]
+            existing.region = org.region
+            existing.settings = validated.get("settings", {})
+            existing.save(
+                update_fields=[
+                    "provider",
+                    "station_id",
+                    "name",
+                    "location",
+                    "region",
+                    "settings",
+                ]
+            )
+            station = existing
+        else:
+            station = WeatherStation.objects.create(
+                org_id=org_id,
+                provider=validated["provider"],
+                station_id=validated["station_id"],
+                name=validated.get("name", ""),
+                location=validated["location"],
+                region=org.region,
+                settings=validated.get("settings", {}),
+            )
+        return Response(WeatherStationSerializer(station).data)
+
+
 class IntegrationStationListView(APIView):
     """GET /api/spray/orgs/<org_id>/integrations/<conn_id>/stations
     Live-fetches the vendor's stations + upserts SensorStation rows.

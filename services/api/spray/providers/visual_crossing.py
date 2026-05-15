@@ -194,6 +194,99 @@ class VisualCrossingProvider:
             return ProviderHealth(ok=False, detail=str(e))
 
 
+def _temp_c_to_f(temp_c: float) -> float:
+    return round(temp_c * 9.0 / 5.0 + 32.0, 1)
+
+
+def _current_conditions_from_payload(
+    payload: dict[str, Any], *, now: datetime
+) -> tuple[datetime | None, dict[str, Any] | None]:
+    """Pick current (not forecast) conditions from a Timeline response."""
+    current = payload.get("currentConditions")
+    if isinstance(current, dict) and current.get("temp") is not None:
+        epoch = current.get("datetimeEpoch")
+        if epoch is not None:
+            ts = datetime.fromtimestamp(int(epoch), tz=dt_tz.utc)
+        else:
+            ts = now
+        if ts <= now + timedelta(minutes=5):
+            return ts, current
+
+    latest_ts: datetime | None = None
+    latest_hour: dict[str, Any] | None = None
+    for ts, hour in _iter_hours(payload):
+        # Timeline "hours" for today include the rest of the day as forecast.
+        if ts > now:
+            continue
+        if latest_ts is None or ts > latest_ts:
+            latest_ts = ts
+            latest_hour = hour
+    return latest_ts, latest_hour
+
+
+def _reading_dict(ts: datetime, hour: dict[str, Any]) -> dict[str, Any]:
+    temp = hour.get("temp")
+    if temp is None:
+        raise ValueError("no temperature")
+    temp_c = float(temp)
+    rh = hour.get("humidity")
+    try:
+        rh_pct = float(rh) if rh is not None else None
+    except (TypeError, ValueError):
+        rh_pct = None
+    return {
+        "temp_c": round(temp_c, 1),
+        "temp_f": _temp_c_to_f(temp_c),
+        "rh_pct": round(rh_pct, 1) if rh_pct is not None else None,
+        "observed_at": ts.isoformat(),
+        "source": "live",
+    }
+
+
+def fetch_current_conditions(
+    lat: float, lon: float
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Return current conditions from Visual Crossing (not end-of-day forecast).
+
+    Used for lightweight "is the feed working?" checks on Integrations.
+    Prefers the API ``currentConditions`` object; otherwise the latest
+    hourly row at or before now (UTC).
+    """
+    try:
+        key = _api_key()
+    except ProviderAuthError as exc:
+        return None, str(exc)
+
+    now = datetime.now(tz=dt_tz.utc)
+    today = now.date()
+    url = TIMELINE_URL.format(
+        lat=lat, lon=lon, start=today.isoformat(), end=today.isoformat()
+    )
+    try:
+        payload = _request(
+            url,
+            {
+                "key": key,
+                "unitGroup": "metric",
+                "include": "current,hours",
+                "elements": "datetimeEpoch,temp,humidity",
+            },
+        )
+    except ProviderAuthError as exc:
+        return None, str(exc)
+    except (ProviderResponseError, ProviderRateLimitError) as exc:
+        return None, str(exc)
+
+    ts, hour = _current_conditions_from_payload(payload, now=now)
+    if ts is None or hour is None:
+        return None, "No current or past hourly observations for today."
+
+    try:
+        return _reading_dict(ts, hour), None
+    except (TypeError, ValueError):
+        return None, "Current observation temperature is invalid."
+
+
 def fetch_daily_weather_window(
     lat: float, lon: float, start: date, end: date
 ) -> tuple[list[dict[str, Any]], str | None]:

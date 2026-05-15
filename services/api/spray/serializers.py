@@ -22,6 +22,7 @@ from spray.models import (
     SprayRecord,
     User,
     Vineyard,
+    WeatherStation,
 )
 
 
@@ -471,3 +472,26 @@ class SensorStationSerializer(serializers.ModelSerializer):
 
     def get_linked_block_ids(self, obj) -> list[str]:
         return [str(b.id) for b in obj.linked_blocks.all()]
+
+
+class WeatherStationSerializer(serializers.ModelSerializer):
+    """Weather data source (physical or gridded)."""
+
+    location = GeometryField(required=True)
+
+    class Meta:
+        model = WeatherStation
+        fields = [
+            "id",
+            "org",
+            "provider",
+            "station_id",
+            "name",
+            "location",
+            "is_regional_default",
+            "region",
+            "settings",
+            "created_at",
+            "last_pull_at",
+        ]
+        read_only_fields = ["id", "org", "created_at", "last_pull_at"]

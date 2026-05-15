@@ -162,6 +162,10 @@ urlpatterns = [
         views.BlockVerdictAuditPdfView.as_view(),
         name="block_verdict_audit_pdf",
     ),
+    path(
+        "orgs/<uuid:org_id>/weather-station",
+        views.OrgWeatherStationView.as_view(),
+    ),
     # M1.5 PR-D: Sensor connector integrations (Pessl FieldClimate).
     path(
         "orgs/<uuid:org_id>/integrations",

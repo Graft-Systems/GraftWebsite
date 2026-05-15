@@ -365,3 +365,160 @@ def test_station_pull_readings_inactive_returns_400(
         format="json",
     )
     assert resp.status_code == 400
+
+
+# --- Weather Station Endpoints ---
+
+def test_get_empty_weather_station(auth_client, make_org, make_membership):
+    client, _, org = _setup_admin(auth_client, make_org, make_membership)
+    r = client.get(f"/api/spray/orgs/{org.id}/weather-station")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["results"] == []
+    assert "current" in data
+    assert "feed" in data
+
+
+@override_settings(VISUAL_CROSSING_API_KEY="test-key")
+@responses.activate
+def test_get_weather_station_includes_live_current(
+    auth_client, make_org, make_membership
+):
+    import responses as responses_lib
+
+    from spray.models import WeatherStation
+
+    client, _, org = _setup_admin(auth_client, make_org, make_membership)
+    WeatherStation.objects.create(
+        org=org,
+        provider="visual_crossing",
+        station_id="vc-virtual-test",
+        name="Napa County",
+        location=Point(-122.3218, 38.4899),
+        region=org.region,
+    )
+    responses_lib.add(
+        responses_lib.GET,
+        responses_lib.matchers.re.compile(r"https://weather\.visualcrossing\.com/.*"),
+        json={
+            "days": [
+                {
+                    "hours": [
+                        {
+                            "datetimeEpoch": 1714824000,
+                            "temp": 22.0,
+                            "humidity": 55,
+                        }
+                    ]
+                }
+            ]
+        },
+        status=200,
+    )
+    r = client.get(f"/api/spray/orgs/{org.id}/weather-station")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["current"]["available"] is True
+    assert data["current"]["temp_c"] == 22.0
+    assert data["current"]["temp_f"] == 71.6
+
+
+def test_post_weather_station_admin(auth_client, make_org, make_membership):
+    from spray.models import WeatherStation
+    client, _, org = _setup_admin(auth_client, make_org, make_membership)
+    payload = {
+        "provider": "visual_crossing",
+        "station_id": "test-station",
+        "name": "My Vineyard",
+        "location": {"type": "Point", "coordinates": [-122.3, 38.3]},
+    }
+    r = client.post(
+        f"/api/spray/orgs/{org.id}/weather-station",
+        payload,
+        format="json",
+    )
+    assert r.status_code == 200
+    assert r.json()["name"] == "My Vineyard"
+    assert WeatherStation.objects.filter(org=org).count() == 1
+    station = WeatherStation.objects.get(org=org)
+    assert station.region == org.region
+    assert station.location.x == -122.3
+    assert station.location.y == 38.3
+
+
+def test_post_weather_station_member_denied(auth_client, make_org, make_membership):
+    client, user = auth_client()
+    org = make_org()
+    make_membership(user=user, org=org, role=Membership.Role.MEMBER)
+    payload = {
+        "provider": "visual_crossing",
+        "station_id": "test-station",
+        "name": "My Vineyard",
+        "location": {"type": "Point", "coordinates": [-122.3, 38.3]},
+    }
+    r = client.post(
+        f"/api/spray/orgs/{org.id}/weather-station",
+        payload,
+        format="json",
+    )
+    assert r.status_code == 403
+
+
+def test_update_existing_weather_station(auth_client, make_org, make_membership):
+    from spray.models import WeatherStation
+    client, _, org = _setup_admin(auth_client, make_org, make_membership)
+    WeatherStation.objects.create(
+        org=org,
+        provider="visual_crossing",
+        station_id="old-id",
+        name="Old Name",
+        location=Point(-122.0, 38.0),
+    )
+
+    payload = {
+        "provider": "visual_crossing",
+        "station_id": "new-id",
+        "name": "New Name",
+        "location": {"type": "Point", "coordinates": [-122.5, 38.5]},
+    }
+    r = client.post(
+        f"/api/spray/orgs/{org.id}/weather-station",
+        payload,
+        format="json",
+    )
+    assert r.status_code == 200
+    assert r.json()["name"] == "New Name"
+    assert WeatherStation.objects.filter(org=org).count() == 1
+    station = WeatherStation.objects.get(org=org)
+    assert station.station_id == "new-id"
+    assert station.location.x == -122.5
+
+
+def test_update_weather_station_same_station_id(auth_client, make_org, make_membership):
+    """Regression: re-saving location must not 400 on unique (provider, station_id)."""
+    from spray.models import WeatherStation
+
+    client, _, org = _setup_admin(auth_client, make_org, make_membership)
+    station_id = f"vc-virtual-{org.id}"
+    WeatherStation.objects.create(
+        org=org,
+        provider="visual_crossing",
+        station_id=station_id,
+        name="Napa County",
+        location=Point(-122.3218, 38.4899),
+    )
+    payload = {
+        "provider": "visual_crossing",
+        "station_id": station_id,
+        "name": "Napa County",
+        "location": {"type": "Point", "coordinates": [-82.797325, 42.674968]},
+    }
+    r = client.post(
+        f"/api/spray/orgs/{org.id}/weather-station",
+        payload,
+        format="json",
+    )
+    assert r.status_code == 200
+    station = WeatherStation.objects.get(org=org)
+    assert station.location.x == pytest.approx(-82.797325, rel=1e-5)
+    assert station.location.y == pytest.approx(42.674968, rel=1e-5)
