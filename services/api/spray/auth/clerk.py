@@ -77,6 +77,85 @@ def _fetch_jwks(force: bool = False) -> list[dict[str, Any]]:
     return keys
 
 
+def _email_from_jwt_payload(payload: dict[str, Any]) -> str:
+    """Extract email from common Clerk session-token claim names."""
+    direct = (
+        payload.get("email")
+        or payload.get("primaryEmail")
+        or payload.get("primary_email")
+    )
+    if isinstance(direct, str) and direct.strip():
+        return direct.strip()
+    return ""
+
+
+def _name_from_jwt_payload(payload: dict[str, Any]) -> str:
+    direct = (
+        payload.get("name")
+        or payload.get("fullName")
+        or payload.get("full_name")
+    )
+    if isinstance(direct, str):
+        return direct.strip()[:200]
+    first = payload.get("first_name") or payload.get("firstName") or ""
+    last = payload.get("last_name") or payload.get("lastName") or ""
+    if isinstance(first, str) or isinstance(last, str):
+        combined = f"{str(first).strip()} {str(last).strip()}".strip()
+        return combined[:200]
+    return ""
+
+
+def _email_from_clerk_user_api(data: dict[str, Any]) -> str:
+    """Mirror webhook primary-email resolution for REST user payloads."""
+    emails = data.get("email_addresses") or []
+    primary_id = data.get("primary_email_address_id")
+    if primary_id:
+        for entry in emails:
+            if entry.get("id") == primary_id:
+                addr = entry.get("email_address", "") or ""
+                if addr:
+                    return addr
+    if emails:
+        return emails[0].get("email_address", "") or ""
+    return ""
+
+
+def _name_from_clerk_user_api(data: dict[str, Any]) -> str:
+    first = (data.get("first_name") or "").strip()
+    last = (data.get("last_name") or "").strip()
+    combined = f"{first} {last}".strip()
+    if combined:
+        return combined[:200]
+    return (data.get("username") or "").strip()[:200]
+
+
+def _fetch_clerk_user_profile(clerk_user_id: str) -> tuple[str, str]:
+    """Load email/name from Clerk Backend API when the session JWT omits them."""
+    secret = getattr(settings, "CLERK_SECRET_KEY", "").strip()
+    if not secret:
+        return "", ""
+
+    url = f"https://api.clerk.com/v1/users/{clerk_user_id}"
+    req = Request(
+        url,
+        headers={
+            "Authorization": f"Bearer {secret}",
+            "Accept": "application/json",
+            "User-Agent": "graft-spray/1.0",
+        },
+    )
+    try:
+        with urlopen(req, timeout=_HTTP_TIMEOUT_SECONDS) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except (URLError, json.JSONDecodeError, TimeoutError) as e:
+        logger.warning("Clerk user API lookup failed for %s: %s", clerk_user_id, e)
+        return "", ""
+
+    if not isinstance(data, dict):
+        return "", ""
+    return _email_from_clerk_user_api(data), _name_from_clerk_user_api(data)
+
+
 def _find_jwk(kid: str, *, allow_refresh: bool = True) -> dict[str, Any]:
     keys = _fetch_jwks()
     match = next((k for k in keys if k.get("kid") == kid), None)
@@ -160,21 +239,20 @@ class ClerkJWTAuthentication(authentication.BaseAuthentication):
                     "local dev (session JWT must include email: use `email` or "
                     "`primaryEmail` claim)."
                 ) from None
-            email = (
-                (payload.get("email") or payload.get("primaryEmail") or "")
-            ).strip()
+            email = _email_from_jwt_payload(payload)
+            name = _name_from_jwt_payload(payload)
+            if not email:
+                email, api_name = _fetch_clerk_user_profile(clerk_user_id)
+                if api_name and not name:
+                    name = api_name
             if not email:
                 raise exceptions.AuthenticationFailed(
                     "user not yet synced: JWT has no email claim. "
-                    "In Clerk → Sessions → Customize session token, add claims "
-                    "such as email (or primaryEmail) and name (or fullName), "
-                    "or deliver user.created via the Clerk webhook."
+                    "Set CLERK_SECRET_KEY in services/api/.env (or apps/web/.env.local) "
+                    "so the API can load your profile from Clerk, or add email to the "
+                    "session token (Clerk → Sessions → Customize session token), or "
+                    "deliver user.created via the Clerk webhook."
                 ) from None
-            name = (
-                (payload.get("name") or payload.get("fullName") or "")
-            ).strip()
-            if len(name) > 200:
-                name = name[:200]
             with transaction.atomic():
                 user, created = User.objects.update_or_create(
                     clerk_user_id=clerk_user_id,

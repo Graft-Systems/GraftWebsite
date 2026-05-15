@@ -85,6 +85,7 @@ def test_jit_provisions_user_when_enabled(mock_jwks, rsa_keypair, settings):
 
 def test_jit_requires_email_claim(mock_jwks, rsa_keypair, settings):
     settings.CLERK_JIT_USER_PROVISIONING = True
+    settings.CLERK_SECRET_KEY = ""
     sub = "user_jit_no_email"
     now = int(time.time())
     payload = {"sub": sub, "iat": now, "exp": now + 3600}
@@ -98,6 +99,36 @@ def test_jit_requires_email_claim(mock_jwks, rsa_keypair, settings):
     with pytest.raises(AuthenticationFailed) as excinfo:
         auth.authenticate(_request_with(token))
     assert "email" in str(excinfo.value).lower()
+
+
+def test_jit_fetches_email_from_clerk_api_when_missing_in_jwt(
+    mock_jwks, rsa_keypair, settings, monkeypatch
+):
+    from spray.auth import clerk as clerk_auth
+    from spray.models import User
+
+    settings.CLERK_JIT_USER_PROVISIONING = True
+    settings.CLERK_SECRET_KEY = "sk_test_fake"
+
+    def fake_fetch(clerk_user_id: str):
+        assert clerk_user_id == "user_jit_api_lookup"
+        return "api-user@example.com", "API User"
+
+    monkeypatch.setattr(clerk_auth, "_fetch_clerk_user_profile", fake_fetch)
+
+    sub = "user_jit_api_lookup"
+    now = int(time.time())
+    payload = {"sub": sub, "iat": now, "exp": now + 3600}
+    token = jwt.encode(
+        payload,
+        rsa_keypair["private_pem"],
+        algorithm="RS256",
+        headers={"kid": rsa_keypair["kid"]},
+    )
+    auth = ClerkJWTAuthentication()
+    resolved, _ = auth.authenticate(_request_with(token))
+    assert resolved.email == "api-user@example.com"
+    assert User.objects.get(clerk_user_id=sub).name == "API User"
 
 
 def test_deleted_user_rejected(mock_jwks, make_token, make_user):
