@@ -8,7 +8,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import { CreateVineyardDialog } from "@/components/spray/CreateVineyardDialog";
 import { formatSprayHttpError, orgCanArchiveVineyards, useActiveOrg } from "@/lib/sprayApi";
 
@@ -69,35 +70,45 @@ function formatBlockCount(n: number | undefined) {
 }
 
 export default function VineyardsPage() {
+  const pathname = usePathname();
   const { org, loading: orgLoading, authedFetch } = useActiveOrg();
   const [vineyards, setVineyards] = useState<Vineyard[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  useEffect(() => {
+  const reloadVineyards = useCallback(async () => {
     if (!org) {
       setVineyards([]);
       return;
     }
-    const orgId = org.id;
-    let cancelled = false;
     setVineyards(null);
-    async function load() {
-      try {
-        const vRes = await authedFetch(`/api/spray/orgs/${orgId}/vineyards`);
-        if (!vRes.ok) throw new Error(`vineyards ${vRes.status}`);
-        const list = (await vRes.json()) as Vineyard[];
-        if (!cancelled) setVineyards(list);
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "load failed");
-      }
+    setError(null);
+    try {
+      const vRes = await authedFetch(`/api/spray/orgs/${org.id}/vineyards`);
+      if (!vRes.ok) throw new Error(`vineyards ${vRes.status}`);
+      const list = (await vRes.json()) as Vineyard[];
+      setVineyards(list);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "load failed");
     }
-    void load();
-    return () => {
-      cancelled = true;
-    };
   }, [authedFetch, org]);
+
+  // Refetch when landing on this page (including back from a vineyard detail).
+  useEffect(() => {
+    if (pathname !== "/spray/vineyards") return;
+    void reloadVineyards();
+  }, [pathname, reloadVineyards]);
+
+  // Refresh block counts when returning to the tab.
+  useEffect(() => {
+    if (pathname !== "/spray/vineyards") return;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void reloadVineyards();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [pathname, reloadVineyards]);
 
   async function handleCreate(name: string, region: string) {
     if (!org) return;

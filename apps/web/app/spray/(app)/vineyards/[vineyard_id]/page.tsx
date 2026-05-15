@@ -104,8 +104,8 @@ export default function VineyardDetailPage() {
       body: JSON.stringify({ append_geom: geom }),
     });
     if (!res.ok) {
-      setError(`extend block footprint ${res.status}`);
-      return;
+      setError(await formatSprayHttpError(res));
+      throw new Error("block extend failed");
     }
     const updated = (await res.json()) as Block;
     setBlocks((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
@@ -129,12 +129,19 @@ export default function VineyardDetailPage() {
       },
     );
     if (!res.ok) {
-      setError(`create block ${res.status}`);
-      return;
+      setError(await formatSprayHttpError(res));
+      throw new Error("block create failed");
     }
     const created = (await res.json()) as Block;
     setBlocks((prev) => [...prev, created]);
     setEditable(false);
+
+    const [vRes, bRes] = await Promise.all([
+      authedFetch(`/api/spray/orgs/${org.id}/vineyards/${vineyardId}`),
+      authedFetch(`/api/spray/orgs/${org.id}/vineyards/${vineyardId}/blocks`),
+    ]);
+    if (vRes.ok) setVineyard((await vRes.json()) as Vineyard);
+    if (bRes.ok) setBlocks((await bRes.json()) as Block[]);
   }
 
   async function patchBlock(blockId: string, patch: Partial<Block>) {

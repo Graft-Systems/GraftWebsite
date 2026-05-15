@@ -1,8 +1,13 @@
 "use client";
 
-import Image from "next/image";
-import { useEffect, useMemo, useRef, useState } from "react";
-import vineyardHeroImage from "./assets/tool-hero.png";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 type ResultItem = {
   filename: string;
@@ -29,43 +34,53 @@ type PredictionHistoryBatch = {
 
 type Stage = "idle" | "uploading" | "results" | "error";
 const ACTIVE_BATCH_STORAGE_KEY = "tool.activeBatchId";
-const SHOW_TOOL_ANALYTICS = false;
-
+/** Browser calls use same-origin paths proxied by Next.js (see next.config.mjs). */
 function getEstimateEndpoint() {
-  const configuredBase = process.env.NEXT_PUBLIC_BACKEND_URL?.trim();
-  if (configuredBase) {
-    return `${configuredBase.replace(/\/+$/, "")}/api/estimate`;
+  if (typeof window !== "undefined") {
+    return "/api/estimate";
   }
-  if (typeof window !== "undefined" && window.location.hostname === "localhost") {
-    return "http://127.0.0.1:8080/api/estimate";
-  }
-  return "/api/estimate";
+  const serverBase =
+    process.env.BACKEND_URL?.trim() ??
+    process.env.NEXT_PUBLIC_BACKEND_URL?.trim() ??
+    "http://127.0.0.1:8080";
+  return `${serverBase.replace(/\/+$/, "")}/api/estimate`;
 }
 
 function getEstimateHistoryEndpoint() {
-  const configuredBase = process.env.NEXT_PUBLIC_BACKEND_URL?.trim();
-  if (configuredBase) {
-    return `${configuredBase.replace(/\/+$/, "")}/api/estimate/history`;
+  if (typeof window !== "undefined") {
+    return "/api/estimate/history";
   }
-  if (typeof window !== "undefined" && window.location.hostname === "localhost") {
-    return "http://127.0.0.1:8080/api/estimate/history";
-  }
-  return "/api/estimate/history";
+  const serverBase =
+    process.env.BACKEND_URL?.trim() ??
+    process.env.NEXT_PUBLIC_BACKEND_URL?.trim() ??
+    "http://127.0.0.1:8080";
+  return `${serverBase.replace(/\/+$/, "")}/api/estimate/history`;
 }
 
 function getBackendBaseUrl() {
-  const configuredBase = process.env.NEXT_PUBLIC_BACKEND_URL?.trim();
-  if (configuredBase) {
-    return configuredBase.replace(/\/+$/, "");
+  if (typeof window !== "undefined") {
+    return "";
   }
-  if (typeof window !== "undefined" && window.location.hostname === "localhost") {
-    return "http://127.0.0.1:8080";
-  }
-  return "";
+  const serverBase =
+    process.env.BACKEND_URL?.trim() ??
+    process.env.NEXT_PUBLIC_BACKEND_URL?.trim() ??
+    "http://127.0.0.1:8080";
+  return serverBase.replace(/\/+$/, "");
 }
 
 function resolveImageUrl(imageUrl?: string) {
   if (!imageUrl) return "";
+  if (typeof window !== "undefined") {
+    try {
+      const parsed = new URL(imageUrl, window.location.origin);
+      if (parsed.pathname.startsWith("/media/")) {
+        return `${parsed.pathname}${parsed.search}`;
+      }
+    } catch {
+      /* keep relative paths as-is */
+    }
+    if (imageUrl.startsWith("/")) return imageUrl;
+  }
   if (/^https?:\/\//i.test(imageUrl)) return imageUrl;
   if (!imageUrl.startsWith("/")) return imageUrl;
   const base = getBackendBaseUrl();
@@ -84,7 +99,57 @@ function getBatchTotal(batch: PredictionHistoryBatch) {
   return { weight: fallbackWeight, unit: fallbackUnit };
 }
 
-export function ToolBasic() {
+type ToolContextValue = {
+  stage: Stage;
+  results: ResultItem[];
+  error: string | null;
+  uploadSummary: string;
+  showFilters: boolean;
+  setShowFilters: React.Dispatch<React.SetStateAction<boolean>>;
+  modelEngine: string;
+  setModelEngine: React.Dispatch<React.SetStateAction<string>>;
+  label: string;
+  setLabel: React.Dispatch<React.SetStateAction<string>>;
+  species: string;
+  setSpecies: React.Dispatch<React.SetStateAction<string>>;
+  berryCount: string;
+  setBerryCount: React.Dispatch<React.SetStateAction<string>>;
+  heightCm: string;
+  setHeightCm: React.Dispatch<React.SetStateAction<string>>;
+  tempF: string;
+  setTempF: React.Dispatch<React.SetStateAction<string>>;
+  rainIn: string;
+  setRainIn: React.Dispatch<React.SetStateAction<string>>;
+  soilPct: string;
+  setSoilPct: React.Dispatch<React.SetStateAction<string>>;
+  metadataJson: string;
+  setMetadataJson: React.Dispatch<React.SetStateAction<string>>;
+  historyBatches: PredictionHistoryBatch[];
+  historyLoading: boolean;
+  historyError: string | null;
+  activeBatchId: number | null;
+  deletingBatchId: number | null;
+  expandedBatch: PredictionHistoryBatch | null;
+  setExpandedBatch: React.Dispatch<React.SetStateAction<PredictionHistoryBatch | null>>;
+  inputRef: React.RefObject<HTMLInputElement>;
+  handleFiles: (files: File[]) => Promise<void>;
+  deleteBatch: (batchId: number) => Promise<void>;
+  onDrop: (e: React.DragEvent) => void;
+  reset: () => void;
+  loadHistory: () => Promise<void>;
+};
+
+const ToolContext = createContext<ToolContextValue | null>(null);
+
+function useTool() {
+  const ctx = useContext(ToolContext);
+  if (!ctx) {
+    throw new Error("Tool components must be used within ToolPageProvider");
+  }
+  return ctx;
+}
+
+export function ToolPageProvider({ children }: { children: ReactNode }) {
   const [stage, setStage] = useState<Stage>("idle");
   const [results, setResults] = useState<ResultItem[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -120,7 +185,13 @@ export function ToolBasic() {
       const body = (await response.json()) as { batches?: PredictionHistoryBatch[] };
       setHistoryBatches(body.batches ?? []);
     } catch (err) {
-      setHistoryError(err instanceof Error ? err.message : "Could not load saved history.");
+      const message =
+        err instanceof TypeError && /fetch/i.test(err.message)
+          ? "Could not reach the API. Check that the backend is running (make dev)."
+          : err instanceof Error
+            ? err.message
+            : "Could not load saved history.";
+      setHistoryError(message);
     } finally {
       setHistoryLoading(false);
     }
@@ -259,201 +330,66 @@ export function ToolBasic() {
     window.localStorage.removeItem(ACTIVE_BATCH_STORAGE_KEY);
   }
 
-  const avgPrediction = useMemo(() => {
-    if (!results.length) return null;
-    const total = results.reduce((sum, item) => sum + item.prediction_weight, 0);
-    return total / results.length;
-  }, [results]);
+  const value: ToolContextValue = {
+    stage,
+    results,
+    error,
+    uploadSummary,
+    showFilters,
+    setShowFilters,
+    modelEngine,
+    setModelEngine,
+    label,
+    setLabel,
+    species,
+    setSpecies,
+    berryCount,
+    setBerryCount,
+    heightCm,
+    setHeightCm,
+    tempF,
+    setTempF,
+    rainIn,
+    setRainIn,
+    soilPct,
+    setSoilPct,
+    metadataJson,
+    setMetadataJson,
+    historyBatches,
+    historyLoading,
+    historyError,
+    activeBatchId,
+    deletingBatchId,
+    expandedBatch,
+    setExpandedBatch,
+    inputRef,
+    handleFiles,
+    deleteBatch,
+    onDrop,
+    reset,
+    loadHistory,
+  };
 
-  const totalLatency = useMemo(() => {
-    if (!results.length) return null;
-    const withLatency = results.filter((item) => typeof item.latency_ms === "number");
-    if (!withLatency.length) return null;
-    return withLatency.reduce((sum, item) => sum + (item.latency_ms ?? 0), 0);
-  }, [results]);
+  return <ToolContext.Provider value={value}>{children}</ToolContext.Provider>;
+}
 
-  const latest = results[0];
-  const predictionLabel =
-    typeof latest?.prediction_weight === "number"
-      ? `${Math.max(0, Math.min(100, latest.prediction_weight * 100)).toFixed(1)}%`
-      : "98.4%";
-  const latencyLabel =
-    totalLatency !== null ? `${Math.max(0.1, totalLatency / 1000).toFixed(1)}s` : "--";
+export function ToolPredictionsSection() {
+  const {
+    results,
+    activeBatchId,
+    reset,
+    historyBatches,
+    historyLoading,
+    historyError,
+    loadHistory,
+    deletingBatchId,
+    deleteBatch,
+    setExpandedBatch,
+    expandedBatch,
+  } = useTool();
 
   return (
-    <div className="space-y-12">
-      <section className="grid grid-cols-1 items-end gap-8 md:grid-cols-2">
-        <div className="space-y-4">
-          <h1 className="display text-display-lg leading-[1.05] text-foreground">
-            Cluster Analysis
-          </h1>
-          <p className="max-w-xl text-sm leading-relaxed text-foreground/70 sm:text-base">
-            Harness high-fidelity computer vision to decode vineyard health.
-            Upload imagery and inspect model predictions in real time.
-          </p>
-        </div>
-        <div className="flex justify-start gap-4 md:justify-end">
-          {SHOW_TOOL_ANALYTICS && <StatCard label="AI Precision" value={predictionLabel} />}
-          <StatCard label="Latency" value={latencyLabel} />
-        </div>
-      </section>
-
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-        <div className={`space-y-6 ${SHOW_TOOL_ANALYTICS ? "xl:col-span-8" : "xl:col-span-12"}`}>
-          <div className="relative h-[420px] overflow-hidden rounded-sm border border-border/50 bg-surface">
-            <Image
-              src={vineyardHeroImage}
-              alt="Grape cluster"
-              fill
-              priority
-              sizes="(max-width: 1280px) 100vw, 66vw"
-              className="object-cover"
-            />
-            <div className="absolute left-6 top-6 inline-flex h-10 items-center gap-2.5 rounded-xl bg-background/80 px-5 text-[28px] font-semibold text-foreground">
-              <span className="h-2.5 w-2.5 rounded-full bg-red-600" aria-hidden="true" />
-              <span className="text-[45%] leading-none">Live Analysis</span>
-            </div>
-            <div className="absolute left-[11rem] top-6 inline-flex h-10 items-center rounded-xl border-2 border-border/70 bg-background/80 px-5 text-[28px] font-semibold text-foreground shadow-sm">
-              <span className="text-[45%] leading-none">Heatmap Active</span>
-            </div>
-            <div className="absolute bottom-6 right-6 space-y-3"> 
-              <button
-                aria-label="Zoom"
-                className="flex h-12 w-12 items-center justify-center rounded-sm bg-background/90 text-foreground"
-              >
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9">
-                  <circle cx="11" cy="11" r="6.5" />
-                  <path d="M16 16l5 5" />
-                  <path d="M11 8v6" />
-                  <path d="M8 11h6" />
-                </svg>
-              </button>
-              <button
-                aria-label="Layers"
-                className="flex h-12 w-12 items-center justify-center rounded-sm bg-background/90 text-foreground"
-              >
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9">
-                  <path d="M12 4l8 5-8 5-8-5 8-5Z" />
-                  <path d="m4 14 8 5 8-5" />
-                </svg>
-              </button>
-            </div>
-          </div>
-
-          <div className="rounded-sm border border-border/60 bg-surface/40 p-6 sm:p-8">
-            <input
-              ref={inputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={(e) => handleFiles(Array.from(e.target.files ?? []))}
-              className="hidden"
-            />
-
-            <div
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={onDrop}
-              className="rounded-sm border-2 border-dashed border-border/70 bg-background/60 p-10 text-center"
-            >
-              <p className="display text-2xl italic text-foreground">Drop Vineyard Imagery</p>
-              <p className="mt-3 text-sm text-foreground-muted">
-                Upload RAW or high-resolution image files to run cluster prediction.
-              </p>
-              <div className="mt-6 flex flex-col items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => inputRef.current?.click()}
-                  className="rounded-sm border border-border bg-surface px-6 py-2 text-sm font-medium text-foreground"
-                >
-                  {stage === "uploading" ? "Analyzing..." : "Browse Files"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowFilters((s) => !s)}
-                  className="rounded-sm px-4 py-2 text-xs uppercase tracking-wide text-foreground-muted"
-                >
-                  {showFilters ? "Less Filters" : "More Filters"}
-                </button>
-              </div>
-              {error && <p className="mt-4 text-sm text-burgundy">{error}</p>}
-              {uploadSummary && !error && (
-                <p className="mt-4 text-sm text-foreground-muted">{uploadSummary}</p>
-              )}
-            </div>
-
-            {showFilters && (
-              <div className="mt-6 border-t border-border/50 pt-6">
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <SelectField
-                    label="AI Model Engine"
-                    value={modelEngine}
-                    onChange={setModelEngine}
-                    options={[
-                      "GrapesNet Model v5 (active)",
-                      "GrapesNet Model v4",
-                      "ClusterVision RF v2",
-                    ]}
-                  />
-                  <Field label="Prediction Label" value={label} onChange={setLabel} />
-                  <Field label="Grape Species" value={species} onChange={setSpecies} />
-                  <Field label="Berry Count" value={berryCount} onChange={setBerryCount} />
-                  <Field label="Height (cm)" value={heightCm} onChange={setHeightCm} />
-                  <Field label="Temp (°F)" value={tempF} onChange={setTempF} />
-                  <Field label="Rain (in)" value={rainIn} onChange={setRainIn} />
-                  <Field label="Soil %" value={soilPct} onChange={setSoilPct} />
-                </div>
-                <TextAreaField
-                  className="mt-6"
-                  label="Optional Metadata (JSON)"
-                  value={metadataJson}
-                  onChange={setMetadataJson}
-                />
-              </div>
-            )}
-          </div>
-        </div>
-
-        {SHOW_TOOL_ANALYTICS && (
-        <aside className="rounded-sm border border-border/60 bg-surface/40 p-6 xl:col-span-4">
-          <div className="flex items-start justify-between">
-            <h3 className="display text-2xl italic text-foreground">Real-time Insights</h3>
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              className="mt-1 text-foreground"
-            >
-              <path d="M3 17l5-7 4 4 5-8 4 5" />
-              <circle cx="17.5" cy="17.5" r="3.5" />
-              <path d="M20 20l2 2" />
-            </svg>
-          </div>
-
-          <div className="mt-6 space-y-6">
-            <InsightProgressCard
-              label="AUTO-SEGMENTATION"
-              value={results.length ? "Active" : "Idle"}
-              rightValue={results.length ? `${results.length} Clusters` : "0 Clusters"}
-              progress={results.length ? 0.85 : 0.1}
-            />
-            <InsightBlocksCard
-              label="TURGOR PRESSURE"
-              value={results.length ? "Optimal" : "Pending"}
-              rightValue="0.85 MPa"
-            />
-            <InsightSimpleCard
-              label="PHENOLIC MATURITY"
-              value="Phase 4"
-              rightValue="74% Target"
-            />
-          </div>
-        </aside>
-        )}
-      </section>
-
+    <div className="mt-12 space-y-12">
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="display text-2xl italic text-foreground">Recent Predictions</h2>
@@ -615,6 +551,112 @@ export function ToolBasic() {
   );
 }
 
+export function ToolUploadSection() {
+  const {
+    stage,
+    error,
+    uploadSummary,
+    showFilters,
+    setShowFilters,
+    modelEngine,
+    setModelEngine,
+    label,
+    setLabel,
+    species,
+    setSpecies,
+    berryCount,
+    setBerryCount,
+    heightCm,
+    setHeightCm,
+    tempF,
+    setTempF,
+    rainIn,
+    setRainIn,
+    soilPct,
+    setSoilPct,
+    metadataJson,
+    setMetadataJson,
+    inputRef,
+    handleFiles,
+    onDrop,
+  } = useTool();
+
+  return (
+    <section className="rounded-sm border border-border/60 bg-surface/40 p-6 sm:p-8">
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        onChange={(e) => handleFiles(Array.from(e.target.files ?? []))}
+        className="hidden"
+      />
+
+      <div
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={onDrop}
+        className="rounded-sm border-2 border-dashed border-border/70 bg-background/60 p-10 text-center"
+      >
+        <p className="display text-2xl italic text-foreground">Drop Vineyard Imagery</p>
+        <p className="mt-3 text-sm text-foreground-muted">
+          Upload RAW or high-resolution image files to run cluster prediction.
+        </p>
+        <div className="mt-6 flex flex-col items-center gap-3">
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            className="rounded-sm border border-border bg-surface px-6 py-2 text-sm font-medium text-foreground"
+          >
+            {stage === "uploading" ? "Analyzing..." : "Browse Files"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowFilters((s) => !s)}
+            className="rounded-sm px-4 py-2 text-xs uppercase tracking-wide text-foreground-muted"
+          >
+            {showFilters ? "Less Filters" : "More Filters"}
+          </button>
+        </div>
+        {error && <p className="mt-4 text-sm text-burgundy">{error}</p>}
+        {uploadSummary && !error && (
+          <p className="mt-4 text-sm text-foreground-muted">{uploadSummary}</p>
+        )}
+      </div>
+
+      {showFilters && (
+        <div className="mt-6 border-t border-border/50 pt-6">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <SelectField
+              label="AI Model Engine"
+              value={modelEngine}
+              onChange={setModelEngine}
+              options={[
+                "GrapesNet Model v5 (active)",
+                "GrapesNet Model v4",
+                "ClusterVision RF v2",
+              ]}
+            />
+            <Field label="Prediction Label" value={label} onChange={setLabel} />
+            <Field label="Grape Species" value={species} onChange={setSpecies} />
+            <Field label="Berry Count" value={berryCount} onChange={setBerryCount} />
+            <Field label="Height (cm)" value={heightCm} onChange={setHeightCm} />
+            <Field label="Temp (°F)" value={tempF} onChange={setTempF} />
+            <Field label="Rain (in)" value={rainIn} onChange={setRainIn} />
+            <Field label="Soil %" value={soilPct} onChange={setSoilPct} />
+          </div>
+          <TextAreaField
+            className="mt-6"
+            label="Optional Metadata (JSON)"
+            value={metadataJson}
+            onChange={setMetadataJson}
+          />
+        </div>
+      )}
+    </section>
+  );
+}
+
+
 function ResultCard({ result }: { result: ResultItem }) {
   return (
     <article className="overflow-hidden rounded-sm border border-border/40 bg-surface/40">
@@ -642,15 +684,6 @@ function ResultCard({ result }: { result: ResultItem }) {
         )}
       </div>
     </article>
-  );
-}
-
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-[140px] rounded-sm border border-border/40 bg-surface/50 p-5 text-center">
-      <p className="frame text-[0.58rem] text-foreground-muted">{label}</p>
-      <p className="mt-2 numeric text-xl text-foreground">{value}</p>
-    </div>
   );
 }
 

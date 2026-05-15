@@ -336,7 +336,21 @@ def _run_v1_inference(image_paths: list[Path]) -> list[dict[str, Any]]:
             None,
             use_raw_depth=settings.PREDICTION_USE_RAW_DEPTH,
         )
-        prediction = float(model.predict(np.asarray([features]))[0])
+        feature_row = np.asarray([features], dtype=np.float32)
+        expected = getattr(
+            getattr(model, "named_steps", {}).get("imputer"),
+            "n_features_in_",
+            None,
+        )
+        if expected is not None and int(expected) != feature_row.shape[1]:
+            model_path = getattr(settings, "PREDICTION_MODEL_PATH", "") or "(train dir)"
+            raise ValueError(
+                f"Hand-feature model expects {int(expected)} inputs but inference "
+                f"produces {feature_row.shape[1]}. Check PREDICTION_MODEL_PATH "
+                f"({model_path}) and PREDICTION_BACKBONE — CNN artifacts need "
+                f"dinov2_vits14 plus metadata.json beside the joblib."
+            )
+        prediction = float(model.predict(feature_row)[0])
         # Convert grams to kilograms since InferenceResult defaults to unit="kg"
         prediction_kg = prediction / 1000.0
         elapsed = int((time.perf_counter() - started) * 1000)

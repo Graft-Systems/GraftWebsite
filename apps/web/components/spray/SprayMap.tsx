@@ -33,7 +33,7 @@ export type SprayMapProps = {
   selectedBlockId: string | null;
   editable: boolean;
   onBlockSelect: (blockId: string | null) => void;
-  onBlockCreate: (geom: GeoJSON.Polygon) => void;
+  onBlockCreate: (geom: GeoJSON.Polygon) => void | Promise<void>;
   onBlockUpdate: (geom: GeoJSON.Polygon) => void;
   /**
    * With `onBlockExtend`, rectangle/polygon commits merge into this block (API `append_geom`)
@@ -324,13 +324,17 @@ export function SprayMap({
   drawToolRef.current = drawTool;
 
   const finishDraw = useCallback(
-    (polygon: GeoJSON.Polygon) => {
-      if (extendBlockId != null && onBlockExtend) {
-        onBlockExtend(extendBlockId, polygon);
-      } else {
-        onBlockCreate(polygon);
+    async (polygon: GeoJSON.Polygon) => {
+      try {
+        if (extendBlockId != null && onBlockExtend) {
+          await onBlockExtend(extendBlockId, polygon);
+        } else {
+          await onBlockCreate(polygon);
+        }
+        clearDrawing();
+      } catch {
+        /* Parent surfaces errors; keep sketch on map so the user can retry. */
       }
-      clearDrawing();
     },
     [extendBlockId, onBlockExtend, onBlockCreate, clearDrawing]
   );

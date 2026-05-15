@@ -21,6 +21,18 @@ import {
   FOCUS_ROW_START,
   FOCUS_VINE,
 } from "@/lib/vineyard";
+import type { MarketingVariant } from "@/components/scenes/marketingVariant";
+
+const HEADER_COPY = {
+  suite: {
+    eyebrow: "SPATIAL COMMON GROUND",
+    headline: "From estate to vine—in one view.",
+  },
+  yield: {
+    eyebrow: "RESOLUTION",
+    headline: "Zoom until the question becomes personal.",
+  },
+} as const;
 
 const focusBlockGeoJSON: GeoJSON.FeatureCollection = {
   type: "FeatureCollection",
@@ -83,7 +95,12 @@ function interpolate(
   return values[values.length - 1];
 }
 
-export function SceneMap() {
+export function SceneMap({
+  variant = "suite",
+}: {
+  variant?: MarketingVariant;
+}) {
+  const header = HEADER_COPY[variant];
   const sectionRef = useRef<HTMLElement>(null);
   const mapRef = useRef<MapRef | null>(null);
   const progress = useMotionValue(0);
@@ -306,10 +323,10 @@ export function SceneMap() {
           {/* Headline overlay */}
           <div className="pointer-events-none absolute left-6 top-24 z-10 max-w-xl lg:left-10 lg:top-28">
             <span className="frame text-[0.72rem] font-semibold text-sage">
-              SPATIAL COMMON GROUND
+              {header.eyebrow}
             </span>
             <h2 className="display mt-3 text-display-lg leading-[1.05] text-foreground">
-              From estate to vine—in one view.
+              {header.headline}
             </h2>
           </div>
 
@@ -345,10 +362,10 @@ export function SceneMap() {
               exit={{ opacity: 0, y: -14 }}
               transition={{ duration: 0.45, ease: [0.2, 0.9, 0.3, 1] }}
             >
-              {beat === 0 && <Beat1Panel />}
+              {beat === 0 && <Beat1Panel variant={variant} />}
               {beat === 1 && <Beat2Panel />}
               {beat === 2 && <Beat3Panel />}
-              {beat === 3 && <Beat4Panel />}
+              {beat === 3 && <Beat4Panel variant={variant} />}
             </motion.div>
           </AnimatePresence>
         </aside>
@@ -357,7 +374,12 @@ export function SceneMap() {
   );
 }
 
-function Beat1Panel() {
+function Beat1Panel({ variant }: { variant: MarketingVariant }) {
+  const footer =
+    variant === "yield"
+      ? "Graft reads every block, every row, every vine. Scroll to drill down."
+      : "Yield, spray context, and future canopy tools all share the same geography. Scroll to drill from blocks to rows to vines.";
+
   return (
     <div>
       <span className="frame text-[0.62rem] text-foreground-muted">
@@ -371,10 +393,7 @@ function Beat1Panel() {
         <Row label="Acres" value="~80" />
         <Row label="Last estimate" value="23 Apr 2026" />
       </dl>
-      <p className="mt-10 text-xs leading-relaxed text-foreground/55">
-        Yield, spray context, and future canopy tools all share the same geography.
-        Scroll to drill from blocks to rows to vines.
-      </p>
+      <p className="mt-10 text-xs leading-relaxed text-foreground/55">{footer}</p>
     </div>
   );
 }
@@ -421,7 +440,12 @@ function Beat3Panel() {
   );
 }
 
-function Beat4Panel() {
+function Beat4Panel({ variant }: { variant: MarketingVariant }) {
+  const detail =
+    variant === "yield"
+      ? "Selected for analysis. The vine is where the distribution starts."
+      : "Selected for analysis. The vine is where yield—and every other signal—has to resolve.";
+
   return (
     <div>
       <span className="frame text-[0.62rem] text-foreground-muted">
@@ -441,8 +465,7 @@ function Beat4Panel() {
         CAPTURED · 14 APR 2026
       </p>
       <p className="mt-4 text-sm leading-relaxed text-foreground/75">
-        Selected for analysis. The vine is where yield—and every other signal—has
-        to resolve.
+        {detail}
       </p>
     </div>
   );

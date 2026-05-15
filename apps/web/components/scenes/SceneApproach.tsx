@@ -3,8 +3,9 @@
 import { useRef } from "react";
 import { motion, useInView } from "framer-motion";
 import { SplitTextReveal } from "@/components/ui/SplitTextReveal";
+import type { MarketingVariant } from "@/components/scenes/marketingVariant";
 
-const PRINCIPLES = [
+const SUITE_PRINCIPLES = [
   {
     title: "Science where it belongs",
     body: "Yield models lean on aggregated academic cluster data; spray intelligence follows published disease models and fused weather. We do not paper over the science with marketing curves.",
@@ -22,7 +23,45 @@ const PRINCIPLES = [
   },
 ];
 
-export function SceneApproach() {
+const YIELD_PRINCIPLES = [
+  {
+    title: "Academic data foundation",
+    body: "Graft's model is trained on aggregated academic grape cluster datasets drawn from PhD research.",
+    icon: OpenSourceIcon,
+  },
+  {
+    title: "Probabilistic by default",
+    body: "Every estimate returns a full probability distribution. No single number without a confidence range.",
+    icon: DistributionIcon,
+  },
+  {
+    title: "Built with growers",
+    body: "Developed in partnership with working vineyards. The product ships when real growers say it's useful — not before.",
+    icon: HandshakeIcon,
+  },
+];
+
+const COPY = {
+  suite: {
+    eyebrow: "HOW WE BUILD",
+    headline1: "One standard",
+    headline2: "across the suite.",
+    principles: SUITE_PRINCIPLES,
+  },
+  yield: {
+    eyebrow: "THE APPROACH",
+    headline1: "Built on",
+    headline2: "published science.",
+    principles: YIELD_PRINCIPLES,
+  },
+} as const;
+
+export function SceneApproach({
+  variant = "suite",
+}: {
+  variant?: MarketingVariant;
+}) {
+  const copy = COPY[variant];
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { once: true, amount: 0.2 });
 
@@ -31,23 +70,20 @@ export function SceneApproach() {
       id="approach"
       className="relative w-full overflow-hidden bg-background py-28 lg:py-36"
     >
-      <div
-        ref={ref}
-        className="mx-auto max-w-[1200px] px-6 lg:px-10"
-      >
-        <div className="max-w-3xl">
+      <div ref={ref} className="mx-auto max-w-[1200px] px-6 lg:px-10">
+        <motion.div className="max-w-3xl">
           <span className="frame text-[0.72rem] font-semibold text-sage">
-            HOW WE BUILD
+            {copy.eyebrow}
           </span>
           <h2 className="display mt-5 text-[clamp(1.75rem,3.5vw,2.5rem)] leading-[1.1] text-foreground">
-            <SplitTextReveal text="One standard" />
+            <SplitTextReveal text={copy.headline1} />
             <br />
-            <SplitTextReveal text="across the suite." delay={0.2} />
+            <SplitTextReveal text={copy.headline2} delay={0.2} />
           </h2>
-        </div>
+        </motion.div>
 
         <div className="mt-20 grid grid-cols-1 gap-10 md:grid-cols-3 md:gap-8 lg:gap-14">
-          {PRINCIPLES.map((p, i) => (
+          {copy.principles.map((p, i) => (
             <motion.div
               key={p.title}
               initial={{ opacity: 0, y: 24 }}

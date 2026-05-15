@@ -4,8 +4,9 @@ import Image from "next/image";
 import { useRef } from "react";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { SplitTextReveal } from "@/components/ui/SplitTextReveal";
+import type { MarketingVariant } from "@/components/scenes/marketingVariant";
 
-const STATS = [
+const SUITE_STATS = [
   {
     text: "Manual yield forecasting in current practice carries error of up to 30%, with block-level variance often exceeding that baseline.",
     source: "Ahmedt-Aristizabal et al., IEEE Access, 2024",
@@ -18,7 +19,46 @@ const STATS = [
   },
 ];
 
-export function SceneProblem() {
+const YIELD_STATS = [
+  {
+    text: "Manual yield forecasting in current practice carries error of up to 30%, with block-level variance often exceeding that baseline.",
+    source: "Ahmedt-Aristizabal et al., IEEE Access, 2024",
+    parallax: 32,
+  },
+  {
+    text: "Traditional manual cluster-count sampling averages 7.9% error across seasons and cultivars, with maximum errors reaching 23.5%.",
+    source: "Jaramillo et al., 2021",
+    parallax: 18,
+  },
+];
+
+const COPY = {
+  suite: {
+    eyebrow: "THE STAKES",
+    line1: "The vineyard runs",
+    line2: "on partial sight.",
+    stats: SUITE_STATS,
+    quote:
+      "If you make it within 5% accuracy, you are in business.",
+    quoteSource: "Top vineyard manager · Kendall-Jackson",
+  },
+  yield: {
+    eyebrow: "THE CHALLENGE",
+    line1: "Yield forecasts",
+    line2: "are guesses.",
+    stats: YIELD_STATS,
+    quote:
+      "If you make it within 5% accuracy, you are in business.",
+    quoteSource: "Top vineyard manager · Kendall-Jackson",
+  },
+} as const;
+
+export function SceneProblem({
+  variant = "suite",
+}: {
+  variant?: MarketingVariant;
+}) {
+  const copy = COPY[variant];
   const sectionRef = useRef<HTMLElement>(null);
   const { scrollYProgress } = useScroll({
     target: sectionRef,
@@ -32,7 +72,6 @@ export function SceneProblem() {
       id="problem"
       className="relative w-full overflow-hidden bg-background py-32 lg:py-44"
     >
-      {/* Echoed vineyard, heavily dimmed */}
       <motion.div
         aria-hidden
         className="absolute inset-0"
@@ -61,22 +100,22 @@ export function SceneProblem() {
             viewport={{ once: true, margin: "-120px" }}
             transition={{ duration: 0.55 }}
           >
-            THE STAKES
+            {copy.eyebrow}
           </motion.span>
 
           <h2 className="display mt-5 text-display-lg leading-[1.05] text-foreground">
-            <SplitTextReveal text="The vineyard runs" />
+            <SplitTextReveal text={copy.line1} />
             <br />
-            <SplitTextReveal text="on partial sight." delay={0.2} />
+            <SplitTextReveal text={copy.line2} delay={0.2} />
           </h2>
 
-          <div className="mt-20 space-y-16">
-            {STATS.map((stat, i) => (
+          <motion.div className="mt-20 space-y-16">
+            {copy.stats.map((stat, i) => (
               <Stat key={i} {...stat} />
             ))}
-          </div>
+          </motion.div>
 
-          <PullQuote />
+          <PullQuote quote={copy.quote} source={copy.quoteSource} />
         </div>
       </div>
     </section>
@@ -118,7 +157,7 @@ function Stat({
   );
 }
 
-function PullQuote() {
+function PullQuote({ quote, source }: { quote: string; source: string }) {
   return (
     <motion.blockquote
       className="mt-24 border-l-2 border-burgundy pl-6 md:pl-8"
@@ -128,10 +167,10 @@ function PullQuote() {
       transition={{ duration: 0.85, ease: [0.2, 0.9, 0.3, 1] }}
     >
       <p className="display text-2xl italic leading-snug text-foreground lg:text-[1.75rem]">
-        &ldquo;If you make it within 5% accuracy, you are in business.&rdquo;
+        &ldquo;{quote}&rdquo;
       </p>
       <footer className="mt-5 frame text-[0.62rem] text-foreground-muted">
-        Top vineyard manager · Kendall-Jackson
+        {source}
       </footer>
     </motion.blockquote>
   );

@@ -7,6 +7,7 @@ import {
   useTransform,
   type MotionValue,
 } from "framer-motion";
+import type { MarketingVariant } from "@/components/scenes/marketingVariant";
 
 // Cluster positions hand-traced on grape-close-02.jpg.
 // Two tight boxes strictly on visible grape mass — upper and lower halves
@@ -28,10 +29,28 @@ const CAPTIONS = [
   { text: "A photo.", in: 0.04, out: 0.22 },
   { text: "Cluster detection.", in: 0.27, out: 0.55 },
   { text: "Per-cluster weight prediction.", in: 0.6, out: 0.8 },
-  { text: "Block-level yield preview.", in: 0.86, out: 1.02 },
+  { text: "Aggregated yield.", in: 0.86, out: 1.02 },
 ];
 
-export function SceneTool() {
+const PANEL_COPY = {
+  suite: {
+    label: "SUITE · YIELD PREVIEW",
+    status: "Preview output ready.",
+    body: "One product in the suite: imagery in, per-cluster estimates out, rolled into a block-level distribution. Early MVPs—ranges first, false precision never.",
+  },
+  yield: {
+    label: "BLOCK YIELD",
+    status: "Model output ready.",
+    body: "Each photo contributes per-cluster estimates to the block's probability distribution. No single number is promised; every output carries a range.",
+  },
+} as const;
+
+export function SceneTool({
+  variant = "suite",
+}: {
+  variant?: MarketingVariant;
+}) {
+  const panel = PANEL_COPY[variant];
   const sectionRef = useRef<HTMLElement>(null);
   const scrollYProgress = useMotionValue(0);
 
@@ -85,7 +104,7 @@ export function SceneTool() {
         {/* Eyebrow + headline — fixed at top */}
         <div className="pointer-events-none absolute left-6 top-24 z-30 max-w-xl lg:left-10 lg:top-28">
           <span className="frame text-[0.72rem] font-semibold text-sage">
-            YIELD MODULE
+            {variant === "yield" ? "FROM PHOTO TO ESTIMATE" : "YIELD MODULE"}
           </span>
           <h2 className="display mt-3 text-display-lg leading-[1.05] text-foreground">
             Seconds per cluster.
@@ -134,20 +153,18 @@ export function SceneTool() {
           style={{ x: panelX, opacity: panelOpacity }}
         >
           <span className="frame text-[0.62rem] text-foreground-muted">
-            SUITE · YIELD PREVIEW
+            {panel.label}
           </span>
           <div className="mt-4 flex items-center gap-3">
             <span className="relative inline-block h-2.5 w-2.5 rounded-full bg-amber">
               <span className="absolute inset-0 animate-ping rounded-full bg-amber opacity-60" />
             </span>
             <p className="numeric text-sm text-foreground/90">
-              Preview output ready.
+              {panel.status}
             </p>
           </div>
           <p className="mt-8 max-w-sm text-sm leading-relaxed text-foreground/70">
-            One product in the suite: imagery in, per-cluster estimates out, rolled
-            into a block-level distribution. Early MVPs—ranges first, false precision
-            never.
+            {panel.body}
           </p>
           <p className="mt-8 frame text-[0.6rem] text-foreground-muted">
             {CLUSTERS.length} CLUSTERS · 1 FRAME · BLOCK 07

@@ -1,15 +1,22 @@
 "use client";
 
-import { ToolBasic } from "@/components/tool/ToolBasic";
+import {
+  ToolPageProvider,
+  ToolPredictionsSection,
+  ToolUploadSection,
+} from "@/components/tool/ToolBasic";
+import { YieldPreviewStory } from "@/components/tool/YieldPreviewStory";
 
 export default function ToolPage() {
   return (
-    <main className="relative min-h-dvh bg-background pt-28">
-      <div className="mx-auto max-w-[1400px] px-6 lg:px-10">
-        <div className="pb-20">
-          <ToolBasic />
+    <ToolPageProvider>
+      <main className="relative bg-background">
+        <YieldPreviewStory />
+        <div className="mx-auto max-w-[1400px] space-y-0 px-6 pb-28 pt-8 lg:px-10">
+          <ToolUploadSection />
+          <ToolPredictionsSection />
         </div>
-      </div>
-    </main>
+      </main>
+    </ToolPageProvider>
   );
 }
