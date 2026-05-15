@@ -1,19 +1,18 @@
 /**
  * /spray/integrations (M1.5 PR-D).
  *
- * Lists the active org's sensor connections + lets the user kick off
- * the Pessl OAuth round-trip. Each connection links to a detail page
- * for vendor-station → block linking.
+ * Active connections are listed first. "Add connection" opens a modal menu
+ * to start Pessl OAuth, Davis/METER paste-key flows, or see Sencrop (soon).
  *
  * If the Pessl partner-app credentials aren't configured server-side
- * yet, the "Connect Pessl" button still renders but the start endpoint
- * 503s with a readable error — the frontend surfaces that as a banner.
+ * yet, the start endpoint 503s with a readable error — the frontend surfaces that as a banner.
  */
 "use client";
 
 import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { Plus, X } from "lucide-react";
 import { useActiveOrg } from "@/lib/sprayApi";
 import { PasteKeyDialog } from "@/components/spray/PasteKeyDialog";
 import {
@@ -71,6 +70,7 @@ function IntegrationsPageInner() {
   const [busy, setBusy] = useState(false);
   const [showDavisDialog, setShowDavisDialog] = useState(false);
   const [showMeterDialog, setShowMeterDialog] = useState(false);
+  const [showAddConnectionMenu, setShowAddConnectionMenu] = useState(false);
   const [meterReveal, setMeterReveal] = useState<
     { secret: string; url: string } | null
   >(null);
@@ -126,6 +126,7 @@ function IntegrationsPageInner() {
 
   async function connectPessl() {
     if (!orgId) return;
+    setShowAddConnectionMenu(false);
     setBusy(true);
     setError(null);
     try {
@@ -235,17 +236,16 @@ function IntegrationsPageInner() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl">
-      <header className="flex items-baseline justify-between">
+    <div className="w-full max-w-5xl">
+      <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="font-display text-3xl">Integrations</h1>
           {orgName && (
             <p className="mt-1 text-sm text-foreground/60">in {orgName}</p>
           )}
           <p className="mt-3 max-w-2xl text-sm text-foreground/70">
-            Connect your weather-station accounts so Spray can pull live
-            sensor data into the spray guidance engine. Davis, Pessl, and METER are
-            the MVP providers; Sencrop is tracked for a later phase.
+            Weather accounts linked to Spray. Manage stations from each
+            connection, or add a new provider below.
           </p>
         </div>
       </header>
@@ -263,75 +263,100 @@ function IntegrationsPageInner() {
         </p>
       )}
 
-      <section className="mt-8 grid gap-4 md:grid-cols-2">
-        <article className="rounded-md border border-border/40 bg-background/40 p-5">
+      <section className="mt-8">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="frame text-xs font-semibold uppercase tracking-wider text-foreground/60">
-            Pessl FieldClimate
+            Active connections
           </h2>
-          <p className="mt-3 text-sm text-foreground/70">
-            OAuth 2.0 partner app. 15-min polling. Leaf-wetness reported in
-            minutes, model-ready.
-          </p>
           <button
             type="button"
-            onClick={connectPessl}
-            disabled={!orgId || busy}
-            className="mt-4 rounded-md bg-amber px-4 py-2 frame text-xs font-semibold text-background transition-colors hover:bg-amber/90 disabled:opacity-40"
-          >
-            {busy ? "Redirecting…" : "Connect Pessl"}
-          </button>
-        </article>
-
-        <article className="rounded-md border border-border/40 bg-background/40 p-5">
-          <h2 className="frame text-xs font-semibold uppercase tracking-wider text-foreground/60">
-            Davis WeatherLink
-          </h2>
-          <p className="mt-3 text-sm text-foreground/70">
-            Two-key paste. 15-min polling. Leaf-wetness 0-15 scale
-            normalized to minutes per spec §12A.1.
-          </p>
-          <button
-            type="button"
-            onClick={() => setShowDavisDialog(true)}
+            onClick={() => setShowAddConnectionMenu(true)}
             disabled={!orgId}
-            className="mt-4 rounded-md bg-amber px-4 py-2 frame text-xs font-semibold text-background transition-colors hover:bg-amber/90 disabled:opacity-40"
+            className="inline-flex items-center gap-2 rounded-md border border-amber/50 bg-amber/10 px-4 py-2 frame text-xs font-semibold text-amber transition-colors hover:bg-amber/20 disabled:opacity-40"
           >
-            Connect Davis
+            <Plus className="h-4 w-4" aria-hidden />
+            Add connection
           </button>
-        </article>
+        </div>
 
-        <article className="rounded-md border border-border/40 bg-background/40 p-5">
-          <h2 className="frame text-xs font-semibold uppercase tracking-wider text-foreground/60">
-            METER ZENTRA
-          </h2>
-          <p className="mt-3 text-sm text-foreground/70">
-            Bearer-token paste + native HTTPS Push. Real-time webhook
-            ingestion; 60-min poll as gap-fill.
-          </p>
-          <button
-            type="button"
-            onClick={() => setShowMeterDialog(true)}
-            disabled={!orgId}
-            className="mt-4 rounded-md bg-amber px-4 py-2 frame text-xs font-semibold text-background transition-colors hover:bg-amber/90 disabled:opacity-40"
-          >
-            Connect METER
-          </button>
-        </article>
+        {connections === null && !error && (
+          <p className="mt-6 text-foreground/50">Loading…</p>
+        )}
 
-        <article className="rounded-md border border-dashed border-border/50 bg-background/25 p-5">
-          <p className="mt-3 text-sm text-foreground/70">
-            Field weather stations and rain radar aligned with Spray&apos;s advisory
-            model inputs. OAuth connector is on the roadmap after Davis, Pessl, and METER
-            hardening.
+        {connections && connections.length === 0 && (
+          <p className="mt-6 rounded-md border border-dashed border-border/40 bg-background/30 p-6 text-sm text-foreground/65">
+            No integrations yet. Use{" "}
+            <span className="font-semibold text-foreground/85">Add connection</span>{" "}
+            to link Pessl, Davis, or METER.
           </p>
-          <button
-            type="button"
-            disabled
-            className="mt-4 w-full rounded-md border border-border/50 px-4 py-2 frame text-xs font-semibold text-foreground/40"
-          >
-            Coming soon
-          </button>
-        </article>
+        )}
+
+        {connections && connections.length > 0 && (
+          <ul className="mt-4 space-y-3">
+            {connections.map((c) => {
+              const health = getConnectionHealthBadge(c);
+              return (
+                <li
+                  key={c.id}
+                  className="rounded-md border border-border/40 bg-background/40 p-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <p className="font-display text-lg">
+                        {VENDOR_LABEL[c.vendor]}
+                      </p>
+                      <p className="mt-1 text-xs text-foreground/60">
+                        Account {c.vendor_account_id} · connected{" "}
+                        {new Date(c.connected_at).toLocaleDateString()}
+                      </p>
+                      <p className="mt-1 text-xs text-foreground/50">
+                        {c.last_health_at
+                          ? `Last health check ${new Date(c.last_health_at).toLocaleString()}`
+                          : "No health check recorded yet"}
+                        {c.last_health_detail
+                          ? ` · ${c.last_health_detail}`
+                          : ""}
+                      </p>
+                    </div>
+                    <span
+                      className={`rounded px-2 py-1 frame text-[0.65rem] font-semibold uppercase tracking-wider ${health.className}`}
+                    >
+                      {health.label}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-3">
+                    {c.status === "active" && orgId && (
+                      <Link
+                        href={`/spray/integrations/${c.id}`}
+                        className="frame text-xs font-semibold text-amber transition-colors hover:text-amber/80"
+                      >
+                        Manage stations →
+                      </Link>
+                    )}
+                    {c.status !== "disconnected" && (
+                      <button
+                        type="button"
+                        onClick={() => disconnect(c.id)}
+                        className="frame text-xs font-semibold text-foreground/60 transition-colors hover:text-red-300"
+                      >
+                        Disconnect
+                      </button>
+                    )}
+                    {c.status === "disconnected" && (
+                      <button
+                        type="button"
+                        onClick={() => purgeDisconnected(c.id)}
+                        className="frame text-xs font-semibold text-red-300/90 transition-colors hover:text-red-200"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </section>
 
       {showProviderHealth && providerHealth != null ? (
@@ -348,6 +373,92 @@ function IntegrationsPageInner() {
           </pre>
         </section>
       ) : null}
+
+      {showAddConnectionMenu && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="add-connection-title"
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm"
+          onClick={() => setShowAddConnectionMenu(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-md border border-border/40 bg-background p-0 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-border/40 px-5 py-4">
+              <h2
+                id="add-connection-title"
+                className="font-display text-xl text-foreground"
+              >
+                Add connection
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowAddConnectionMenu(false)}
+                className="rounded-md p-2 text-foreground/60 transition-colors hover:bg-foreground/10 hover:text-foreground"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="max-h-[min(70vh,28rem)] overflow-y-auto p-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddConnectionMenu(false);
+                  void connectPessl();
+                }}
+                disabled={!orgId || busy}
+                className="flex w-full flex-col items-start gap-1 rounded-md px-4 py-3 text-left transition-colors hover:bg-foreground/5 disabled:opacity-40"
+              >
+                <span className="font-semibold text-foreground">
+                  Pessl FieldClimate
+                </span>
+                <span className="text-xs text-foreground/55">
+                  OAuth — you&apos;ll sign in at FieldClimate, then return here.
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddConnectionMenu(false);
+                  setShowDavisDialog(true);
+                }}
+                disabled={!orgId}
+                className="flex w-full flex-col items-start gap-1 rounded-md px-4 py-3 text-left transition-colors hover:bg-foreground/5 disabled:opacity-40"
+              >
+                <span className="font-semibold text-foreground">
+                  Davis WeatherLink
+                </span>
+                <span className="text-xs text-foreground/55">
+                  Paste API key and secret from WeatherLink.
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddConnectionMenu(false);
+                  setShowMeterDialog(true);
+                }}
+                disabled={!orgId}
+                className="flex w-full flex-col items-start gap-1 rounded-md px-4 py-3 text-left transition-colors hover:bg-foreground/5 disabled:opacity-40"
+              >
+                <span className="font-semibold text-foreground">
+                  METER ZENTRA
+                </span>
+                <span className="text-xs text-foreground/55">
+                  Paste API token; we set up a push webhook for live data.
+                </span>
+              </button>
+              <div className="rounded-md px-4 py-3 opacity-50">
+                <p className="font-semibold text-foreground">Sencrop</p>
+                <p className="text-xs text-foreground/55">Coming soon.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showDavisDialog && (
         <PasteKeyDialog
@@ -425,89 +536,6 @@ function IntegrationsPageInner() {
           </div>
         </div>
       )}
-
-      <section className="mt-12">
-        <h2 className="frame text-xs font-semibold uppercase tracking-wider text-foreground/60">
-          Active connections
-        </h2>
-
-        {connections === null && !error && (
-          <p className="mt-6 text-foreground/50">Loading…</p>
-        )}
-
-        {connections && connections.length === 0 && (
-          <p className="mt-6 text-sm text-foreground/60">
-            No integrations connected yet. Add a weather station or data provider to get started.
-          </p>
-        )}
-
-        {connections && connections.length > 0 && (
-          <ul className="mt-4 space-y-3">
-            {connections.map((c) => {
-              const health = getConnectionHealthBadge(c);
-              return (
-                <li
-                  key={c.id}
-                  className="rounded-md border border-border/40 bg-background/40 p-4"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                      <p className="font-display text-lg">
-                        {VENDOR_LABEL[c.vendor]}
-                      </p>
-                      <p className="mt-1 text-xs text-foreground/60">
-                        Account {c.vendor_account_id} · connected{" "}
-                        {new Date(c.connected_at).toLocaleDateString()}
-                      </p>
-                      <p className="mt-1 text-xs text-foreground/50">
-                        {c.last_health_at
-                          ? `Last health check ${new Date(c.last_health_at).toLocaleString()}`
-                          : "No health check recorded yet"}
-                        {c.last_health_detail
-                          ? ` · ${c.last_health_detail}`
-                          : ""}
-                      </p>
-                    </div>
-                    <span
-                      className={`rounded px-2 py-1 frame text-[0.65rem] font-semibold uppercase tracking-wider ${health.className}`}
-                    >
-                      {health.label}
-                    </span>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-3">
-                    {c.status === "active" && orgId && (
-                      <Link
-                        href={`/spray/integrations/${c.id}`}
-                        className="frame text-xs font-semibold text-amber transition-colors hover:text-amber/80"
-                      >
-                        Manage stations →
-                      </Link>
-                    )}
-                    {c.status !== "disconnected" && (
-                      <button
-                        type="button"
-                        onClick={() => disconnect(c.id)}
-                        className="frame text-xs font-semibold text-foreground/60 transition-colors hover:text-red-300"
-                      >
-                        Disconnect
-                      </button>
-                    )}
-                    {c.status === "disconnected" && (
-                      <button
-                        type="button"
-                        onClick={() => purgeDisconnected(c.id)}
-                        className="frame text-xs font-semibold text-red-300/90 transition-colors hover:text-red-200"
-                      >
-                        Delete
-                      </button>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
     </div>
   );
 }

@@ -249,7 +249,7 @@ export default function IntegrationDetailPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="w-full max-w-4xl">
       <Link
         href="/spray/integrations"
         className="frame text-xs font-semibold text-amber hover:underline"
