@@ -177,7 +177,7 @@ export default function SprayDashboardPage() {
       if (!res.ok) {
         window.alert(
           data.detail ??
-            "This recommendation took too long to compute. Try again in a moment.",
+            `This recommendation took too long to compute. Try again in a moment.`,
         );
         return;
       }
@@ -250,7 +250,7 @@ export default function SprayDashboardPage() {
           {summary.blocks.length === 0 ? (
             <EmptyState
               title="No blocks yet"
-              body="Create a vineyard and draw blocks before Graft Spray can make block-level recommendations."
+              body="Create a vineyard and draw blocks before Graft Spray can make block-level directives."
               href="/spray/vineyards"
               cta="Create blocks"
             />
@@ -571,61 +571,9 @@ function buildSprayDashboardIssueLines(
     const w = b.latest_verdict?.directive?.spray_window;
     return b.latest_verdict?.action === "spray" && w?.status === "blocked";
   }).length;
-  if (!stale && !sprayNeedWindow) return null;
-  return (
-    <section className="mt-6 rounded-md border border-amber/25 bg-amber/5 p-4 text-sm text-foreground/70">
-      <p className="frame text-[0.65rem] font-semibold uppercase tracking-wider text-amber">
-        Active risk windows
-      </p>
-      <ul className="mt-2 list-disc space-y-1 pl-4">
-        {stale > 0 && (
-          <li>
-            {stale} block(s) have stale recommendations — refresh before trusting spray timing.
-          </li>
-        )}
-        {sprayNeedWindow > 0 && (
-          <li>
-            {sprayNeedWindow} block(s) are in spray posture but the next window looks blocked by
-            weather or program limits — review each card&apos;s spray window details.
-          </li>
-        )}
-      </ul>
-    </section>
-  );
-}
-
-function DataHealthPanel({ setup }: { setup: SetupSummary }) {
-  const warnings = [
-    setup.counts.stale_integrations > 0
-      ? "One or more weather station connections may be stale. Check your integrations."
-      : null,
-    setup.counts.stale_stations > 0
-      ? `${setup.counts.stale_stations} station(s) have stale readings`
-      : null,
-    setup.counts.unmapped_stations > 0
-      ? `${setup.counts.unmapped_stations} station(s) are not mapped to blocks`
-      : null,
-    setup.counts.never_seen_stations > 0
-      ? `${setup.counts.never_seen_stations} station(s) have not reported readings yet`
-      : null,
-  ].filter(Boolean) as string[];
-
-  if (warnings.length === 0) return null;
-
-  return (
-    <section className="mt-4 rounded-md border border-amber/30 bg-amber/10 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="frame text-[0.65rem] font-semibold uppercase tracking-wider text-amber">
-            Data health
-          </p>
-          <p className="mt-1 text-sm text-foreground/70">
-            Some inputs need attention before you should fully trust new recommendations.
-          </p>
-        </div>
   if (sprayWindowBlocked > 0) {
     lines.push(
-      `${sprayWindowBlocked} block${sprayWindowBlocked === 1 ? "" : "s"} call for spray but the next window looks blocked — open a block on the map or check Forecasts for details.`,
+      `${sprayWindowBlocked} block${sprayWindowBlocked === 1 ? "" : "s"} call for spray but the next window looks blocked — select the block on the map or check Forecasts for details.`,
     );
   }
   return lines;
@@ -747,33 +695,6 @@ function Metric({
   );
 }
 
-function SetupChecklist({ setup }: { setup: SetupSummary }) {
-  const completeCount = setup.steps.filter((step) => step.complete).length;
-  const next = setup.steps.find((step) => !step.complete);
-
-  return (
-    <section className="mt-6 rounded-md border border-border/40 bg-background/40 p-5">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="frame text-[0.65rem] font-semibold uppercase tracking-wider text-foreground/50">
-            Pilot setup
-          </p>
-          <h2 className="mt-2 font-display text-xl">
-            {completeCount === setup.steps.length
-              ? "Ready for daily recommendations"
-              : "15 minutes to first recommendation"}
-          </h2>
-          <p className="mt-1 text-sm text-foreground/60">
-            {setup.counts.blocks} block(s), {setup.counts.active_integrations} active
-            integration(s), {setup.counts.mapped_stations} mapped station(s).
-          </p>
-        </div>
-        {next && (
-          <Link
-            href={next.href}
-            className="rounded-md bg-amber px-4 py-2 frame text-xs font-semibold text-background transition-colors hover:bg-amber/90"
-          >
-            Next: {next.label}
 function PmiOrgMetric({ orgPmi }: { orgPmi?: DashboardSummary["org_pmi"] }) {
   if (!orgPmi || orgPmi.max_pmi == null) {
     return (
@@ -788,77 +709,6 @@ function PmiOrgMetric({ orgPmi }: { orgPmi?: DashboardSummary["org_pmi"] }) {
           </Link>
         </p>
       </div>
-
-      <ol className="mt-5 grid gap-2 md:grid-cols-5">
-        {setup.steps.map((step) => (
-          <li
-            key={step.id}
-            className={`rounded-md border px-3 py-3 text-sm ${
-              step.complete
-                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
-                : "border-border/40 bg-background/40 text-foreground/60"
-            }`}
-          >
-            <Link href={step.href} className="block">
-              <span className="frame text-[0.6rem] uppercase tracking-wider">
-                {step.complete ? "Done" : "Needed"}
-              </span>
-              <span className="mt-1 block">{step.label}</span>
-            </Link>
-          </li>
-        ))}
-      </ol>
-
-      {setup.warnings.length > 0 && (
-        <ul className="mt-4 space-y-1 text-xs text-amber">
-          {setup.warnings.map((warning) => (
-            <li key={warning}>{warning}</li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-function CardActions({
-  stale,
-  refreshing,
-  onRefresh,
-}: {
-  stale: boolean;
-  refreshing: boolean;
-  onRefresh: () => void;
-}) {
-  return (
-    <div className="flex items-center justify-between rounded-md border border-border/30 bg-background/30 px-3 py-2">
-      <span className={`text-xs ${stale ? "text-amber" : "text-foreground/50"}`}>
-        {stale ? "Data is stale" : "Recommendation is current"}
-      </span>
-      <button
-        type="button"
-        onClick={onRefresh}
-        disabled={refreshing}
-        className="inline-flex items-center gap-1 frame text-xs font-semibold text-amber hover:text-amber/80 disabled:opacity-50"
-      >
-        <RefreshCw className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
-        Refresh recommendation
-      </button>
-    </div>
-  );
-}
-
-function NoVerdictCard({
-  block,
-  setup,
-  refreshing,
-  onRefresh,
-}: {
-  block: DashboardBlock;
-  setup: SetupSummary;
-  refreshing: boolean;
-  onRefresh: () => void;
-}) {
-  const next = setup.steps.find((step) => !step.complete);
     );
   }
   const tierTone =
@@ -872,10 +722,6 @@ function NoVerdictCard({
       <p className="frame text-[0.6rem] uppercase tracking-wider text-foreground/50">
         Worst PMI
       </p>
-      <p className="mt-3 text-sm text-foreground/60">
-        {next
-          ? `No recommendation yet. Complete "${next.label}" to get your first recommendation for this block.`
-          : "No recommendation yet. Generate one now or wait for the next scheduled run."}
       <p className={`mt-1 font-display text-2xl ${tierTone}`}>{orgPmi.max_pmi}</p>
       <p className="mt-0.5 frame text-[0.6rem] uppercase tracking-wider text-foreground/50">
         {orgPmi.max_pmi_tier} · {orgPmi.max_pmi_block_name}
@@ -885,11 +731,6 @@ function NoVerdictCard({
           href="/spray/forecasts"
           className="font-semibold text-amber hover:text-amber/80"
         >
-          <RefreshCw className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
-          Get your first recommendation
-        </button>
-      </div>
-    </article>
           See breakdown →
         </Link>
       </p>
