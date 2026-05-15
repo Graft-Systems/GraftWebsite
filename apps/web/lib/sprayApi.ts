@@ -48,6 +48,22 @@ export type PmiHistoryDay = {
   details: Record<string, unknown>;
 };
 
+/** Visual Crossing daily rollup from ``/blocks/<id>/forecast-weather``. */
+export type BlockForecastWeatherDay = {
+  date: string;
+  temp_max_f: number | null;
+  wind_max_mph: number | null;
+  precip_mm: number | null;
+  precip_prob_max: number | null;
+};
+
+export type BlockForecastWeatherResponse = {
+  available: boolean;
+  detail?: string;
+  attribution?: string;
+  days: BlockForecastWeatherDay[];
+};
+
 export type LatestPmiExplain = {
   headline: string;
   rules_applied_last_day: string[];

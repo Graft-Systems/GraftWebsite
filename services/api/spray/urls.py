@@ -71,6 +71,11 @@ urlpatterns = [
         name="block_sensor_readings",
     ),
     path(
+        "orgs/<uuid:org_id>/blocks/<uuid:block_id>/forecast-weather",
+        views.BlockForecastWeatherView.as_view(),
+        name="block_forecast_weather",
+    ),
+    path(
         "orgs/<uuid:org_id>/blocks/<uuid:block_id>",
         views.BlockDetailView.as_view(),
         name="block_detail",

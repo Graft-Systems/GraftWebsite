@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import uuid
 from collections import defaultdict
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import Any
 
 from django.conf import settings
@@ -1129,6 +1129,70 @@ class BlockSensorReadingsView(APIView):
                 "readings": readings,
                 "readings_total": readings_total,
                 "readings_truncated": readings_total > len(readings),
+            }
+        )
+
+
+def _block_forecast_lat_lon(block: Block) -> tuple[float, float] | None:
+    """Pick a representative lat/lon for Visual Crossing (vineyard pin, else block shape)."""
+    vineyard = block.vineyard
+    centroid = getattr(vineyard, "centroid", None)
+    if centroid is not None and not centroid.empty:
+        return (centroid.y, centroid.x)
+    geom = getattr(block, "geom", None)
+    if geom is not None and not geom.empty:
+        c = geom.centroid
+        return (c.y, c.x)
+    return None
+
+
+class BlockForecastWeatherView(APIView):
+    """GET /api/spray/orgs/<org_id>/blocks/<block_id>/forecast-weather.
+
+    Returns Visual Crossing daily aggregates for the next seven calendar
+    days (today through today+6). Requires ``VISUAL_CROSSING_API_KEY`` on
+    the API service.
+    """
+
+    permission_classes = [IsOrgViewer]
+
+    @transaction.atomic
+    def get(self, request, org_id, block_id):
+        from spray.providers.visual_crossing import fetch_daily_weather_window
+
+        set_current_org_id(str(org_id))
+        block = get_object_or_404(
+            Block.objects.for_org(org_id).filter(archived_at__isnull=True),
+            id=block_id,
+        )
+        coords = _block_forecast_lat_lon(block)
+        if coords is None:
+            return Response(
+                {
+                    "available": False,
+                    "detail": (
+                        "No map location yet. Set the vineyard pin or draw blocks."
+                    ),
+                    "days": [],
+                }
+            )
+        lat, lon = coords
+        today = timezone.now().date()
+        end = today + timedelta(days=6)
+        days, err = fetch_daily_weather_window(lat, lon, today, end)
+        if err:
+            return Response(
+                {
+                    "available": False,
+                    "detail": err,
+                    "days": [],
+                }
+            )
+        return Response(
+            {
+                "available": True,
+                "attribution": "Weather data by Visual Crossing",
+                "days": days,
             }
         )
 

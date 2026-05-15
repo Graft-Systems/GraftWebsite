@@ -10,7 +10,7 @@ Docs: https://www.visualcrossing.com/resources/documentation/weather-api/timelin
 from __future__ import annotations
 
 import time
-from datetime import datetime, timedelta, timezone as dt_tz
+from datetime import date, datetime, timedelta, timezone as dt_tz
 from decimal import Decimal
 from typing import Any
 
@@ -192,3 +192,123 @@ class VisualCrossingProvider:
             return ProviderHealth(ok=True, latency_ms=payload.get("_latency_ms"))
         except (ProviderResponseError, ProviderRateLimitError) as e:
             return ProviderHealth(ok=False, detail=str(e))
+
+
+def fetch_daily_weather_window(
+    lat: float, lon: float, start: date, end: date
+) -> tuple[list[dict[str, Any]], str | None]:
+    """Aggregate Visual Crossing hourly timeline into calendar-day summaries.
+
+    Returns ``(days, error)`` where ``error`` is ``None`` on success. Each entry:
+
+    - ``date``: ISO calendar date (YYYY-MM-DD)
+    - ``temp_max_f``: daily maximum air temperature (°F), or ``None``
+    - ``wind_max_mph``: daily maximum sustained wind (mph), or ``None``
+    - ``precip_mm``: total liquid precipitation for the day (mm), or ``None``
+    - ``precip_prob_max``: maximum hourly precip probability (0–100), or ``None``
+
+    ``start`` and ``end`` are inclusive calendar bounds in the block's local sense;
+    the Visual Crossing request uses the same calendar strings (UTC hour buckets
+    are grouped by the hour's UTC date — acceptable for spray windows).
+    """
+    try:
+        key = _api_key()
+    except ProviderAuthError as exc:
+        return [], str(exc)
+
+    url = TIMELINE_URL.format(
+        lat=lat, lon=lon, start=start.isoformat(), end=end.isoformat()
+    )
+    try:
+        payload = _request(
+            url,
+            {
+                "key": key,
+                "unitGroup": "metric",
+                "include": "hours",
+                "elements": "datetimeEpoch,temp,windspeed,precip,precipprob",
+            },
+        )
+    except ProviderAuthError as exc:
+        return [], str(exc)
+    except (ProviderResponseError, ProviderRateLimitError) as exc:
+        return [], str(exc)
+
+    buckets: dict[date, dict[str, Any]] = {}
+    for ts, hour in _iter_hours(payload):
+        day = ts.date()
+        if day < start or day > end:
+            continue
+        if day not in buckets:
+            buckets[day] = {
+                "tmax_c": None,
+                "wmax_kmh": None,
+                "pmm": 0.0,
+                "pprobs": [],
+            }
+        b = buckets[day]
+        temp = hour.get("temp")
+        if temp is not None:
+            try:
+                tv = float(temp)
+                b["tmax_c"] = tv if b["tmax_c"] is None else max(b["tmax_c"], tv)
+            except (TypeError, ValueError):
+                pass
+        wind = hour.get("windspeed")
+        if wind is not None:
+            try:
+                wv = float(wind)
+                b["wmax_kmh"] = (
+                    wv if b["wmax_kmh"] is None else max(b["wmax_kmh"], wv)
+                )
+            except (TypeError, ValueError):
+                pass
+        precip = hour.get("precip")
+        if precip is not None:
+            try:
+                b["pmm"] += float(precip)
+            except (TypeError, ValueError):
+                pass
+        pprob = hour.get("precipprob")
+        if pprob is not None:
+            try:
+                b["pprobs"].append(float(pprob))
+            except (TypeError, ValueError):
+                pass
+
+    out: list[dict[str, Any]] = []
+    cur = start
+    while cur <= end:
+        b = buckets.get(cur)
+        if not b or b["tmax_c"] is None:
+            out.append(
+                {
+                    "date": cur.isoformat(),
+                    "temp_max_f": None,
+                    "wind_max_mph": None,
+                    "precip_mm": None,
+                    "precip_prob_max": None,
+                }
+            )
+        else:
+            tmax_f = round(b["tmax_c"] * 9.0 / 5.0 + 32.0, 1)
+            w_mph = (
+                None
+                if b["wmax_kmh"] is None
+                else round(float(b["wmax_kmh"]) * 0.621371, 1)
+            )
+            pprob_max = None
+            if b["pprobs"]:
+                pprob_max = int(round(max(b["pprobs"])))
+            out.append(
+                {
+                    "date": cur.isoformat(),
+                    "temp_max_f": tmax_f,
+                    "wind_max_mph": w_mph,
+                    "precip_mm": round(float(b["pmm"]), 2),
+                    "precip_prob_max": pprob_max,
+                }
+            )
+        cur += timedelta(days=1)
+
+    return out, None

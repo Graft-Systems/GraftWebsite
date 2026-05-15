@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -16,7 +16,10 @@ from spray.providers.base import (
     ProviderRateLimitError,
     ProviderResponseError,
 )
-from spray.providers.visual_crossing import VisualCrossingProvider
+from spray.providers.visual_crossing import (
+    VisualCrossingProvider,
+    fetch_daily_weather_window,
+)
 
 
 pytestmark = pytest.mark.django_db
@@ -144,3 +147,60 @@ def test_partial_data_response_no_crash():
     assert len(obs) == 1
     assert obs[0].temp_c is None
     assert obs[0].rh_pct is None
+
+
+@override_settings(VISUAL_CROSSING_API_KEY="")
+def test_fetch_daily_weather_window_missing_key_returns_error():
+    days, err = fetch_daily_weather_window(
+        38.3, -122.3, date(2024, 5, 4), date(2024, 5, 5)
+    )
+    assert days == []
+    assert err is not None
+
+
+@override_settings(VISUAL_CROSSING_API_KEY="test-key")
+@responses.activate
+def test_fetch_daily_weather_window_aggregates_days():
+    base = datetime(2024, 5, 4, 0, 0, tzinfo=timezone.utc)
+    day0 = []
+    day1 = []
+    for h in range(24):
+        ts0 = base + timedelta(hours=h)
+        day0.append(
+            {
+                "datetimeEpoch": int(ts0.timestamp()),
+                "temp": 10.0 + h * 0.5,
+                "windspeed": 18.0 + h,
+                "precip": 0.2 if h == 10 else 0.0,
+                "precipprob": 10 + (h % 7),
+            }
+        )
+    for h in range(24):
+        ts1 = base + timedelta(days=1, hours=h)
+        day1.append(
+            {
+                "datetimeEpoch": int(ts1.timestamp()),
+                "temp": 5.0,
+                "windspeed": 6.0,
+                "precip": 0.0,
+                "precipprob": 0.0,
+            }
+        )
+    payload = {"days": [{"hours": day0}, {"hours": day1}]}
+    responses.add(
+        responses.GET,
+        responses.matchers.re.compile(r"https://weather\.visualcrossing\.com/.*"),
+        json=payload,
+        status=200,
+    )
+    days, err = fetch_daily_weather_window(
+        38.3000, -122.3000, date(2024, 5, 4), date(2024, 5, 5)
+    )
+    assert err is None
+    assert len(days) == 2
+    assert days[0]["date"] == "2024-05-04"
+    assert days[0]["temp_max_f"] is not None
+    assert days[0]["wind_max_mph"] is not None
+    assert days[0]["precip_mm"] is not None
+    assert days[0]["precip_prob_max"] is not None
+    assert days[1]["date"] == "2024-05-05"
