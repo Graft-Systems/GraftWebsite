@@ -2,6 +2,7 @@ from django.urls import path
 
 from . import views
 from . import drf_views
+from . import newsroom_views
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
@@ -10,6 +11,37 @@ from rest_framework_simplejwt.views import (
 app_name = "api"
 
 urlpatterns = [
+    path("news/me", newsroom_views.NewsroomMeView.as_view(), name="news_me"),
+    path(
+        "news/articles",
+        newsroom_views.NewsArticlePublicListView.as_view(),
+        name="news_articles_public",
+    ),
+    path(
+        "news/articles/manage",
+        newsroom_views.NewsArticleManageListCreateView.as_view(),
+        name="news_articles_manage",
+    ),
+    path(
+        "news/articles/manage/<uuid:article_id>",
+        newsroom_views.NewsArticleManageDetailView.as_view(),
+        name="news_articles_manage_detail",
+    ),
+    path(
+        "news/articles/<slug:slug>",
+        newsroom_views.NewsArticlePublicDetailView.as_view(),
+        name="news_articles_public_detail",
+    ),
+    path(
+        "news/publishers",
+        newsroom_views.NewsroomAccessListCreateView.as_view(),
+        name="news_publishers",
+    ),
+    path(
+        "news/publishers/<uuid:access_id>",
+        newsroom_views.NewsroomAccessDetailView.as_view(),
+        name="news_publishers_detail",
+    ),
     path("contact", views.contact, name="contact"),
     path("estimate", views.estimate, name="estimate"),
     path("estimate/history", views.estimate_history, name="estimate_history"),

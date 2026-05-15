@@ -162,14 +162,14 @@ export function SceneHero() {
       <div className="absolute inset-x-0 bottom-0 z-10 pb-[10vh] md:pb-[12vh]">
         <div className="mx-auto grid max-w-[1400px] grid-cols-1 gap-8 px-6 md:grid-cols-[1fr_auto] md:items-end md:gap-16 lg:px-10">
           <div className="max-w-2xl">
-            <h1 className="display text-display-xl leading-[1.02] text-foreground">
+            <h1 className="display text-display-xl leading-[1.14] text-foreground">
               <SplitTextReveal text="Vineyard Management Intelligence" delay={0.35} immediate />
             </h1>
             <motion.p
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.9, delay: 2.5, ease: [0.2, 0.9, 0.3, 1] }}
-              className="mt-6 max-w-lg text-base text-foreground/75 sm:text-lg"
+              className="mt-8 max-w-lg text-base text-foreground/75 sm:text-lg"
             >
               Graft Systems uses artificial intelligence, computer vision, and advanced weather modeling  
               to help winegrowers make plot-specific decisions.

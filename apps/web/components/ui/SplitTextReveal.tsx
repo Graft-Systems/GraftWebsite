@@ -33,10 +33,10 @@ export function SplitTextReveal({
           key={i}
           aria-hidden
           className={cn(
-            "inline-block overflow-hidden align-bottom leading-[1.05]",
+            "inline-block overflow-hidden align-bottom leading-[1.15]",
             wordClassName
           )}
-          style={{ paddingBottom: "0.05em" }}
+          style={{ paddingBottom: "0.18em" }}
         >
           <motion.span
             className="inline-block"

@@ -2,6 +2,8 @@ from django.contrib import admin
 
 from .models import (
     ContactSubmission,
+    NewsArticle,
+    NewsroomAccess,
     PredictionBatch,
     PredictionResult,
     WaitlistEntry,
@@ -115,3 +117,28 @@ class PredictionResultAdmin(admin.ModelAdmin):
 
     def has_add_permission(self, request) -> bool:
         return False
+
+
+@admin.register(NewsroomAccess)
+class NewsroomAccessAdmin(admin.ModelAdmin):
+    list_display = (
+        "user",
+        "can_publish",
+        "can_manage_permissions",
+        "granted_by",
+        "created_at",
+    )
+    list_filter = ("can_publish", "can_manage_permissions", "created_at")
+    search_fields = ("user__email", "user__name", "user__clerk_user_id")
+    raw_id_fields = ("user", "granted_by")
+    ordering = ("-created_at",)
+
+
+@admin.register(NewsArticle)
+class NewsArticleAdmin(admin.ModelAdmin):
+    list_display = ("title", "slug", "status", "author", "published_at", "updated_at")
+    list_filter = ("status", "published_at", "created_at")
+    search_fields = ("title", "slug", "excerpt", "body", "author__email")
+    prepopulated_fields = {"slug": ("title",)}
+    raw_id_fields = ("author",)
+    ordering = ("-updated_at",)

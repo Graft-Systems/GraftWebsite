@@ -35,7 +35,7 @@ export function ScenePillars() {
   return (
     <section
       id="pillars"
-      className="relative w-full scroll-mt-20 bg-background py-28 lg:py-36"
+      className="relative w-full scroll-mt-20 bg-background pb-12 pt-28 lg:pb-16 lg:pt-36"
     >
       <div className="mx-auto max-w-[1400px] px-6 lg:px-10">
         <div className="max-w-3xl">

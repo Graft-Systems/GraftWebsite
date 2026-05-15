@@ -41,6 +41,7 @@ export function Footer() {
             <p className="frame mb-4 text-[0.65rem] text-foreground-muted">Site</p>
             <ul className="space-y-2">
               <li><Link href="/about" className="text-foreground/80 hover:text-foreground">About</Link></li>
+              <li><Link href="/news" className="text-foreground/80 hover:text-foreground">News</Link></li>
               <li><Link href="/tool" className="text-foreground/80 hover:text-foreground">Yield preview</Link></li>
               <li><Link href="/spray" className="text-foreground/80 hover:text-foreground">Spray</Link></li>
               <li><Link href="/contact" className="text-foreground/80 hover:text-foreground">Contact</Link></li>

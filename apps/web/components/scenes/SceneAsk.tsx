@@ -8,12 +8,8 @@ export function SceneAsk() {
   return (
     <section
       id="ask"
-      className="relative flex min-h-[90vh] flex-col items-center justify-center bg-background px-6 py-28"
+      className="relative flex flex-col items-center justify-center bg-background px-6 pb-20 pt-10 md:pb-24 md:pt-12"
     >
-      <div className="frame absolute left-1/2 top-10 -translate-x-1/2 text-sm font-semibold tracking-[0.14em] text-foreground/80">
-        GRAFT
-      </div>
-
       <div className="mx-auto w-full max-w-3xl text-center">
         <h2 className="display text-display-xl leading-[1.05] text-foreground">
           <SplitTextReveal text="Start with a product" />

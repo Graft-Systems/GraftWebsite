@@ -97,6 +97,10 @@ CLERK_JWKS_URL = os.environ.get("CLERK_JWKS_URL", "")
 # Default off so production and tests stay webhook-authoritative unless enabled.
 CLERK_JIT_USER_PROVISIONING = _env_bool("CLERK_JIT_USER_PROVISIONING", False)
 
+# Newsroom: Clerk user IDs that can publish and manage publisher permissions
+# without a NewsroomAccess row (bootstrap admins).
+NEWSROOM_ADMIN_CLERK_IDS = _env_list("NEWSROOM_ADMIN_CLERK_IDS", "")
+
 # M0-06: Visual Crossing weather provider. Free tier covers M0; the
 # adapter raises ProviderAuthError if unset, which the worker logs and
 # moves on (no row written, retry on next beat tick).
