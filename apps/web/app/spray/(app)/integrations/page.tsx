@@ -92,7 +92,7 @@ function IntegrationsPageInner() {
       }
       try {
         const r = await authedFetch(`/api/spray/orgs/${orgId}/integrations`);
-        if (!r.ok) throw new Error(`integrations ${r.status}`);
+        if (!r.ok) throw new Error("Integration status is unavailable right now. Try again shortly.");
         const data = (await r.json()) as { results: Connection[] };
         if (!cancelled) setConnections(data.results);
       } catch (e) {
@@ -200,7 +200,7 @@ function IntegrationsPageInner() {
       { method: "DELETE" },
     );
     if (!r.ok) {
-      setError(`disconnect ${r.status}`);
+      setError("Integration status is unavailable right now. Try again shortly.");
       return;
     }
     setConnections((prev) =>
@@ -244,7 +244,7 @@ function IntegrationsPageInner() {
           )}
           <p className="mt-3 max-w-2xl text-sm text-foreground/70">
             Connect your weather-station accounts so Spray can pull live
-            sensor data into the verdict engine. Davis, Pessl, and METER are
+            sensor data into the spray guidance engine. Davis, Pessl, and METER are
             the MVP providers; Sencrop is tracked for a later phase.
           </p>
         </div>
@@ -437,7 +437,7 @@ function IntegrationsPageInner() {
 
         {connections && connections.length === 0 && (
           <p className="mt-6 text-sm text-foreground/60">
-            No integrations yet. Connect your first one above.
+            No integrations connected yet. Add a weather station or data provider to get started.
           </p>
         )}
 
@@ -515,11 +515,11 @@ function IntegrationsPageInner() {
 function getConnectionHealthBadge(connection: Connection): HealthBadge {
   const health = getConnectionHealth(connection);
   const labels: Record<ConnectionHealth, string> = {
-    active: "active",
-    needs_reauth: "needs reauth",
-    disconnected: "disconnected",
-    health_stale: "health stale",
-    unchecked: "unchecked",
+    active: "Connected",
+    needs_reauth: "Partially connected",
+    disconnected: "Disconnected",
+    health_stale: "Partially connected",
+    unchecked: "Status unknown",
   };
   return {
     label: labels[health],

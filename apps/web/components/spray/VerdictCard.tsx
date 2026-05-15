@@ -236,7 +236,7 @@ export function VerdictCard({
         <section className="mt-5 space-y-3 rounded-md border border-border/30 bg-background/30 p-4">
           <div>
             <p className="frame text-[0.65rem] font-semibold uppercase tracking-wider text-foreground/50">
-              Directive
+              Recommendation
             </p>
             <p className="mt-1 text-sm text-foreground/80">
               {directive.risk_level.toUpperCase()} risk from {directive.primary_risk} ·{" "}
@@ -315,14 +315,14 @@ export function VerdictCard({
         onClick={() => setShowDrivers((s) => !s)}
         className="mt-4 frame text-[0.65rem] font-semibold uppercase tracking-wider text-amber transition-colors hover:text-amber/80"
       >
-        {showDrivers ? "Hide drivers ▴" : "Why this verdict? ▾"}
+        {showDrivers ? "Hide drivers ▴" : "Why this recommendation? ▾"}
       </button>
 
       {showDrivers && (
         <ul className="mt-3 space-y-2 border-t border-border/30 pt-3">
           {verdict.drivers.length === 0 && (
             <li className="text-xs text-foreground/50">
-              No model fired this period — verdict reflects baseline.
+              This recommendation is based on baseline conditions — no active weather model inputs this period.
             </li>
           )}
           {verdict.drivers.map((d, i) => (

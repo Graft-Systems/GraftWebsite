@@ -105,7 +105,7 @@ function SprayRecordsContent() {
     const suffix = params.toString() ? `?${params.toString()}` : "";
     const res = await authedFetch(`/api/spray/orgs/${org.id}/spray-records${suffix}`);
     if (!res.ok) {
-      setError(`Could not load spray records (${res.status}).`);
+      setError("Spray records are unavailable right now. Try again shortly.");
       return;
     }
     const data = (await res.json()) as { results: SprayRecord[] };
@@ -127,7 +127,7 @@ function SprayRecordsContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error(`Could not save spray record (${res.status}).`);
+      if (!res.ok) throw new Error("Spray records are unavailable right now. Try again shortly.");
       setForm(blankForm());
       setEditingId(null);
       await loadRecords();
@@ -147,7 +147,7 @@ function SprayRecordsContent() {
       { method: "DELETE" },
     );
     if (!res.ok) {
-      setError(`Could not archive spray record (${res.status}).`);
+      setError("Spray records are unavailable right now. Try again shortly.");
       return;
     }
     await loadRecords();
@@ -174,7 +174,7 @@ function SprayRecordsContent() {
       <section>
         <h1 className="font-display text-3xl">Spray records</h1>
         <p className="mt-2 text-sm text-foreground/60">
-          Log field applications so each directive has a usable operational trail.
+          Log field applications so each recommendation has a usable operational trail.
         </p>
 
         {selectedBlock && (
@@ -332,7 +332,7 @@ function SprayRecordsContent() {
         )}
         {records && records.length === 0 && (
           <p className="mt-6 rounded-md border border-dashed border-border/40 p-8 text-center text-sm text-foreground/60">
-            No matching spray records yet.
+            No spray records yet. After you spray, log it here to track your season.
           </p>
         )}
         {records && records.length > 0 && (

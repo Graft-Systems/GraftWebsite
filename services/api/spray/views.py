@@ -274,10 +274,33 @@ def _handle_session_removed(data: dict[str, Any]) -> None:
 
 
 def _client_ip(request) -> str | None:
-    forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.META.get("REMOTE_ADDR")
+    """Return the client IP, or None if the value cannot be parsed as a valid IP.
+
+    Production reverse-proxies (Render, Heroku, Cloudflare) can inject
+    X-Forwarded-For with port suffixes ("10.0.0.1:54321") or bracketed
+    IPv6 literals ("[::1]:8080"). PostgreSQL's ``inet`` type rejects both
+    formats, so we strip extras before storing in AuthEvent.ip.
+    """
+    import ipaddress
+
+    raw = request.META.get("HTTP_X_FORWARDED_FOR")
+    candidate = raw.split(",")[0].strip() if raw else request.META.get("REMOTE_ADDR") or ""
+
+    # Strip bracketed IPv6 with port: "[::1]:8080" → "::1"
+    if candidate.startswith("["):
+        candidate = candidate[1:].split("]")[0]
+    # Strip IPv4 with port: "10.0.0.1:8080" → "10.0.0.1"
+    elif ":" in candidate:
+        parts = candidate.rsplit(":", 1)
+        # Only strip the last segment if it looks like a port (all digits)
+        if parts[1].isdigit():
+            candidate = parts[0]
+
+    try:
+        ipaddress.ip_address(candidate)
+        return candidate
+    except ValueError:
+        return None
 
 
 def _user_agent(request) -> str:

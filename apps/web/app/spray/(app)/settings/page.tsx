@@ -130,7 +130,7 @@ function ProgramTab({
       setLoading(true);
       const res = await authedFetch(`/api/spray/orgs/${orgId}/program-settings`);
       if (!res.ok) {
-        setError(`settings ${res.status}`);
+        setError("Settings are unavailable right now. Try again shortly.");
         setLoading(false);
         return;
       }
@@ -158,7 +158,7 @@ function ProgramTab({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(settings),
       });
-      if (!res.ok) throw new Error(`save ${res.status}`);
+      if (!res.ok) throw new Error("Settings are unavailable right now. Try again shortly.");
       setSettings((await res.json()) as ProgramSettings);
       setMessage("Program settings saved.");
     } catch (e) {
@@ -341,7 +341,7 @@ function PrivacyTab({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify([{ category, granted }]),
       });
-      if (!res.ok) throw new Error(`save ${res.status}`);
+      if (!res.ok) throw new Error("Settings are unavailable right now. Try again shortly.");
       await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save consent.");
@@ -546,7 +546,7 @@ function MembersTab({
     setLoading(true);
     const res = await authedFetch(`/api/spray/orgs/${orgId}/memberships`);
     if (!res.ok) {
-      setError(`members ${res.status}`);
+      setError("Settings are unavailable right now. Try again shortly.");
       setLoading(false);
       return;
     }
@@ -574,7 +574,7 @@ function MembersTab({
     });
     if (!res.ok) {
       const body = (await res.json().catch(() => ({}))) as { detail?: string };
-      setError(body.detail ?? `invite ${res.status}`);
+      setError(body.detail ?? "Settings are unavailable right now. Try again shortly.");
       return;
     }
     setInviteEmail("");
