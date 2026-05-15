@@ -186,13 +186,13 @@ export default function OnboardingPage() {
     <main className="mx-auto max-w-5xl px-6 py-24">
       <header className="max-w-3xl">
         <p className="frame text-xs font-semibold uppercase tracking-wider text-amber">
-          15 minutes to first directive
+          15 minutes to first recommendation
         </p>
         <h1 className="mt-3 font-display text-4xl">Welcome{firstName}.</h1>
         <p className="mt-3 text-foreground/70">
           Set privacy preferences, create the vineyard account, then jump into
           blocks or integrations. Graft Spray uses those pieces to produce the
-          first block-level mildew directive.
+          first block-level mildew recommendation.
         </p>
       </header>
 
@@ -342,7 +342,7 @@ export default function OnboardingPage() {
                 href="/spray/dashboard"
                 className="rounded-md bg-amber px-3 py-2 frame text-xs font-semibold text-background hover:bg-amber/90"
               >
-                View directives
+                View recommendations
               </Link>
             </div>
           </section>
