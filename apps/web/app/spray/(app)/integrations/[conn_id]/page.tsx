@@ -2,13 +2,15 @@
  * Integration detail (M1.5 PR-D).
  *
  * Lists the vendor's stations (live-fetched from the connector + cached
- * as SensorStation rows) with a per-station "Link to block" picker.
+ * as SensorStation rows) with a per-station "Link to block" picker and
+ * per-link unlink.
  */
 "use client";
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { X } from "lucide-react";
 import { useActiveOrg } from "@/lib/sprayApi";
 import {
   getStationHealth,
@@ -30,6 +32,28 @@ type Block = {
   archived_at: string | null;
 };
 type Vineyard = { id: string; name: string; archived_at: string | null };
+
+/** Sync pull-readings API returns this as ``pull_summary`` (subset may be empty). */
+type PullSummary = {
+  count: number;
+  readings: Array<{
+    ts: string;
+    air_temp_c: number | null;
+    rh_pct: number | null;
+    leaf_wetness_min: number | null;
+    precip_mm: number | null;
+    wind_speed_ms: number | null;
+    quality_flag: string;
+  }>;
+  readings_total: number;
+  readings_truncated: boolean;
+  gap_fill: boolean;
+  since_utc: string | null;
+  until_utc: string;
+  vendor: string;
+  vendor_station_id: string;
+  station_name: string;
+};
 
 const STATION_STATUS_COPY: Record<
   StationHealth,
@@ -63,6 +87,8 @@ export default function IntegrationDetailPage() {
   const [blocks, setBlocks] = useState<{ id: string; label: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [pullingStationId, setPullingStationId] = useState<string | null>(null);
+  const [unlinkingKey, setUnlinkingKey] = useState<string | null>(null);
+  const [pullReports, setPullReports] = useState<Record<string, PullSummary>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -113,6 +139,7 @@ export default function IntegrationDetailPage() {
 
   async function linkBlock(stationId: string, blockId: string) {
     if (!orgId) return;
+    setError(null);
     const r = await authedFetch(
       `/api/spray/orgs/${orgId}/integrations/${connId}/stations/${stationId}/link-block`,
       {
@@ -156,10 +183,17 @@ export default function IntegrationDetailPage() {
         detail?: string;
         readings_upserted?: number;
         queued?: boolean;
+        pull_summary?: PullSummary;
       };
       if (!r.ok) {
         setError(data.detail ?? `pull readings failed (${r.status})`);
         return;
+      }
+      if (data.pull_summary) {
+        setPullReports((prev) => ({
+          ...prev,
+          [stationId]: data.pull_summary as PullSummary,
+        }));
       }
       const sRes = await authedFetch(
         `/api/spray/orgs/${orgId}/integrations/${connId}/stations`,
@@ -177,6 +211,40 @@ export default function IntegrationDetailPage() {
       setError(e instanceof Error ? e.message : "pull failed");
     } finally {
       setPullingStationId(null);
+    }
+  }
+
+  async function unlinkBlock(stationId: string, blockId: string) {
+    if (!orgId) return;
+    setError(null);
+    const key = `${stationId}:${blockId}`;
+    setUnlinkingKey(key);
+    try {
+      const r = await authedFetch(
+        `/api/spray/orgs/${orgId}/integrations/${connId}/stations/${stationId}/link-block`,
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ block_id: blockId }),
+        },
+      );
+      const data = (await r.json().catch(() => ({}))) as { detail?: string };
+      if (!r.ok) {
+        setError(data.detail ?? `unlink failed (${r.status})`);
+        return;
+      }
+      setStations((prev) =>
+        (prev ?? []).map((s) =>
+          s.id === stationId
+            ? {
+                ...s,
+                linked_block_ids: s.linked_block_ids.filter((id) => id !== blockId),
+              }
+            : s,
+        ),
+      );
+    } finally {
+      setUnlinkingKey(null);
     }
   }
 
@@ -225,9 +293,12 @@ export default function IntegrationDetailPage() {
           {stations.map((s) => {
             const status = getStationHealth(s);
             const statusCopy = STATION_STATUS_COPY[status];
-            const linkedBlocks = s.linked_block_ids
-              .map((id) => blocks.find((b) => b.id === id)?.label ?? id)
-              .filter(Boolean);
+            const linkedEntries = s.linked_block_ids.map((blockId) => ({
+              id: blockId,
+              label:
+                blocks.find((b) => b.id === blockId)?.label ??
+                `Archived or removed block (${blockId.slice(0, 8)}…)`,
+            }));
             const availableBlocks = blocks.filter(
               (b) => !s.linked_block_ids.includes(b.id),
             );
@@ -267,20 +338,41 @@ export default function IntegrationDetailPage() {
                   </button>
                 </div>
 
+                {pullReports[s.id] ? (
+                  <PullReportPanel report={pullReports[s.id]} />
+                ) : null}
+
                 <div className="mt-4">
                   <p className="frame text-[0.65rem] uppercase tracking-wider text-foreground/50">
                     Linked blocks
                   </p>
-                  {linkedBlocks.length > 0 ? (
+                  <p className="mt-1 text-xs text-foreground/50">
+                    A plain id is usually an archived or removed block still linked here — use
+                    the button on the right to unlink.
+                  </p>
+                  {linkedEntries.length > 0 ? (
                     <div className="mt-2 flex flex-wrap gap-2">
-                      {linkedBlocks.map((label) => (
-                        <span
-                          key={label}
-                          className="rounded border border-border/40 px-2 py-1 text-xs text-foreground/70"
-                        >
-                          {label}
-                        </span>
-                      ))}
+                      {linkedEntries.map((entry) => {
+                        const busy =
+                          unlinkingKey === `${s.id}:${entry.id}`;
+                        return (
+                          <span
+                            key={entry.id}
+                            className="inline-flex items-center gap-1 rounded border border-border/40 px-2 py-1 text-xs text-foreground/70"
+                          >
+                            <span>{entry.label}</span>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              aria-label={`Unlink ${entry.label}`}
+                              onClick={() => unlinkBlock(s.id, entry.id)}
+                              className="rounded p-0.5 text-foreground/50 transition-colors hover:bg-red-500/20 hover:text-red-300 disabled:opacity-40"
+                            >
+                              <X className="h-3.5 w-3.5" strokeWidth={2.5} />
+                            </button>
+                          </span>
+                        );
+                      })}
                     </div>
                   ) : (
                     <p className="mt-2 text-sm text-amber">
@@ -339,6 +431,86 @@ export default function IntegrationDetailPage() {
           })}
         </ul>
       )}
+    </div>
+  );
+}
+
+function dashNum(v: number | null | undefined): string {
+  if (v === null || v === undefined) return "—";
+  if (typeof v === "number" && Number.isNaN(v)) return "—";
+  return String(v);
+}
+
+function PullReportPanel({ report }: { report: PullSummary }) {
+  return (
+    <div className="mt-3 rounded-md border border-border/40 bg-foreground/[0.04] p-3 text-xs">
+      <p className="frame text-[0.65rem] font-semibold uppercase tracking-wider text-foreground/55">
+        Last pull result
+      </p>
+      <p className="mt-2 text-foreground/75">
+        <span className="font-semibold text-foreground/90">{report.readings_total}</span>{" "}
+        readings upserted
+        {report.readings_truncated ? (
+          <span className="text-amber">
+            {" "}
+            (table shows first {report.readings.length} of {report.readings_total})
+          </span>
+        ) : null}
+        {" · "}
+        vendor {report.vendor} / device {report.vendor_station_id}
+        {report.station_name ? ` (${report.station_name})` : ""}
+        {" · "}
+        window {report.since_utc ?? "—"} → {report.until_utc}
+        {report.gap_fill ? (
+          <span className="text-amber"> · gap-fill quality flag applied</span>
+        ) : null}
+      </p>
+      {report.readings.length > 0 ? (
+        <div className="mt-2 max-h-72 overflow-auto rounded border border-border/30">
+          <table className="w-full min-w-[36rem] border-collapse text-left text-[0.7rem]">
+            <thead className="sticky top-0 z-[1] bg-background/95 text-foreground/50">
+              <tr>
+                <th className="border-b border-border/40 px-2 py-1 font-semibold">
+                  Timestamp (UTC)
+                </th>
+                <th className="border-b border-border/40 px-2 py-1 font-semibold">°C</th>
+                <th className="border-b border-border/40 px-2 py-1 font-semibold">RH%</th>
+                <th className="border-b border-border/40 px-2 py-1 font-semibold">LW min</th>
+                <th className="border-b border-border/40 px-2 py-1 font-semibold">Rain mm</th>
+                <th className="border-b border-border/40 px-2 py-1 font-semibold">Wind m/s</th>
+                <th className="border-b border-border/40 px-2 py-1 font-semibold">Quality</th>
+              </tr>
+            </thead>
+            <tbody>
+              {report.readings.map((row, idx) => (
+                <tr key={`${row.ts}-${idx}`} className="text-foreground/80">
+                  <td className="border-b border-border/20 px-2 py-0.5 font-mono">{row.ts}</td>
+                  <td className="border-b border-border/20 px-2 py-0.5">{dashNum(row.air_temp_c)}</td>
+                  <td className="border-b border-border/20 px-2 py-0.5">{dashNum(row.rh_pct)}</td>
+                  <td className="border-b border-border/20 px-2 py-0.5">
+                    {dashNum(row.leaf_wetness_min)}
+                  </td>
+                  <td className="border-b border-border/20 px-2 py-0.5">{dashNum(row.precip_mm)}</td>
+                  <td className="border-b border-border/20 px-2 py-0.5">{dashNum(row.wind_speed_ms)}</td>
+                  <td className="border-b border-border/20 px-2 py-0.5">{row.quality_flag}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="mt-2 text-foreground/55">
+          No reading rows in this pull (vendor returned nothing new for that window).
+        </p>
+      )}
+      <details className="mt-2">
+        <summary className="cursor-pointer text-foreground/60 hover:text-foreground/90">
+          Raw JSON (full server payload)
+        </summary>
+        <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-all rounded bg-foreground/10 p-2 font-mono text-[0.65rem] text-foreground/75">
+          {JSON.stringify(report, null, 2)}
+        </pre>
+      </details>
     </div>
   );
 }

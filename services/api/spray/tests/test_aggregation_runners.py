@@ -7,9 +7,12 @@ within ±0.2 (the rounding tolerance the spec calls for).
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
+from django.contrib.gis.geos import Polygon
+
+from spray.models import Block, BlockPowderyMildewIndex, Org, Vineyard
 
 from spray.aggregation.runners.base import (
     HourlyObservation,
@@ -86,7 +89,7 @@ def test_runners_by_pathogen():
 
 def test_all_runner_versions_returns_dict():
     versions = all_runner_versions()
-    assert versions["gubler_thomas_2013"] == "1.0.0"
+    assert versions["gubler_thomas_2013"] == "2.0.0"
     assert versions["caffi_primary_2009"] == "1.0.0"
     assert versions["caffi_secondary_2010"] == "1.0.0"
 
@@ -127,64 +130,135 @@ def test_primary_score_anchors():
     assert primary_infection_to_severity(10) == 10.0
 
 
+def _polygon():
+    return Polygon(
+        (
+            (-122.0, 38.0),
+            (-122.0, 38.01),
+            (-121.99, 38.01),
+            (-121.99, 38.0),
+            (-122.0, 38.0),
+        ),
+        srid=4326,
+    )
+
+
 # ---------------------------------------------------------------------
-# Gubler-Thomas runner
+# Gubler-Thomas runner (reads persisted PMI)
 # ---------------------------------------------------------------------
 
 
-def test_gubler_thomas_low_risk_with_cold_window():
+@pytest.mark.django_db
+def test_gubler_thomas_low_severity_from_stored_pmi():
+    org = Org.objects.create(name="PMI Org", region="napa")
+    vineyard = Vineyard.objects.create(org=org, name="PMI Vin", region=org.region)
+    block = Block.objects.create(vineyard=vineyard, name="A", geom=_polygon())
+    BlockPowderyMildewIndex.objects.create(
+        block=block,
+        date=date(2026, 5, 7),
+        pmi=20,
+        risk_tier="low",
+        phase="inactive",
+        details={"rule_lines": ["inactive"], "data_sources_summary": {"hours_with_temperature": 24}},
+    )
     obs = _hours(
         datetime(2026, 5, 7, 0, 0, tzinfo=timezone.utc),
         24,
         temp_c=10.0,
         rh_pct=70.0,
     )
-    w = _window(obs)
-    runner = get_runner("gubler_thomas_2013")
-    result = runner.compute(w)
+    w = _window(obs, block_id=str(block.id))
+    result = get_runner("gubler_thomas_2013").compute(w)
     assert result.pathogen == "powdery"
-    assert result.severity_1_10 == 1.0
-    assert result.raw_score["ri"] == 0
+    assert result.raw_score["pmi"] == 20
+    assert 2.0 <= result.severity_1_10 <= 4.0
 
 
-def test_gubler_thomas_high_risk_with_favourable_band():
-    # 24h continuously in the 21–30°C favourable range → 4 favourable
-    # 6h blocks → RI = 80.
+@pytest.mark.django_db
+def test_gubler_thomas_high_severity_from_stored_pmi():
+    org = Org.objects.create(name="PMI Org2", region="napa")
+    vineyard = Vineyard.objects.create(org=org, name="PMI Vin2", region=org.region)
+    block = Block.objects.create(vineyard=vineyard, name="B", geom=_polygon())
+    BlockPowderyMildewIndex.objects.create(
+        block=block,
+        date=date(2026, 5, 7),
+        pmi=85,
+        risk_tier="high",
+        phase="active",
+        details={"rule_lines": ["+20 favourable"], "data_sources_summary": {"hours_with_temperature": 24}},
+    )
     obs = _hours(
         datetime(2026, 5, 7, 0, 0, tzinfo=timezone.utc),
         24,
         temp_c=25.0,
         rh_pct=75.0,
     )
-    w = _window(obs)
+    w = _window(obs, block_id=str(block.id))
     result = get_runner("gubler_thomas_2013").compute(w)
-    assert result.raw_score["ri"] == 80
-    # Severity ≈ 1 + 80*0.09 = 8.2
-    assert 8.0 <= result.severity_1_10 <= 8.5
+    assert result.raw_score["pmi"] == 85
+    assert result.severity_1_10 >= 8.0
 
 
-def test_gubler_thomas_lethal_blocks_subtract():
-    # Mix: first 12h favourable (2 blocks +40), then 4h at 39°C (2 lethal blocks -20)
-    favourable = _hours(
+@pytest.mark.django_db
+def test_gubler_thomas_falls_back_when_no_pmi_row():
+    org = Org.objects.create(name="PMI Org3", region="napa")
+    vineyard = Vineyard.objects.create(org=org, name="PMI Vin3", region=org.region)
+    block = Block.objects.create(vineyard=vineyard, name="C", geom=_polygon())
+    obs = _hours(
         datetime(2026, 5, 7, 0, 0, tzinfo=timezone.utc),
-        12,
+        24,
         temp_c=25.0,
-        rh_pct=75.0,
     )
-    lethal = _hours(
-        datetime(2026, 5, 7, 12, 0, tzinfo=timezone.utc),
-        4,
-        temp_c=39.0,
-        rh_pct=20.0,
-    )
-    w = _window(favourable + lethal)
+    w = _window(obs, block_id=str(block.id))
     result = get_runner("gubler_thomas_2013").compute(w)
-    # 2 favourable blocks * 20 - 2 lethal blocks * 10 = 20
-    assert result.raw_score["ri"] == 20
+    assert result.raw_score["pmi"] == 0
+    assert result.severity_1_10 == 2.0
 
 
-def test_gubler_thomas_confidence_drops_with_gaps():
-    # Half the hours have None temp_c.
+@pytest.mark.django_db
+def test_gubler_thomas_uses_latest_pmi_on_or_before_target_date():
+    org = Org.objects.create(name="PMI Org4", region="napa")
+    vineyard = Vineyard.objects.create(org=org, name="PMI Vin4", region=org.region)
+    block = Block.objects.create(vineyard=vineyard, name="D", geom=_polygon())
+    BlockPowderyMildewIndex.objects.create(
+        block=block,
+        date=date(2026, 5, 5),
+        pmi=40,
+        risk_tier="moderate",
+        phase="active",
+        details={},
+    )
+    BlockPowderyMildewIndex.objects.create(
+        block=block,
+        date=date(2026, 5, 7),
+        pmi=72,
+        risk_tier="high",
+        phase="active",
+        details={},
+    )
+    obs = _hours(
+        datetime(2026, 5, 7, 0, 0, tzinfo=timezone.utc),
+        4,
+        temp_c=22.0,
+    )
+    w = _window(obs, block_id=str(block.id))
+    result = get_runner("gubler_thomas_2013").compute(w)
+    assert result.raw_score["pmi"] == 72
+
+
+@pytest.mark.django_db
+def test_gubler_thomas_confidence_uses_detail_hours():
+    org = Org.objects.create(name="PMI Org5", region="napa")
+    vineyard = Vineyard.objects.create(org=org, name="PMI Vin5", region=org.region)
+    block = Block.objects.create(vineyard=vineyard, name="E", geom=_polygon())
+    BlockPowderyMildewIndex.objects.create(
+        block=block,
+        date=date(2026, 5, 7),
+        pmi=30,
+        risk_tier="low",
+        phase="inactive",
+        details={"data_sources_summary": {"hours_with_temperature": 12}},
+    )
     half_valid = _hours(
         datetime(2026, 5, 7, 0, 0, tzinfo=timezone.utc),
         12,
@@ -195,9 +269,9 @@ def test_gubler_thomas_confidence_drops_with_gaps():
         12,
         temp_c=None,
     )
-    w = _window(half_valid + half_gappy)
+    w = _window(half_valid + half_gappy, block_id=str(block.id))
     result = get_runner("gubler_thomas_2013").compute(w)
-    assert 0.65 <= result.confidence <= 0.75
+    assert 0.65 <= result.confidence <= 0.95
 
 
 # ---------------------------------------------------------------------

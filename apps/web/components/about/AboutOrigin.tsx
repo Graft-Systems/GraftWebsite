@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useRef } from "react";
 import { motion, useInView } from "framer-motion";
 
@@ -29,13 +30,15 @@ export function AboutOrigin() {
             initial={{ opacity: 0 }}
             animate={inView ? { opacity: 1 } : {}}
             transition={{ duration: 0.5, delay: 0.35 }}
-            className="mt-8 overflow-hidden rounded-sm border border-border/60"
+            className="relative mt-8 aspect-[4/5] overflow-hidden rounded-sm border border-border/60"
           >
-            <img
+            <Image
               src="/portrait/denis-toner.png"
               alt="Denis Toner"
+              fill
+              sizes="(max-width: 1024px) 100vw, 22rem"
               draggable={false}
-              className="aspect-[4/5] w-full object-cover grayscale-[15%]"
+              className="object-cover grayscale-[15%]"
             />
           </motion.div>
 

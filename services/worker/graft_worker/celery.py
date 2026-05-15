@@ -11,7 +11,7 @@ import os
 
 import django
 from celery import Celery
-from celery.schedules import schedule
+from celery.schedules import crontab, schedule
 
 
 # Configure Django before importing any spray.* models.
@@ -70,6 +70,12 @@ app.conf.beat_schedule = {
                 )
             )
         ),
+    },
+    # Daily conidial PMI (UTC calendar days); short-circuits out-of-season
+    # unless GRAFT_SPRAY_PMI_ROLLUP_FORCE is set on the worker.
+    "pmi-rollup-daily": {
+        "task": "graft_worker.tasks.pmi_rollup.rollup_all_blocks_pmi_task",
+        "schedule": crontab(hour=6, minute=30),
     },
     # M1.5 PR-D: Pessl FieldClimate sensor polling (15 min default).
     # The task short-circuits when no active Pessl connections exist,

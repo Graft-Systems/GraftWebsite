@@ -7,11 +7,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { SprayMap, type BlockFeature } from "@/components/spray/SprayMap";
 import { CaptureUploader } from "@/components/spray/CaptureUploader";
-import { useActiveOrg } from "@/lib/sprayApi";
+import {
+  formatSprayHttpError,
+  orgCanArchiveVineyards,
+  useActiveOrg,
+} from "@/lib/sprayApi";
 
 type Vineyard = {
   id: string;
@@ -33,12 +37,14 @@ type Block = {
 
 export default function VineyardDetailPage() {
   const params = useParams<{ vineyard_id: string }>();
+  const router = useRouter();
   const vineyardId = params.vineyard_id;
   const { org, loading: orgLoading, authedFetch } = useActiveOrg();
 
   const [vineyard, setVineyard] = useState<Vineyard | null>(null);
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [deletingVineyard, setDeletingVineyard] = useState(false);
   const [editable, setEditable] = useState(false);
   const [footprintExtend, setFootprintExtend] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -176,7 +182,35 @@ export default function VineyardDetailPage() {
     URL.revokeObjectURL(url);
   }
 
+  async function archiveVineyard() {
+    if (!org || !vineyard) return;
+    if (
+      !window.confirm(
+        `Archive vineyard “${vineyard.name}”? All blocks here will be archived and removed from the active list.`,
+      )
+    ) {
+      return;
+    }
+    setDeletingVineyard(true);
+    setError(null);
+    try {
+      const res = await authedFetch(`/api/spray/orgs/${org.id}/vineyards/${vineyardId}`, {
+        method: "DELETE",
+      });
+      if (res.status === 204) {
+        router.push("/spray/vineyards");
+        return;
+      }
+      setError(await formatSprayHttpError(res));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not archive vineyard");
+    } finally {
+      setDeletingVineyard(false);
+    }
+  }
+
   const selectedBlock = blocks.find((b) => b.id === selectedId) ?? null;
+  const canArchiveVineyard = orgCanArchiveVineyards(org);
 
   if (!org && !orgLoading) {
     return (
@@ -196,7 +230,19 @@ export default function VineyardDetailPage() {
           ← Vineyards
         </Link>
         {vineyard && (
-          <h1 className="mt-1 font-display text-xl">{vineyard.name}</h1>
+          <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
+            <h1 className="font-display text-xl">{vineyard.name}</h1>
+            {canArchiveVineyard && (
+              <button
+                type="button"
+                onClick={() => void archiveVineyard()}
+                disabled={deletingVineyard}
+                className="shrink-0 rounded-md border border-red-500/40 px-3 py-1.5 frame text-xs font-semibold uppercase tracking-wide text-red-300 transition-colors hover:bg-red-500/10 disabled:opacity-40"
+              >
+                {deletingVineyard ? "Archiving…" : "Delete vineyard"}
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -229,7 +275,10 @@ export default function VineyardDetailPage() {
           />
         </div>
 
-        <aside className="min-h-0 w-full shrink-0 border-t border-border/40 bg-background/40 p-5 [-webkit-overflow-scrolling:touch] [touch-action:pan-y] md:h-full md:min-h-0 md:w-80 md:max-w-[20rem] md:shrink-0 md:self-stretch md:overflow-y-auto md:overscroll-y-contain md:border-l md:border-t-0">
+        <aside
+          className="min-h-0 w-full shrink-0 border-t border-border/40 bg-background/40 p-5 [-webkit-overflow-scrolling:touch] [touch-action:pan-y] md:h-full md:min-h-0 md:w-80 md:max-w-[20rem] md:shrink-0 md:self-stretch md:overflow-y-auto md:overscroll-y-contain md:border-l md:border-t-0"
+          data-lenis-prevent
+        >
           {!selectedBlock && (
             <>
               <h2 className="frame text-xs font-semibold uppercase tracking-wider text-foreground/60">

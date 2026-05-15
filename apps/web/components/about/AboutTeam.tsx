@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useRef } from "react";
 import { motion, useInView } from "framer-motion";
 
@@ -114,11 +115,13 @@ function FounderCard({ person, index }: { person: Person; index: number }) {
       className="flex flex-col gap-6 md:flex-row md:items-start md:gap-8"
     >
       <div className="relative h-40 w-40 shrink-0 overflow-hidden rounded-sm border border-border/60 md:h-48 md:w-48">
-        <img
+        <Image
           src={person.photo}
           alt={person.name}
+          fill
+          sizes="(max-width: 768px) 160px, 192px"
           draggable={false}
-          className="h-full w-full object-cover grayscale-[20%]"
+          className="object-cover grayscale-[20%]"
         />
       </div>
       <div className="min-w-0 flex-1">
@@ -156,11 +159,13 @@ function TeamCard({ person, index }: { person: Person; index: number }) {
       className="flex items-start gap-5"
     >
       <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-full border border-border/60">
-        <img
+        <Image
           src={person.photo}
           alt={person.name}
+          fill
+          sizes="80px"
           draggable={false}
-          className="h-full w-full object-cover grayscale-[30%]"
+          className="object-cover grayscale-[30%]"
         />
       </div>
       <div className="min-w-0 flex-1">

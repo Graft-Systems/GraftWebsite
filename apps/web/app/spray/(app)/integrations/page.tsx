@@ -212,6 +212,28 @@ function IntegrationsPageInner() {
     );
   }
 
+  async function purgeDisconnected(connId: string) {
+    if (!orgId) return;
+    if (
+      !confirm(
+        "Permanently remove this disconnected integration? All stations and stored readings tied to it will be deleted. This cannot be undone.",
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    const r = await authedFetch(
+      `/api/spray/orgs/${orgId}/integrations/${connId}/purge`,
+      { method: "DELETE" },
+    );
+    if (!r.ok) {
+      const data = (await r.json().catch(() => ({}))) as { detail?: string };
+      setError(data.detail ?? `remove failed (${r.status})`);
+      return;
+    }
+    setConnections((prev) => (prev ?? []).filter((c) => c.id !== connId));
+  }
+
   return (
     <div className="mx-auto max-w-5xl">
       <header className="flex items-baseline justify-between">
@@ -452,7 +474,7 @@ function IntegrationsPageInner() {
                       {health.label}
                     </span>
                   </div>
-                  <div className="mt-3 flex gap-3">
+                  <div className="mt-3 flex flex-wrap gap-3">
                     {c.status === "active" && orgId && (
                       <Link
                         href={`/spray/integrations/${c.id}`}
@@ -468,6 +490,15 @@ function IntegrationsPageInner() {
                         className="frame text-xs font-semibold text-foreground/60 transition-colors hover:text-red-300"
                       >
                         Disconnect
+                      </button>
+                    )}
+                    {c.status === "disconnected" && (
+                      <button
+                        type="button"
+                        onClick={() => purgeDisconnected(c.id)}
+                        className="frame text-xs font-semibold text-red-300/90 transition-colors hover:text-red-200"
+                      >
+                        Delete
                       </button>
                     )}
                   </div>

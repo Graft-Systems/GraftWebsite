@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { UserButton, useAuth } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
@@ -66,12 +67,15 @@ export function Nav() {
           className="group inline-flex items-center gap-2.5 text-foreground transition-colors hover:text-amber"
           aria-label="Graft home"
         >
-          <img
+          <Image
             src="/brand/graft-mark.png"
             alt=""
+            width={96}
+            height={24}
             aria-hidden
             draggable={false}
             className="h-6 w-auto transition-opacity group-hover:opacity-90"
+            priority
           />
           <span className="frame text-[0.95rem] font-semibold">GRAFT</span>
         </Link>

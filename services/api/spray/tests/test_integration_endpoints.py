@@ -1,7 +1,8 @@
 """Integration endpoint tests (M1.5 PR-D step 11).
 
 Covers: list, OAuth start, OAuth callback (stubbed exchange), station list
-(stubbed connector), link-block, disconnect, and cross-org isolation.
+(stubbed connector), link-block, unlink-block (DELETE), disconnect, purge (hard-delete disconnected),
+and cross-org isolation.
 """
 
 from __future__ import annotations
@@ -213,6 +214,57 @@ def test_link_station_to_block(auth_client, make_org, make_membership):
 
 
 @override_settings(SPRAY_INTEGRATION_FERNET_KEY=TEST_KEY)
+def test_unlink_station_from_block(
+    auth_client, make_org, make_membership
+):
+    client, _, org = _setup_admin(auth_client, make_org, make_membership)
+    conn = _make_conn(org)
+    station = SensorStation.objects.create(
+        connection=conn, vendor_station_id="X", name="X"
+    )
+    block = _make_block(org)
+    SensorStationBlock.objects.create(station=station, block=block)
+    r = client.delete(
+        f"/api/spray/orgs/{org.id}/integrations/{conn.id}/stations/"
+        f"{station.id}/link-block",
+        {"block_id": str(block.id)},
+        format="json",
+    )
+    assert r.status_code == 200
+    assert not SensorStationBlock.objects.filter(
+        station=station, block=block
+    ).exists()
+
+
+@override_settings(SPRAY_INTEGRATION_FERNET_KEY=TEST_KEY)
+def test_purge_disconnected_removes_connection_and_stations(
+    auth_client, make_org, make_membership
+):
+    client, _, org = _setup_admin(auth_client, make_org, make_membership)
+    conn = _make_conn(org)
+    station = SensorStation.objects.create(
+        connection=conn, vendor_station_id="X", name="X"
+    )
+    conn.status = IntegrationConnection.Status.DISCONNECTED
+    conn.save(update_fields=["status"])
+    r = client.delete(f"/api/spray/orgs/{org.id}/integrations/{conn.id}/purge")
+    assert r.status_code == 200
+    assert not IntegrationConnection.objects.unscoped().filter(id=conn.id).exists()
+    assert not SensorStation.objects.unscoped().filter(id=station.id).exists()
+
+
+@override_settings(SPRAY_INTEGRATION_FERNET_KEY=TEST_KEY)
+def test_purge_active_connection_returns_400(
+    auth_client, make_org, make_membership
+):
+    client, _, org = _setup_admin(auth_client, make_org, make_membership)
+    conn = _make_conn(org)
+    r = client.delete(f"/api/spray/orgs/{org.id}/integrations/{conn.id}/purge")
+    assert r.status_code == 400
+    assert IntegrationConnection.objects.unscoped().filter(id=conn.id).exists()
+
+
+@override_settings(SPRAY_INTEGRATION_FERNET_KEY=TEST_KEY)
 def test_disconnect_soft_deletes_connection(
     auth_client, make_org, make_membership
 ):
@@ -245,7 +297,37 @@ def test_cross_org_connection_returns_404(
 def test_station_pull_readings_sync(
     mock_exec, auth_client, make_org, make_membership
 ):
-    mock_exec.return_value = 2
+    mock_exec.return_value = {
+        "count": 2,
+        "readings": [
+            {
+                "ts": "2026-05-07T12:00:00Z",
+                "air_temp_c": 18.5,
+                "rh_pct": 80.0,
+                "leaf_wetness_min": None,
+                "precip_mm": None,
+                "wind_speed_ms": None,
+                "quality_flag": "ok",
+            },
+            {
+                "ts": "2026-05-07T13:00:00Z",
+                "air_temp_c": 18.5,
+                "rh_pct": 80.0,
+                "leaf_wetness_min": None,
+                "precip_mm": None,
+                "wind_speed_ms": None,
+                "quality_flag": "ok",
+            },
+        ],
+        "readings_total": 2,
+        "readings_truncated": False,
+        "gap_fill": False,
+        "since_utc": "2026-05-06T00:00:00Z",
+        "until_utc": "2026-05-07T14:00:00Z",
+        "vendor": "pessl",
+        "vendor_station_id": "X",
+        "station_name": "X",
+    }
     client, _, org = _setup_admin(auth_client, make_org, make_membership)
     conn = _make_conn(org)
     station = SensorStation.objects.create(
@@ -261,6 +343,8 @@ def test_station_pull_readings_sync(
     body = resp.json()
     assert body["sync"] is True
     assert body["readings_upserted"] == 2
+    assert body["pull_summary"]["count"] == 2
+    assert len(body["pull_summary"]["readings"]) == 2
 
 
 @override_settings(SPRAY_INTEGRATION_FERNET_KEY=TEST_KEY)

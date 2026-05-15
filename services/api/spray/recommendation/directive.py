@@ -6,6 +6,26 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 
+def _forecast_7d_is_placeholder_stub(forecast: list[Any]) -> bool:
+    """Detect ensemble Year-0 flat-line forecast (see ``equal_weight_soft_vote``).
+
+    Those rows satisfy the JSON schema but carry no wind/temp/rain; using
+    them for spray-window logic falsely suggests real operating windows.
+    """
+    if len(forecast) != 7:
+        return False
+    for day in forecast:
+        if not isinstance(day, dict):
+            return False
+        if day.get("powdery_severity_1_10") != 1.0:
+            return False
+        if day.get("downy_severity_1_10") != 1.0:
+            return False
+        if str(day.get("action", "")).lower() != "hold":
+            return False
+    return True
+
+
 def directive_from_verdict(verdict: Any) -> dict[str, Any]:
     """Turn an audited BlockVerdict into direct operational language."""
 
@@ -14,6 +34,7 @@ def directive_from_verdict(verdict: Any) -> dict[str, Any]:
     dominant = "powdery mildew" if powdery >= downy else "downy mildew"
     severity = max(powdery, downy)
     block_name = getattr(getattr(verdict, "block", None), "name", "this block")
+    forecast = getattr(verdict, "forecast_7d", None) or []
     window = _spray_window(verdict)
     constraints = _when_not_to_spray(verdict, window)
     program = _program_settings(verdict)
@@ -31,7 +52,7 @@ def directive_from_verdict(verdict: Any) -> dict[str, Any]:
         ),
         "where_to_spray": _where_to_spray(block_name, verdict.action),
         "when_not_to_spray": constraints,
-        "confidence_note": _confidence_note(verdict),
+        "confidence_note": _confidence_note(verdict, forecast),
         "spray_window": window,
     }
 
@@ -139,13 +160,24 @@ def _when_not_to_spray(verdict: Any, window: dict[str, Any]) -> list[str]:
     return constraints
 
 
-def _confidence_note(verdict: Any) -> str:
+def _confidence_note(verdict: Any, forecast: list[Any]) -> str:
     powdery_conf = float(verdict.powdery_confidence)
     downy_conf = float(verdict.downy_confidence)
     confidence = max(powdery_conf, downy_conf)
+    stub_tail = ""
+    if _forecast_7d_is_placeholder_stub(forecast):
+        stub_tail = (
+            " The 7-day spray timing outlook is not connected yet (placeholder only)."
+        )
     if confidence >= 0.75:
-        return "Model and evidence confidence are strong enough for normal operational use."
-    return "Confidence is limited; verify with field scouting and source traces before spraying."
+        return (
+            "Model and evidence confidence are strong enough for normal operational use."
+            + stub_tail
+        )
+    return (
+        "Confidence is limited; verify with field scouting and source traces before spraying."
+        + stub_tail
+    )
 
 
 def _program_settings(verdict: Any) -> dict[str, Any]:
@@ -163,6 +195,19 @@ def _spray_window(verdict: Any) -> dict[str, Any]:
             "label": "No treatment window recommended from this verdict.",
             "reason": "risk remains below action threshold",
             "blocked_reasons": [],
+        }
+    if _forecast_7d_is_placeholder_stub(forecast):
+        return {
+            "status": "unknown",
+            "label": (
+                "Spray-window timing is not available until a real 7-day forecast "
+                "is connected to this block."
+            ),
+            "reason": "forecast_placeholder",
+            "blocked_reasons": [
+                "The verdict’s 7-day outlook is a schema placeholder (flat hold), "
+                "not forecast weather—do not use it to pick spray dates."
+            ],
         }
     if not forecast:
         return {

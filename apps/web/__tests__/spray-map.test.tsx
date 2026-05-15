@@ -26,7 +26,14 @@ vi.mock("maplibre-gl", () => {
     }
     setPaintProperty() {}
     getCanvas() {
-      return { style: {} };
+      return {
+        style: {},
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      };
+    }
+    getContainer() {
+      return document.createElement("div");
     }
     unproject() {
       return { toArray: () => [0, 0] };

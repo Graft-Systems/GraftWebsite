@@ -66,6 +66,11 @@ urlpatterns = [
         name="blocks_list_create",
     ),
     path(
+        "orgs/<uuid:org_id>/blocks/<uuid:block_id>/sensor-readings",
+        views.BlockSensorReadingsView.as_view(),
+        name="block_sensor_readings",
+    ),
+    path(
         "orgs/<uuid:org_id>/blocks/<uuid:block_id>",
         views.BlockDetailView.as_view(),
         name="block_detail",
@@ -184,6 +189,11 @@ urlpatterns = [
         "<uuid:station_id>/pull-readings",
         views.IntegrationStationPullReadingsView.as_view(),
         name="integration_station_pull_readings",
+    ),
+    path(
+        "orgs/<uuid:org_id>/integrations/<uuid:conn_id>/purge",
+        views.IntegrationPurgeView.as_view(),
+        name="integration_purge",
     ),
     path(
         "orgs/<uuid:org_id>/integrations/<uuid:conn_id>",

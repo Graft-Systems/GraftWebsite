@@ -2,10 +2,19 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import type { Verdict } from "@/components/spray/VerdictCard";
+import type { Verdict, PowderyPmiProfile } from "@/components/spray/VerdictCard";
 
-export type Membership = { org: { id: string; name: string } };
-export type ActiveOrg = { id: string; name: string };
+export type Membership = {
+  org: { id: string; name: string };
+  role: string;
+};
+export type ActiveOrg = { id: string; name: string; role?: string };
+
+/** Vineyard DELETE (archive) requires org OWNER or ADMIN per API. */
+export function orgCanArchiveVineyards(org: ActiveOrg | null): boolean {
+  const r = org?.role;
+  return r === "OWNER" || r === "ADMIN";
+}
 
 export type SetupStep = {
   id: string;
@@ -31,14 +40,38 @@ export type SetupSummary = {
   warnings: string[];
 };
 
+export type PmiHistoryDay = {
+  date: string;
+  pmi: number;
+  tier: string;
+  phase: string;
+  details: Record<string, unknown>;
+};
+
+export type LatestPmiExplain = {
+  headline: string;
+  rules_applied_last_day: string[];
+  data_sources: Record<string, unknown>;
+  link_to_forecasts: string;
+};
+
 export type DashboardBlock = {
   id: string;
   name: string;
   vineyard_id: string;
   vineyard_name: string;
   variety: string;
+  /** ISO date (YYYY-MM-DD) when set; needed for PMI trend and rollup context. */
+  budbreak_date?: string | null;
   latest_verdict: Verdict | null;
   verdict_stale: boolean;
+  latest_pmi?: number | null;
+  latest_pmi_tier?: string | null;
+  latest_pmi_date?: string | null;
+  latest_pmi_phase?: string | null;
+  pmi_history_14d?: PmiHistoryDay[];
+  latest_pmi_explain?: LatestPmiExplain | null;
+  powdery_pmi_profile?: PowderyPmiProfile | null;
 };
 
 export type DashboardCapture = {
@@ -67,6 +100,35 @@ export type FracProgramSummary = {
   allowed_products: string;
 };
 
+export type DashboardVineyard = {
+  id: string;
+  name: string;
+  region: string;
+  is_demo: boolean;
+  created_at: string;
+  centroid: { type: "Point"; coordinates: [number, number] } | null;
+};
+
+export type BlockSensorReadingsResponse = {
+  block_id: string;
+  hours: number;
+  since_utc: string;
+  stations: { id: string; name: string; vendor_station_id: string }[];
+  readings: {
+    station_id: string;
+    station_name: string;
+    ts: string;
+    air_temp_c: number | null;
+    rh_pct: number | null;
+    leaf_wetness_min: number | null;
+    precip_mm: number | null;
+    wind_speed_ms: number | null;
+    quality_flag: string;
+  }[];
+  readings_total: number;
+  readings_truncated: boolean;
+};
+
 export type DashboardSummary = {
   org: {
     id: string;
@@ -76,12 +138,7 @@ export type DashboardSummary = {
     is_demo: boolean;
   };
   setup: SetupSummary;
-  vineyards: {
-    id: string;
-    name: string;
-    region: string;
-    is_demo: boolean;
-  }[];
+  vineyards: DashboardVineyard[];
   blocks: DashboardBlock[];
   integrations: {
     id: string;
@@ -106,6 +163,11 @@ export type DashboardSummary = {
   recent_captures: DashboardCapture[];
   frac_program?: FracProgramSummary;
   pilot_savings?: PilotSavingsSummary;
+  org_pmi?: {
+    max_pmi: number | null;
+    max_pmi_tier: string | null;
+    max_pmi_block_name: string | null;
+  };
 };
 
 export type VineyardBlock = {
@@ -228,8 +290,13 @@ export function useActiveOrg() {
         setNeedsOrg(true);
         return;
       }
-      const first = list[0]?.org;
-      setOrg(first ? { id: first.id, name: first.name } : null);
+      const first = list[0];
+      const o = first?.org;
+      setOrg(
+        o
+          ? { id: o.id, name: o.name, role: first.role }
+          : null,
+      );
       setNeedsOrg(!first);
     } catch (e) {
       setOrg(null);

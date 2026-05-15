@@ -66,6 +66,17 @@ def _stddev(values: list[float]) -> float:
     return math.sqrt(sum((v - mean) ** 2 for v in values) / len(values))
 
 
+def _powdery_pmi_sentence(powdery_records: list[RiskRecordResult]) -> str | None:
+    for r in powdery_records:
+        if r.model_id != "gubler_thomas_2013":
+            continue
+        rs = r.raw_score or {}
+        text = rs.get("pmi_explain_sentence")
+        if isinstance(text, str) and text.strip():
+            return text.strip()
+    return None
+
+
 def _split_summary(
     powdery_records: list[RiskRecordResult],
     downy_records: list[RiskRecordResult],
@@ -91,8 +102,13 @@ def _split_summary(
                 f"downy models split ({range_str}, σ={sigma:.2f})"
             )
     if not parts:
-        return "no model output for this block"
-    return ". ".join(parts) + "."
+        base = "no model output for this block"
+    else:
+        base = ". ".join(parts) + "."
+    extra = _powdery_pmi_sentence(powdery_records)
+    if extra:
+        return f"{base} {extra}"
+    return base
 
 
 def _drivers(

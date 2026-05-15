@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections import defaultdict
 from datetime import timedelta
 from typing import Any
 
@@ -31,6 +32,7 @@ from spray.middleware import set_current_org_id
 from spray.models import (
     AuthEvent,
     Block,
+    BlockPowderyMildewIndex,
     ConsentRecord,
     DataLakeEvent,
     Membership,
@@ -1022,6 +1024,110 @@ class BlockDetailView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+class BlockSensorReadingsView(APIView):
+    """GET /api/spray/orgs/<org_id>/blocks/<block_id>/sensor-readings.
+
+    Returns recent normalized readings from all non-archived stations
+    linked to the block (union), newest first, capped for dashboard charts.
+    """
+
+    permission_classes = [IsOrgViewer]
+
+    @transaction.atomic
+    def get(self, request, org_id, block_id):
+        from spray.models import SensorReading, SensorStation
+
+        set_current_org_id(str(org_id))
+        block = get_object_or_404(
+            Block.objects.for_org(org_id).filter(archived_at__isnull=True),
+            id=block_id,
+        )
+
+        try:
+            hours = int(request.query_params.get("hours", "72"))
+        except (TypeError, ValueError):
+            hours = 72
+        hours = max(1, min(hours, 240))
+
+        try:
+            limit = int(request.query_params.get("limit", "500"))
+        except (TypeError, ValueError):
+            limit = 500
+        limit = max(1, min(limit, 2000))
+
+        cutoff = timezone.now() - timedelta(hours=hours)
+        station_qs = (
+            SensorStation.objects.for_org(org_id)
+            .filter(archived_at__isnull=True, linked_blocks__id=block.id)
+            .distinct()
+        )
+        station_ids = list(station_qs.values_list("id", flat=True))
+
+        stations_payload = [
+            {
+                "id": str(s.id),
+                "name": s.name or s.vendor_station_id,
+                "vendor_station_id": s.vendor_station_id,
+            }
+            for s in station_qs.order_by("name", "vendor_station_id")
+        ]
+
+        if not station_ids:
+            return Response(
+                {
+                    "block_id": str(block.id),
+                    "hours": hours,
+                    "since_utc": cutoff.isoformat(),
+                    "stations": stations_payload,
+                    "readings": [],
+                    "readings_total": 0,
+                    "readings_truncated": False,
+                }
+            )
+
+        base_qs = SensorReading.objects.for_org(org_id).filter(
+            station_id__in=station_ids,
+            ts__gte=cutoff,
+        )
+        readings_total = base_qs.count()
+        rows = list(
+            base_qs.select_related("station")
+            .order_by("-ts")[:limit]
+        )
+
+        def _dec(v: Decimal | None) -> float | None:
+            if v is None:
+                return None
+            return float(v)
+
+        readings = [
+            {
+                "station_id": str(r.station_id),
+                "station_name": r.station.name or r.station.vendor_station_id,
+                "ts": r.ts.isoformat(),
+                "air_temp_c": _dec(r.air_temp_c),
+                "rh_pct": _dec(r.rh_pct),
+                "leaf_wetness_min": _dec(r.leaf_wetness_min),
+                "precip_mm": _dec(r.precip_mm),
+                "wind_speed_ms": _dec(r.wind_speed_ms),
+                "quality_flag": r.quality_flag,
+            }
+            for r in rows
+        ]
+
+        return Response(
+            {
+                "block_id": str(block.id),
+                "hours": hours,
+                "since_utc": cutoff.isoformat(),
+                "stations": stations_payload,
+                "readings": readings,
+                "readings_total": readings_total,
+                "readings_truncated": readings_total > len(readings),
+            }
+        )
+
+
 # ---------------------------------------------------------------------
 # Pilot setup summary
 # ---------------------------------------------------------------------
@@ -1122,7 +1228,7 @@ def _setup_summary_payload(org_id):
             "id": "generate_verdict",
             "label": "Generate verdict",
             "complete": counts["verdicts"] > 0,
-            "href": "/spray/dashboard#spray-directives",
+            "href": "/spray/dashboard",
         },
     ]
 
@@ -1163,7 +1269,7 @@ class DashboardSummaryView(APIView):
         vineyards = list(
             Vineyard.objects.for_org(org_id)
             .filter(archived_at__isnull=True)
-            .order_by("name")
+            .order_by("created_at")
         )
         blocks = list(
             Block.objects.for_org(org_id)
@@ -1180,9 +1286,85 @@ class DashboardSummaryView(APIView):
         ):
             latest_by_block.setdefault(str(verdict.block_id), verdict)
 
+        from spray.aggregation.pmi.gubler_thomas_conidial import build_latest_pmi_explain
+
+        pmi_cut = now.date() - timedelta(days=14)
+        pmi_by_block: dict[str, list[BlockPowderyMildewIndex]] = defaultdict(list)
+        for row in (
+            BlockPowderyMildewIndex.objects.unscoped()
+            .filter(block__in=blocks, date__gte=pmi_cut)
+            .order_by("block_id", "date")
+        ):
+            pmi_by_block[str(row.block_id)].append(row)
+
         block_rows = []
+        org_pmi_max: dict[str, Any] = {
+            "max_pmi": None,
+            "max_pmi_tier": None,
+            "max_pmi_block_name": None,
+        }
         for block in blocks:
             verdict = latest_by_block.get(str(block.id))
+            rows = pmi_by_block.get(str(block.id), [])
+            latest_pmi_row = max(rows, key=lambda r: r.date) if rows else None
+            hist = sorted(rows, key=lambda r: r.date)
+            pmi_history_14d = [
+                {
+                    "date": r.date.isoformat(),
+                    "pmi": r.pmi,
+                    "tier": r.risk_tier,
+                    "phase": r.phase,
+                    "details": r.details,
+                }
+                for r in hist
+            ]
+            latest_pmi_explain = None
+            if latest_pmi_row is not None:
+                latest_pmi_explain = build_latest_pmi_explain(
+                    block_id=str(block.id),
+                    pmi=latest_pmi_row.pmi,
+                    tier=latest_pmi_row.risk_tier,
+                    index_date=latest_pmi_row.date,
+                    details=latest_pmi_row.details or {},
+                )
+                if (
+                    org_pmi_max["max_pmi"] is None
+                    or latest_pmi_row.pmi >= org_pmi_max["max_pmi"]
+                ):
+                    org_pmi_max = {
+                        "max_pmi": latest_pmi_row.pmi,
+                        "max_pmi_tier": latest_pmi_row.risk_tier,
+                        "max_pmi_block_name": block.name,
+                    }
+
+            rules = (
+                (latest_pmi_row.details or {}).get("rule_lines", [])
+                if latest_pmi_row
+                else []
+            )
+            rule_lines = [str(x) for x in rules] if isinstance(rules, list) else []
+            ds = (
+                (latest_pmi_row.details or {}).get("data_sources_summary", {})
+                if latest_pmi_row
+                else {}
+            )
+            powdery_pmi_profile = (
+                {
+                    "pmi": latest_pmi_row.pmi,
+                    "tier": latest_pmi_row.risk_tier,
+                    "phase": latest_pmi_row.phase,
+                    "date": latest_pmi_row.date.isoformat(),
+                    "rule_lines": rule_lines,
+                    "data_sources_summary": ds,
+                }
+                if latest_pmi_row
+                else None
+            )
+
+            _settings = block.settings or {}
+            _bb = _settings.get("budbreak_date")
+            budbreak_date = str(_bb) if _bb not in (None, "") else None
+
             block_rows.append(
                 {
                     "id": str(block.id),
@@ -1190,6 +1372,7 @@ class DashboardSummaryView(APIView):
                     "vineyard_id": str(block.vineyard_id),
                     "vineyard_name": block.vineyard.name,
                     "variety": block.variety,
+                    "budbreak_date": budbreak_date,
                     "latest_verdict": (
                         BlockVerdictSerializer(verdict).data if verdict else None
                     ),
@@ -1197,6 +1380,19 @@ class DashboardSummaryView(APIView):
                         bool(verdict)
                         and verdict.generated_at < now - timedelta(hours=26)
                     ),
+                    "latest_pmi": latest_pmi_row.pmi if latest_pmi_row else None,
+                    "latest_pmi_tier": (
+                        latest_pmi_row.risk_tier if latest_pmi_row else None
+                    ),
+                    "latest_pmi_date": (
+                        latest_pmi_row.date.isoformat() if latest_pmi_row else None
+                    ),
+                    "latest_pmi_phase": (
+                        latest_pmi_row.phase if latest_pmi_row else None
+                    ),
+                    "pmi_history_14d": pmi_history_14d,
+                    "latest_pmi_explain": latest_pmi_explain,
+                    "powdery_pmi_profile": powdery_pmi_profile,
                 }
             )
 
@@ -1317,10 +1513,20 @@ class DashboardSummaryView(APIView):
                         "name": v.name,
                         "region": v.region,
                         "is_demo": bool(v.settings.get("demo")),
+                        "created_at": v.created_at.isoformat(),
+                        "centroid": (
+                            {
+                                "type": "Point",
+                                "coordinates": [v.centroid.x, v.centroid.y],
+                            }
+                            if v.centroid is not None
+                            else None
+                        ),
                     }
                     for v in vineyards
                 ],
                 "blocks": block_rows,
+                "org_pmi": org_pmi_max,
                 "integrations": integrations,
                 "stations": stations,
                 "latest_generated_at": latest_generated_at,
@@ -1736,11 +1942,27 @@ class BlockVerdictRecomputeView(APIView):
                 getattr(request.user, "id", None),
                 ok,
             )
+            if not ok:
+                return Response(
+                    {
+                        "queued": False,
+                        "sync": True,
+                        "ok": False,
+                        "block_id": str(block.id),
+                        "detail": (
+                            "Could not generate a directive for this block. "
+                            "Most often this means fewer than four hourly temperature "
+                            "readings in the last 24 hours—map a weather station to the block "
+                            "or confirm regional data is loading, then try again."
+                        ),
+                    },
+                    status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                )
             return Response(
                 {
                     "queued": False,
                     "sync": True,
-                    "ok": ok,
+                    "ok": True,
                     "block_id": str(block.id),
                     "message": (
                         "Directive computed in-process "
@@ -2387,8 +2609,10 @@ class IntegrationStationListView(APIView):
 
 
 class IntegrationStationLinkBlockView(APIView):
-    """POST /api/spray/orgs/<org_id>/integrations/<conn_id>/stations/<station_id>/link-block
-    Body: {"block_id": "uuid"}.
+    """POST / DELETE …/stations/<station_id>/link-block
+
+    POST body: ``{"block_id": "uuid"}`` — create station↔block link.
+    DELETE body: ``{"block_id": "uuid"}`` — remove that link (through row only).
     """
 
     permission_classes = [IsOrgMember]
@@ -2425,6 +2649,41 @@ class IntegrationStationLinkBlockView(APIView):
             defaults={"linked_by": getattr(request, "spray_user", None)},
         )
         return Response({"ok": True}, status=status.HTTP_201_CREATED)
+
+    def delete(self, request, org_id, conn_id, station_id):
+        """DELETE same path as POST link-block. JSON body: {"block_id": "uuid"}.
+
+        Removes the station↔block link (through row). Does not delete the block
+        or station. Works even when the block is archived or missing from list
+        UIs — we only match ``SensorStationBlock`` by ids.
+        """
+        from spray.models import IntegrationConnection, SensorStation, SensorStationBlock
+
+        set_current_org_id(str(org_id))
+        get_object_or_404(
+            IntegrationConnection.objects.for_org(org_id), id=conn_id
+        )
+        station = get_object_or_404(
+            SensorStation.objects.for_org(org_id),
+            id=station_id,
+            connection_id=conn_id,
+        )
+        block_id = request.data.get("block_id")
+        if not block_id:
+            return Response(
+                {"detail": "block_id required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        deleted, _ = SensorStationBlock.objects.filter(
+            station=station,
+            block_id=block_id,
+        ).delete()
+        if deleted == 0:
+            return Response(
+                {"detail": "this station is not linked to that block"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response({"ok": True}, status=status.HTTP_200_OK)
 
 
 class IntegrationStationPullReadingsView(APIView):
@@ -2477,7 +2736,7 @@ class IntegrationStationPullReadingsView(APIView):
             from spray.sensor_reading_pull import execute_pull_sensor_station
 
             try:
-                n = int(execute_pull_sensor_station(str(station.id), vendor_slug))
+                pull = execute_pull_sensor_station(str(station.id), vendor_slug)
             except ConnectorRateLimitError as exc:
                 logger.warning(
                     "station pull sync rate limited org=%s station=%s %s",
@@ -2517,14 +2776,15 @@ class IntegrationStationPullReadingsView(APIView):
                 org_id,
                 station_id,
                 vendor_slug,
-                n,
+                pull["count"],
             )
             return Response(
                 {
                     "sync": True,
                     "queued": False,
-                    "readings_upserted": n,
+                    "readings_upserted": pull["count"],
                     "station_id": str(station.id),
+                    "pull_summary": pull,
                 },
                 status=status.HTTP_200_OK,
             )
@@ -2601,6 +2861,56 @@ class IntegrationDisconnectView(APIView):
             logger.exception("emit integration.disconnected failed")
 
         return Response({"ok": True})
+
+
+class IntegrationPurgeView(APIView):
+    """DELETE /api/spray/orgs/<org_id>/integrations/<conn_id>/purge
+
+    Permanently deletes a *disconnected* integration row. Associated
+    ``SensorStation`` rows (and readings, via CASCADE) are removed.
+    Active connections must be soft-disconnected first.
+    """
+
+    permission_classes = [IsOrgAdmin]
+
+    @transaction.atomic
+    def delete(self, request, org_id, conn_id):
+        from spray.models import IntegrationConnection
+
+        set_current_org_id(str(org_id))
+        connection = get_object_or_404(
+            IntegrationConnection.objects.for_org(org_id), id=conn_id
+        )
+        if connection.status != IntegrationConnection.Status.DISCONNECTED:
+            return Response(
+                {
+                    "detail": (
+                        "Only disconnected integrations can be removed. "
+                        "Disconnect first, then delete."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        org = connection.org
+        payload = {
+            "org_id": str(org_id),
+            "connection_id": str(connection.id),
+            "vendor": connection.vendor,
+        }
+        connection.delete()
+
+        try:
+            _emit_lake_event(
+                org=org,
+                user=getattr(request, "spray_user", None),
+                category="integration.purged",
+                payload=payload,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("emit integration.purged failed")
+
+        return Response({"ok": True, **payload})
 
 
 # ---------------------------------------------------------------------

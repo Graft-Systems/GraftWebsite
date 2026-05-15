@@ -1,12 +1,39 @@
 "use client";
 
 import Link from "next/link";
+import { Suspense, useEffect, useMemo, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import type { VerdictForecastDay } from "@/components/spray/VerdictCard";
-import { useSprayDashboard } from "@/lib/sprayApi";
+import { PmiBlockPanel, formatPmiDayLabel } from "@/components/spray/PmiCharts";
+import { useSprayDashboard, type DashboardBlock } from "@/lib/sprayApi";
 
-export default function ForecastsPage() {
+const EMPTY_DASHBOARD_BLOCKS: DashboardBlock[] = [];
+
+function ForecastsPageFallback() {
+  return (
+    <div className="mx-auto max-w-6xl pb-24 md:pb-0">
+      <div className="mt-8 h-48 animate-pulse rounded-md border border-border/40 bg-foreground/5" />
+    </div>
+  );
+}
+
+function ForecastsPageContent() {
   const { summary, loading, error, reload } = useSprayDashboard();
-  const blocks = summary?.blocks ?? [];
+  const blocks = useMemo(
+    () => summary?.blocks ?? EMPTY_DASHBOARD_BLOCKS,
+    [summary?.blocks],
+  );
+  const searchParams = useSearchParams();
+  const focusBlock = searchParams.get("block");
+  const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
+
+  useEffect(() => {
+    if (!focusBlock) return;
+    const el = sectionRefs.current[focusBlock];
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [focusBlock, blocks]);
 
   return (
     <div className="mx-auto max-w-6xl pb-24 md:pb-0">
@@ -14,8 +41,8 @@ export default function ForecastsPage() {
         <div>
           <h1 className="font-display text-3xl">Forecasts</h1>
           <p className="mt-2 max-w-2xl text-sm text-foreground/60">
-            Seven-day mildew outlook by block, using the latest audited
-            recommendation and current sprayability constraints.
+            Seven-day mildew outlook by block, plus fourteen-day powdery
+            mildew index (PMI) from stored daily rollups.
           </p>
         </div>
         <button
@@ -45,9 +72,14 @@ export default function ForecastsPage() {
             const verdict = block.latest_verdict;
             const forecast = verdict?.forecast_7d ?? [];
             const settings = sprayProgram(summary?.org.settings);
+            const pmiHistory = block.pmi_history_14d ?? [];
             return (
               <section
                 key={block.id}
+                id={`block-pmi-${block.id}`}
+                ref={(el) => {
+                  sectionRefs.current[block.id] = el;
+                }}
                 className="rounded-md border border-border/40 bg-background/40 p-5"
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -73,6 +105,12 @@ export default function ForecastsPage() {
                       >
                         Vineyard map
                       </Link>
+                      <Link
+                        href={`/spray/forecasts?block=${block.id}`}
+                        className="font-semibold text-foreground/60 hover:text-foreground"
+                      >
+                        Link this block
+                      </Link>
                     </div>
                   </div>
                   {block.verdict_stale && (
@@ -97,9 +135,11 @@ export default function ForecastsPage() {
                           className="rounded-md border border-border/40 bg-background/50 p-3"
                         >
                           <p className="text-xs text-foreground/50">
-                            {formatDay(day.date)}
+                            {formatPmiDayLabel(day.date)}
                           </p>
-                          <p className={`mt-2 frame text-xs font-semibold uppercase tracking-wider ${sprayability.tone}`}>
+                          <p
+                            className={`mt-2 frame text-xs font-semibold uppercase tracking-wider ${sprayability.tone}`}
+                          >
                             {sprayability.label}
                           </p>
                           <p className="mt-2 text-xs text-foreground/60">
@@ -121,6 +161,8 @@ export default function ForecastsPage() {
                   </div>
                 )}
 
+                <PmiBlockPanel blockId={block.id} history={pmiHistory} />
+
                 <p className="mt-4 text-xs text-foreground/50">
                   Program limits: wind &lt;= {settings.max_wind_mph} mph,
                   temperature {settings.min_temp_f}-{settings.max_temp_f} F,
@@ -132,6 +174,14 @@ export default function ForecastsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ForecastsPage() {
+  return (
+    <Suspense fallback={<ForecastsPageFallback />}>
+      <ForecastsPageContent />
+    </Suspense>
   );
 }
 
@@ -178,7 +228,11 @@ function evaluateDay(day: VerdictForecastDay, settings: SpraySettings) {
   if (reasons.length > 0) {
     return { label: "blocked", tone: "text-red-300", reasons };
   }
-  return { label: day.action, tone: day.action === "spray" ? "text-amber" : "text-sky-300", reasons };
+  return {
+    label: day.action,
+    tone: day.action === "spray" ? "text-amber" : "text-sky-300",
+    reasons,
+  };
 }
 
 function windMph(day: VerdictForecastDay) {
@@ -205,12 +259,6 @@ function rainMm(day: VerdictForecastDay) {
 
 function numberOr(value: unknown, fallback: number) {
   return typeof value === "number" ? value : fallback;
-}
-
-function formatDay(value: string) {
-  const date = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }
 
 function EmptyForecastState() {

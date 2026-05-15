@@ -175,3 +175,21 @@ def test_verdict_recompute_sync(mock_exec, auth_client, make_org, make_membershi
     assert body["sync"] is True
     assert body["ok"] is True
     mock_exec.assert_called_once()
+
+
+@override_settings(SPRAY_VERDICT_RECOMPUTE_SYNC=True)
+@patch("spray.aggregation.block_verdict_job.execute_compute_block_verdict")
+def test_verdict_recompute_sync_returns_422_when_compute_fails(
+    mock_exec, auth_client, make_org, make_membership
+):
+    mock_exec.return_value = False
+    client, _, org, block = _setup(auth_client, make_org, make_membership)
+    resp = client.post(
+        f"/api/spray/orgs/{org.id}/blocks/{block.id}/verdicts/recompute",
+    )
+    assert resp.status_code == 422
+    body = resp.json()
+    assert body["sync"] is True
+    assert body["ok"] is False
+    assert "Could not generate" in body["detail"]
+    mock_exec.assert_called_once()

@@ -234,6 +234,10 @@ class BlockSerializer(serializers.ModelSerializer):
         append = validated_data.pop("append_geom", None)
         if append is not None:
             validated_data["geom"] = merge_block_geometries(instance.geom, append)
+        incoming_settings = validated_data.pop("settings", None)
+        if incoming_settings is not None:
+            merged = {**(instance.settings or {}), **incoming_settings}
+            validated_data["settings"] = merged
         return super().update(instance, validated_data)
 
 

@@ -52,6 +52,15 @@ def execute_compute_block_verdict(
         return False
 
     window = _build_weather_window(block_id, target_date)
+    usable_temp_hours = sum(1 for o in window.observations if o.temp_c is not None)
+    if usable_temp_hours < 4:
+        logger.info(
+            "execute_compute_block_verdict: skip block=%s usable_temp_hours=%s (need >=4)",
+            block_id,
+            usable_temp_hours,
+        )
+        return False
+
     risk_results = []
     for slug in known_slugs():
         runner = get_runner(slug)

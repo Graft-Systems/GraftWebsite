@@ -13,6 +13,7 @@ from graft_worker.tasks import (  # noqa: F401
     external_risk_index,
     meter_pull,
     pessl_pull,
+    pmi_rollup,
     sensor_pull,
     weather_pull,
 )

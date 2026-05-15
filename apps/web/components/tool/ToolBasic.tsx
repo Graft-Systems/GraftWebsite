@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import vineyardHeroImage from "./assets/tool-hero.png";
 
@@ -300,10 +301,13 @@ export function ToolBasic() {
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-12">
         <div className={`space-y-6 ${SHOW_TOOL_ANALYTICS ? "xl:col-span-8" : "xl:col-span-12"}`}>
           <div className="relative h-[420px] overflow-hidden rounded-sm border border-border/50 bg-surface">
-            <img
-              src={vineyardHeroImage.src}
+            <Image
+              src={vineyardHeroImage}
               alt="Grape cluster"
-              className="absolute inset-0 h-full w-full object-cover"
+              fill
+              priority
+              sizes="(max-width: 1280px) 100vw, 66vw"
+              className="object-cover"
             />
             <div className="absolute left-6 top-6 inline-flex h-10 items-center gap-2.5 rounded-xl bg-background/80 px-5 text-[28px] font-semibold text-foreground">
               <span className="h-2.5 w-2.5 rounded-full bg-red-600" aria-hidden="true" />
@@ -615,6 +619,7 @@ function ResultCard({ result }: { result: ResultItem }) {
   return (
     <article className="overflow-hidden rounded-sm border border-border/40 bg-surface/40">
       {result.image_url ? (
+        // eslint-disable-next-line @next/next/no-img-element -- dynamic estimate API URLs; host varies by env
         <img
           src={resolveImageUrl(result.image_url)}
           alt={result.filename}

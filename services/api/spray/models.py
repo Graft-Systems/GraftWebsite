@@ -707,6 +707,47 @@ class RiskRecord(models.Model):
         )
 
 
+class BlockPowderyMildewIndex(models.Model):
+    """Daily Gubler-Thomas conidial PMI (0–100) per block with provenance JSON."""
+
+    class RiskTier(models.TextChoices):
+        LOW = "low", "Low"
+        MODERATE = "moderate", "Moderate"
+        HIGH = "high", "High"
+
+    class Phase(models.TextChoices):
+        INACTIVE = "inactive", "Inactive"
+        ACTIVE = "active", "Active"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    block = models.ForeignKey(
+        Block, on_delete=models.CASCADE, related_name="powdery_mildew_indices"
+    )
+    date = models.DateField()
+    pmi = models.PositiveSmallIntegerField()
+    risk_tier = models.CharField(max_length=16, choices=RiskTier.choices)
+    phase = models.CharField(max_length=16, choices=Phase.choices)
+    details = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = OrgScopedManager(via="block__vineyard__org_id")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["block", "date"],
+                name="unique_block_pmi_date",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["block", "-date"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.block_id} {self.date} PMI={self.pmi} ({self.risk_tier})"
+
+
 class BlockVerdict(models.Model):
     """Daily ensemble verdict — the single decision-intelligence output
     surfaced to growers. Mirrors `block_verdict.generated.v1`.

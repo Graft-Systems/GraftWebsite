@@ -155,3 +155,32 @@ def test_directive_reports_next_safe_window_after_blocked_near_term_days():
 
     assert directive["spray_window"]["status"] == "blocked"
     assert directive["spray_window"]["next_safe_window"] == safe_date
+
+
+def test_directive_treats_ensemble_flat_forecast_as_placeholder():
+    """Year-0 ensemble stub (1/1/hold ×7) must not imply real spray windows."""
+    verdict = SimpleNamespace(
+        block=SimpleNamespace(name="North Block"),
+        powdery_severity_1_10=8.0,
+        downy_severity_1_10=2.0,
+        powdery_confidence=0.9,
+        downy_confidence=0.7,
+        action="spray",
+        urgency="24h",
+        forecast_7d=[
+            {
+                "date": (date.today() + timedelta(days=i)).isoformat(),
+                "powdery_severity_1_10": 1.0,
+                "downy_severity_1_10": 1.0,
+                "action": "hold",
+            }
+            for i in range(1, 8)
+        ],
+    )
+
+    directive = directive_from_verdict(verdict)
+
+    assert directive["spray_window"]["status"] == "unknown"
+    assert directive["spray_window"]["reason"] == "forecast_placeholder"
+    assert "placeholder" in directive["confidence_note"].lower()
+    assert directive["when_to_spray"].startswith("Spray timing is uncertain")
