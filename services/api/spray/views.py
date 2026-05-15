@@ -2260,6 +2260,8 @@ def _program_settings(org: Org) -> dict[str, Any]:
         "min_temp_f": 45,
         "max_temp_f": 85,
         "avoid_rain_hours": 12,
+        "notify_email_spray_urgent": False,
+        "notify_email_verdict_daily": False,
     }
     configured = org.settings.get("spray_program") or {}
     return {**defaults, **configured}

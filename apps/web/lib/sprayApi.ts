@@ -222,6 +222,8 @@ export type ProgramSettings = {
   min_temp_f: number;
   max_temp_f: number;
   avoid_rain_hours: number;
+  notify_email_spray_urgent: boolean;
+  notify_email_verdict_daily: boolean;
 };
 
 export function useAuthedSprayFetch() {
@@ -272,19 +274,33 @@ export async function formatSprayHttpError(res: Response): Promise<string> {
   return `${prefix}: Request could not be completed.`;
 }
 
+const ACTIVE_ORG_KEY = "spray.activeOrgId";
+
 export function useActiveOrg() {
   const { isSignedIn } = useAuth();
   const authedFetch = useAuthedSprayFetch();
   const [org, setOrg] = useState<ActiveOrg | null>(null);
+  const [memberships, setMemberships] = useState<Membership[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   /** True after a successful `orgs/me` with zero memberships (not an HTTP error). */
   const [needsOrg, setNeedsOrg] = useState(false);
 
+  const pickOrg = useCallback((list: Membership[]) => {
+    if (!list.length) return null;
+    const stored =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem(ACTIVE_ORG_KEY)
+        : null;
+    const match = stored ? list.find((m) => m.org.id === stored) : undefined;
+    return match ?? list[0] ?? null;
+  }, []);
+
   const reload = useCallback(async () => {
     if (!isSignedIn) {
       setLoading(false);
       setOrg(null);
+      setMemberships([]);
       setError(null);
       setNeedsOrg(false);
       return;
@@ -296,39 +312,53 @@ export function useActiveOrg() {
       const res = await authedFetch("/api/spray/orgs/me");
       if (!res.ok) {
         setOrg(null);
+        setMemberships([]);
         setError(await formatSprayHttpError(res));
         return;
       }
       const data = (await res.json()) as { memberships?: Membership[] };
       const list = data.memberships ?? [];
+      setMemberships(list);
       if (list.length === 0) {
         setOrg(null);
         setNeedsOrg(true);
         return;
       }
-      const first = list[0];
-      const o = first?.org;
-      setOrg(
-        o
-          ? { id: o.id, name: o.name, role: first.role }
-          : null,
-      );
-      setNeedsOrg(!first);
+      const active = pickOrg(list);
+      const o = active?.org;
+      setOrg(o ? { id: o.id, name: o.name, role: active?.role } : null);
+      setNeedsOrg(!active);
     } catch (e) {
       setOrg(null);
+      setMemberships([]);
       setError(
         e instanceof Error ? e.message : "Could not reach the Spray service.",
       );
     } finally {
       setLoading(false);
     }
-  }, [authedFetch, isSignedIn]);
+  }, [authedFetch, isSignedIn, pickOrg]);
+
+  const switchOrg = useCallback(
+    (orgId: string) => {
+      try {
+        window.localStorage.setItem(ACTIVE_ORG_KEY, orgId);
+      } catch {
+        /* ignore */
+      }
+      const match = memberships.find((m) => m.org.id === orgId);
+      if (match) {
+        setOrg({ id: match.org.id, name: match.org.name, role: match.role });
+      }
+    },
+    [memberships],
+  );
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
-  return { org, loading, error, needsOrg, reload, authedFetch };
+  return { org, memberships, loading, error, needsOrg, reload, switchOrg, authedFetch };
 }
 
 export function useSprayDashboard() {

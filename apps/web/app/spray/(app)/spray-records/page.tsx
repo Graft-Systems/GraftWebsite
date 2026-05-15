@@ -284,8 +284,9 @@ function SprayRecordsContent() {
             </p>
             {recordRollup && (
               <p className="mt-2 text-xs text-foreground/55">
-                Showing {recordRollup.count} record(s) across {recordRollup.products} product
-                {recordRollup.products === 1 ? "" : "s"} (pilot client rollup — full analytics deferred).
+                Showing {recordRollup.count} record
+                {recordRollup.count === 1 ? "" : "s"} across {recordRollup.products} product
+                {recordRollup.products === 1 ? "" : "s"}.
               </p>
             )}
           </div>

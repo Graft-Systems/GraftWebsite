@@ -117,11 +117,11 @@ export default function CaptureDetailPage() {
               <dd>{capture.uploaded_at ?? capture.created_at}</dd>
             </div>
             <div>
-              <dt className="text-foreground/50">ML / interpretation</dt>
+              <dt className="text-foreground/50">Analysis</dt>
               <dd>
                 {capture.status === "uploaded"
-                  ? "Interpretation pipeline not exposed in API yet — status shown only."
-                  : "Pending upload or failed — no ML output."}
+                  ? "Photo received. Analysis results appear in your block's recommendation once processed."
+                  : "Awaiting upload — no analysis available yet."}
               </dd>
             </div>
           </dl>
