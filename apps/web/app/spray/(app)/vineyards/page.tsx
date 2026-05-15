@@ -26,6 +26,7 @@ type Vineyard = {
   settings?: Record<string, unknown>;
   created_at?: string;
   archived_at: string | null;
+  block_count?: number;
 };
 
 const REGION_LABELS: Record<string, string> = {
@@ -59,6 +60,12 @@ function formatCentroidLine(centroid: VineyardCentroid | null | undefined) {
   }
   const [lng, lat] = centroid.coordinates;
   return `Approx. map center · ${lat.toFixed(3)}°, ${lng.toFixed(3)}°`;
+}
+
+function formatBlockCount(n: number | undefined) {
+  const c = typeof n === "number" && Number.isFinite(n) ? n : 0;
+  if (c === 1) return "1 block";
+  return `${c} blocks`;
 }
 
 export default function VineyardsPage() {
@@ -196,6 +203,10 @@ export default function VineyardsPage() {
                       <p className="text-xs leading-relaxed text-foreground/55">
                         <span className="font-medium text-foreground/70">
                           {formatRegionLabel(v.region)}
+                        </span>
+                        <span aria-hidden> · </span>
+                        <span className="text-foreground/60">
+                          {formatBlockCount(v.block_count)}
                         </span>
                         {formatAddedAt(v.created_at) ? (
                           <>

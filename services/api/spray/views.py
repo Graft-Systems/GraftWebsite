@@ -16,7 +16,7 @@ from typing import Any
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Prefetch
+from django.db.models import Count, Prefetch, Q
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils.dateparse import parse_date
@@ -820,6 +820,11 @@ class VineyardListCreateView(APIView):
         vineyards = (
             Vineyard.objects.for_org(org_id)
             .filter(archived_at__isnull=True)
+            .annotate(
+                active_block_count=Count(
+                    "blocks", filter=Q(blocks__archived_at__isnull=True)
+                ),
+            )
             .order_by("created_at")
         )
         return Response(VineyardSerializer(vineyards, many=True).data)

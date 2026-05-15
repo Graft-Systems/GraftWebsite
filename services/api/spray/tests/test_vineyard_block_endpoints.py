@@ -102,6 +102,26 @@ def test_list_vineyards_filters_by_org(
     assert "Theirs" not in names
 
 
+def test_list_vineyards_includes_block_count(
+    auth_client, make_org, make_membership
+):
+    client, _, org = _setup_owner(auth_client, make_org, make_membership)
+    v_empty = Vineyard.objects.unscoped().create(org=org, name="Empty")
+    v_blocks = Vineyard.objects.unscoped().create(org=org, name="HasBlocks")
+    from django.contrib.gis.geos import GEOSGeometry
+    import json
+
+    geom = GEOSGeometry(json.dumps(POLYGON_A), srid=4326)
+    Block.objects.unscoped().create(vineyard=v_blocks, name="B1", geom=geom)
+    Block.objects.unscoped().create(vineyard=v_blocks, name="B2", geom=geom)
+
+    resp = client.get(f"/api/spray/orgs/{org.id}/vineyards")
+    assert resp.status_code == 200
+    by_name = {row["name"]: row["block_count"] for row in resp.data}
+    assert by_name["Empty"] == 0
+    assert by_name["HasBlocks"] == 2
+
+
 def test_patch_vineyard_member_succeeds(auth_client, make_org, make_membership):
     client, _, org = _setup_member(auth_client, make_org, make_membership)
     v = Vineyard.objects.unscoped().create(org=org, name="Old")

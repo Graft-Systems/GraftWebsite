@@ -160,6 +160,7 @@ class VineyardSerializer(serializers.ModelSerializer):
 
     centroid = GeometryField(required=False, allow_null=True)
     org_id = serializers.UUIDField(write_only=True, required=False)
+    block_count = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Vineyard
@@ -173,8 +174,18 @@ class VineyardSerializer(serializers.ModelSerializer):
             "settings",
             "created_at",
             "archived_at",
+            "block_count",
         ]
-        read_only_fields = ["id", "created_at", "archived_at"]
+        read_only_fields = ["id", "created_at", "archived_at", "block_count"]
+
+    def get_block_count(self, obj):
+        """Active (non-archived) blocks; list views annotate `active_block_count` to avoid N+1."""
+        annotated = getattr(obj, "active_block_count", None)
+        if annotated is not None:
+            return annotated
+        return Block.objects.unscoped().filter(
+            vineyard_id=obj.pk, archived_at__isnull=True
+        ).count()
 
 
 def merge_block_geometries(existing, addition):
