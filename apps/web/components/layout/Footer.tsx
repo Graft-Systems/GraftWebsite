@@ -32,11 +32,8 @@ export function Footer() {
             className="frame text-base font-semibold text-foreground"
             aria-label="Graft home"
           >
-            GRAFT
+            GRAFT SYSTEMS
           </Link>
-          <p className="mt-4 max-w-sm text-sm text-foreground-muted">
-            Yield intelligence for the modern vineyard.
-          </p>
         </div>
 
         <div className="grid grid-cols-2 gap-6 text-sm">
@@ -44,7 +41,8 @@ export function Footer() {
             <p className="frame mb-4 text-[0.65rem] text-foreground-muted">Site</p>
             <ul className="space-y-2">
               <li><Link href="/about" className="text-foreground/80 hover:text-foreground">About</Link></li>
-              <li><Link href="/tool" className="text-foreground/80 hover:text-foreground">Tool</Link></li>
+              <li><Link href="/tool" className="text-foreground/80 hover:text-foreground">Yield preview</Link></li>
+              <li><Link href="/spray" className="text-foreground/80 hover:text-foreground">Spray</Link></li>
               <li><Link href="/contact" className="text-foreground/80 hover:text-foreground">Contact</Link></li>
             </ul>
           </div>

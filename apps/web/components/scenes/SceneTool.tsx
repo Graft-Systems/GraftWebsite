@@ -28,7 +28,7 @@ const CAPTIONS = [
   { text: "A photo.", in: 0.04, out: 0.22 },
   { text: "Cluster detection.", in: 0.27, out: 0.55 },
   { text: "Per-cluster weight prediction.", in: 0.6, out: 0.8 },
-  { text: "Aggregated yield.", in: 0.86, out: 1.02 },
+  { text: "Block-level yield preview.", in: 0.86, out: 1.02 },
 ];
 
 export function SceneTool() {
@@ -85,7 +85,7 @@ export function SceneTool() {
         {/* Eyebrow + headline — fixed at top */}
         <div className="pointer-events-none absolute left-6 top-24 z-30 max-w-xl lg:left-10 lg:top-28">
           <span className="frame text-[0.72rem] font-semibold text-sage">
-            FROM PHOTO TO ESTIMATE
+            YIELD MODULE
           </span>
           <h2 className="display mt-3 text-display-lg leading-[1.05] text-foreground">
             Seconds per cluster.
@@ -134,20 +134,20 @@ export function SceneTool() {
           style={{ x: panelX, opacity: panelOpacity }}
         >
           <span className="frame text-[0.62rem] text-foreground-muted">
-            BLOCK YIELD
+            SUITE · YIELD PREVIEW
           </span>
           <div className="mt-4 flex items-center gap-3">
             <span className="relative inline-block h-2.5 w-2.5 rounded-full bg-amber">
               <span className="absolute inset-0 animate-ping rounded-full bg-amber opacity-60" />
             </span>
             <p className="numeric text-sm text-foreground/90">
-              Model output ready.
+              Preview output ready.
             </p>
           </div>
           <p className="mt-8 max-w-sm text-sm leading-relaxed text-foreground/70">
-            Each photo contributes per-cluster estimates to the block&apos;s
-            probability distribution. No single number is promised; every
-            output carries a range.
+            One product in the suite: imagery in, per-cluster estimates out, rolled
+            into a block-level distribution. Early MVPs—ranges first, false precision
+            never.
           </p>
           <p className="mt-8 frame text-[0.6rem] text-foreground-muted">
             {CLUSTERS.length} CLUSTERS · 1 FRAME · BLOCK 07

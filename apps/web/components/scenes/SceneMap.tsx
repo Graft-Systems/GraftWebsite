@@ -306,10 +306,10 @@ export function SceneMap() {
           {/* Headline overlay */}
           <div className="pointer-events-none absolute left-6 top-24 z-10 max-w-xl lg:left-10 lg:top-28">
             <span className="frame text-[0.72rem] font-semibold text-sage">
-              RESOLUTION
+              SPATIAL COMMON GROUND
             </span>
             <h2 className="display mt-3 text-display-lg leading-[1.05] text-foreground">
-              Zoom until the question becomes personal.
+              From estate to vine—in one view.
             </h2>
           </div>
 
@@ -372,7 +372,8 @@ function Beat1Panel() {
         <Row label="Last estimate" value="23 Apr 2026" />
       </dl>
       <p className="mt-10 text-xs leading-relaxed text-foreground/55">
-        Graft reads every block, every row, every vine. Scroll to drill down.
+        Yield, spray context, and future canopy tools all share the same geography.
+        Scroll to drill from blocks to rows to vines.
       </p>
     </div>
   );
@@ -440,7 +441,8 @@ function Beat4Panel() {
         CAPTURED · 14 APR 2026
       </p>
       <p className="mt-4 text-sm leading-relaxed text-foreground/75">
-        Selected for analysis. The vine is where the distribution starts.
+        Selected for analysis. The vine is where yield—and every other signal—has
+        to resolve.
       </p>
     </div>
   );

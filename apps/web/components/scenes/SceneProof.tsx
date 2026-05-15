@@ -27,7 +27,7 @@ export function SceneProof() {
         className="mx-auto flex w-full max-w-4xl flex-col items-center text-center"
       >
         <span className="frame text-[0.72rem] font-semibold text-sage">
-          THE PROOF
+          YIELD · THE PROOF
         </span>
         <h2 className="display mt-5 text-display-lg leading-[1.05] text-foreground">
           <SplitTextReveal text="Not one number." />
@@ -41,9 +41,10 @@ export function SceneProof() {
           transition={{ duration: 0.8, delay: 0.6 }}
           className="mx-auto mt-8 max-w-xl text-base leading-relaxed text-foreground/75 sm:text-lg"
         >
-          Graft returns a full probability curve for every estimate. Bear, base,
-          and bull scenarios let growers plan for what&apos;s likely — not just
-          what&apos;s possible.
+          For yield estimation, Graft returns a full probability curve for every
+          estimate. Bear, base, and bull scenarios let teams plan for what&apos;s
+          likely—not just what&apos;s possible. Other modules use the same habit:
+          show the uncertainty the field actually carries.
         </motion.p>
 
         {/* Curve */}

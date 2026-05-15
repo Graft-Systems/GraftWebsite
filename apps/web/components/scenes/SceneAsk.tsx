@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { motion } from "framer-motion";
 import { SplitTextReveal } from "@/components/ui/SplitTextReveal";
 import { MagneticButton } from "@/components/ui/MagneticButton";
@@ -17,9 +16,9 @@ export function SceneAsk() {
 
       <div className="mx-auto w-full max-w-3xl text-center">
         <h2 className="display text-display-xl leading-[1.05] text-foreground">
-          <SplitTextReveal text="See your vineyard" />
+          <SplitTextReveal text="Start with a product" />
           <br />
-          <SplitTextReveal text="in numbers." delay={0.2} />
+          <SplitTextReveal text="or say hello." delay={0.2} />
         </h2>
 
         <motion.p
@@ -27,9 +26,10 @@ export function SceneAsk() {
           whileInView={{ opacity: 0.65 }}
           viewport={{ once: true, margin: "-60px" }}
           transition={{ duration: 0.8, delay: 0.6 }}
-          className="mx-auto mt-6 max-w-md text-base text-foreground/70 sm:text-lg"
+          className="mx-auto mt-6 max-w-2xl text-base text-foreground/70 sm:text-lg"
         >
-          Upload a photo set. See how Graft reads your vineyard.
+          Whether you want to pressure-test the yield preview, co-develop spray
+          intelligence, or ask about UV-C research—we answer the same inbox.
         </motion.p>
 
         <motion.div
@@ -37,13 +37,13 @@ export function SceneAsk() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-60px" }}
           transition={{ duration: 0.85, delay: 0.85, ease: [0.2, 0.9, 0.3, 1] }}
-          className="mt-12 flex flex-col items-center gap-6"
+          className="mt-12 flex justify-center"
         >
           <MagneticButton
-            href="/tool"
-            className="frame group inline-flex items-center gap-3 rounded-sm bg-burgundy px-10 py-4 text-[0.78rem] font-semibold uppercase tracking-[0.14em] text-foreground transition-colors hover:bg-[#8F2433]"
+            href="/contact"
+            className="frame group inline-flex items-center justify-center gap-3 rounded-sm bg-burgundy px-10 py-4 text-[0.78rem] font-semibold uppercase tracking-[0.14em] text-foreground transition-colors hover:bg-[#8F2433]"
           >
-            Try the tool
+            Talk to the team
             <svg
               width="14"
               height="14"
@@ -56,13 +56,6 @@ export function SceneAsk() {
               <path d="M4 7h6M8 4l3 3-3 3" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </MagneticButton>
-
-          <Link
-            href="/contact"
-            className="text-sm text-foreground/70 transition-colors hover:text-foreground"
-          >
-            Or talk to the team →
-          </Link>
         </motion.div>
 
       </div>

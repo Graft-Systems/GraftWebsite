@@ -20,12 +20,12 @@ export function SceneTarget() {
         {/* Left column — typographic statement */}
         <div>
           <span className="frame text-[0.72rem] font-semibold text-sage">
-            THE TARGET
+            YIELD · WHERE WE&apos;RE HEADED
           </span>
           <h2 className="display mt-5 text-display-lg leading-[1.02] text-foreground">
-            <SplitTextReveal text="Within 5%." />
+            <SplitTextReveal text="Tighter bands" />
             <br />
-            <SplitTextReveal text="Not 30." delay={0.22} />
+            <SplitTextReveal text="at the block." delay={0.22} />
           </h2>
 
           <motion.p
@@ -34,10 +34,10 @@ export function SceneTarget() {
             transition={{ duration: 0.8, delay: 0.6 }}
             className="mt-8 max-w-md text-base leading-relaxed text-foreground/75 sm:text-lg"
           >
-            The current industry baseline for manual yield forecasting runs
-            up to 30% error (Ahmedt-Aristizabal et al., 2024). Graft is
-            engineered toward ±5% error at the block level, with probabilistic
-            output at every granularity.
+            Published work still puts manual yield forecasting error in the
+            double digits at the block scale (Ahmedt-Aristizabal et al., 2024).
+            We are engineering toward a much tighter band—while MVPs ship with
+            explicit ranges so no one plans on a false single number.
           </motion.p>
 
           <motion.p
@@ -46,15 +46,15 @@ export function SceneTarget() {
             transition={{ duration: 0.8, delay: 1.6 }}
             className="display mt-12 text-xl italic text-foreground/90 lg:text-2xl"
           >
-            Precision by design.
+            Precision without pretending we are finished.
           </motion.p>
         </div>
 
         {/* Right column — comparison bars */}
         <div className="flex flex-col gap-10 lg:pl-6">
           <BarRow
-            label="MANUAL FORECAST"
-            sub="±30% error"
+            label="TYPICAL MANUAL FORECAST"
+            sub="High double-digit error risk"
             color="hsl(var(--sage))"
             width={1}
             delay={0.9}
@@ -62,8 +62,8 @@ export function SceneTarget() {
             bgOpacity={0.4}
           />
           <BarRow
-            label="GRAFT TARGET"
-            sub="±5% error"
+            label="GRAFT ENGINEERING GOAL"
+            sub="Block-level · low single digits"
             color="hsl(var(--burgundy))"
             width={0.17}
             delay={1.35}
@@ -77,7 +77,8 @@ export function SceneTarget() {
             transition={{ duration: 0.6, delay: 1.8 }}
             className="frame pt-6 text-[0.6rem] text-foreground-muted"
           >
-            SOURCE · AHMEDT-ARISTIZABAL ET AL. (2024). IEEE Access.
+            Baseline reference · Ahmedt-Aristizabal et al. (2024), IEEE Access ·
+            goal is directional while we validate in the field
           </motion.p>
         </div>
       </div>

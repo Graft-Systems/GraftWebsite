@@ -6,18 +6,18 @@ import { SplitTextReveal } from "@/components/ui/SplitTextReveal";
 
 const PRINCIPLES = [
   {
-    title: "Academic data foundation",
-    body: "Graft's model is trained on aggregated academic grape cluster datasets drawn from PhD research.",
+    title: "Science where it belongs",
+    body: "Yield models lean on aggregated academic cluster data; spray intelligence follows published disease models and fused weather. We do not paper over the science with marketing curves.",
     icon: OpenSourceIcon,
   },
   {
-    title: "Probabilistic by default",
-    body: "Every estimate returns a full probability distribution. No single number without a confidence range.",
+    title: "Honest uncertainty",
+    body: "Where the field is noisy—tonnage, timing, canopy treatments—we show ranges and scenarios instead of false precision. Same habit across yield, spray, and future UV-C work.",
     icon: DistributionIcon,
   },
   {
-    title: "Built with growers",
-    body: "Developed in partnership with working vineyards. The product ships when real growers say it's useful — not before.",
+    title: "Built with wineries",
+    body: "Spray workflows and yield previews are co-developed with working cellars and vineyard teams. If it does not survive a real season, it does not ship.",
     icon: HandshakeIcon,
   },
 ];
@@ -37,12 +37,12 @@ export function SceneApproach() {
       >
         <div className="max-w-3xl">
           <span className="frame text-[0.72rem] font-semibold text-sage">
-            THE APPROACH
+            HOW WE BUILD
           </span>
           <h2 className="display mt-5 text-[clamp(1.75rem,3.5vw,2.5rem)] leading-[1.1] text-foreground">
-            <SplitTextReveal text="Built on" />
+            <SplitTextReveal text="One standard" />
             <br />
-            <SplitTextReveal text="published science." delay={0.2} />
+            <SplitTextReveal text="across the suite." delay={0.2} />
           </h2>
         </div>
 

@@ -163,17 +163,16 @@ export function SceneHero() {
         <div className="mx-auto grid max-w-[1400px] grid-cols-1 gap-8 px-6 md:grid-cols-[1fr_auto] md:items-end md:gap-16 lg:px-10">
           <div className="max-w-2xl">
             <h1 className="display text-display-xl leading-[1.02] text-foreground">
-              <SplitTextReveal text="Know your yield" delay={0.35} immediate />
-              <br />
-              <SplitTextReveal text="before your harvest." delay={0.6} immediate />
+              <SplitTextReveal text="Vineyard Management Intelligence" delay={0.35} immediate />
             </h1>
             <motion.p
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.9, delay: 2.5, ease: [0.2, 0.9, 0.3, 1] }}
-              className="mt-6 max-w-md text-base text-foreground/75 sm:text-lg"
+              className="mt-6 max-w-lg text-base text-foreground/75 sm:text-lg"
             >
-              Yield estimates at the block, row, and vine.
+              Graft Systems uses artificial intelligence, computer vision, and advanced weather modeling  
+              to help winegrowers make plot-specific decisions.
             </motion.p>
           </div>
 
@@ -184,10 +183,10 @@ export function SceneHero() {
             className="md:self-end"
           >
             <MagneticButton
-              href="/tool"
+              href="/#pillars"
               className="frame group inline-flex items-center gap-3 rounded-sm bg-burgundy px-7 py-3.5 text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-foreground transition-colors hover:bg-[#8F2433]"
             >
-              See it live
+              Explore the suite
               <svg
                 width="13"
                 height="13"

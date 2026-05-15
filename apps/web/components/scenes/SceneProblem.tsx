@@ -12,8 +12,8 @@ const STATS = [
     parallax: 32,
   },
   {
-    text: "Traditional manual cluster-count sampling averages 7.9% error across seasons and cultivars, with maximum errors reaching 23.5%.",
-    source: "Jaramillo et al., 2021",
+    text: "In California alone, wineries spend roughly $239 million per year on powdery-mildew fungicides and application—often on a fixed calendar whether the block needs it or not.",
+    source: "Sambucci, Alston & Fuller · UC Davis · 2014",
     parallax: 18,
   },
 ];
@@ -61,13 +61,13 @@ export function SceneProblem() {
             viewport={{ once: true, margin: "-120px" }}
             transition={{ duration: 0.55 }}
           >
-            THE PROBLEM
+            THE STAKES
           </motion.span>
 
           <h2 className="display mt-5 text-display-lg leading-[1.05] text-foreground">
-            <SplitTextReveal text="Yield forecasts" />
+            <SplitTextReveal text="The vineyard runs" />
             <br />
-            <SplitTextReveal text="are guesses." delay={0.2} />
+            <SplitTextReveal text="on partial sight." delay={0.2} />
           </h2>
 
           <div className="mt-20 space-y-16">
@@ -128,11 +128,10 @@ function PullQuote() {
       transition={{ duration: 0.85, ease: [0.2, 0.9, 0.3, 1] }}
     >
       <p className="display text-2xl italic leading-snug text-foreground lg:text-[1.75rem]">
-        &ldquo;Current methods are labour-intensive, costly, and lack spatial
-        coverage, reducing accuracy and cost-efficiency.&rdquo;
+        &ldquo;If you make it within 5% accuracy, you are in business.&rdquo;
       </p>
       <footer className="mt-5 frame text-[0.62rem] text-foreground-muted">
-        Ahmedt-Aristizabal et al. · IEEE Access (2024)
+        Top vineyard manager · Kendall-Jackson
       </footer>
     </motion.blockquote>
   );

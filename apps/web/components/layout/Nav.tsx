@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 const LINKS = [
   { href: "/", label: "Home" },
   { href: "/about", label: "About" },
-  { href: "/tool", label: "Tool" },
+  { href: "/tool", label: "Yield preview" },
   { href: "/spray", label: "Spray" },
   { href: "/contact", label: "Contact" },
 ];
@@ -77,7 +77,7 @@ export function Nav() {
             className="h-6 w-auto transition-opacity group-hover:opacity-90"
             priority
           />
-          <span className="frame text-[0.95rem] font-semibold">GRAFT</span>
+          <span className="frame text-[0.95rem] font-semibold">GRAFT SYSTEMS</span>
         </Link>
 
         <ul className="flex items-center gap-8">
