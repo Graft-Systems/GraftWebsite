@@ -11,6 +11,8 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useCallback, useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -21,6 +23,8 @@ import {
   ImageIcon,
   Cable,
   Settings as SettingsIcon,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { UserButton, useAuth } from "@clerk/nextjs";
 import { OrgSwitcher } from "@/components/spray/OrgSwitcher";
@@ -38,10 +42,35 @@ const NAV = [
   { href: "/spray/settings", label: "Settings", icon: SettingsIcon },
 ];
 
+const SIDEBAR_COLLAPSED_KEY = "spray.shell.sidebarCollapsed";
+
 export function SprayShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { isSignedIn } = useAuth();
   const { org, loading, error, needsOrg, reload, authedFetch } = useActiveOrg();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined" && window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1") {
+        setSidebarCollapsed(true);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
 
   const skipOrgGate =
     pathname === "/spray/onboarding" ||
@@ -102,22 +131,57 @@ export function SprayShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">
-      <aside className="hidden w-60 shrink-0 border-r border-border/40 bg-background/60 md:flex md:flex-col">
-        <Link
-          href="/spray"
-          className="flex h-16 items-center gap-2.5 border-b border-border/40 px-5 text-foreground transition-colors hover:text-amber"
+      <aside
+        className={cn(
+          "hidden shrink-0 border-r border-border/40 bg-background/60 transition-[width] duration-200 ease-out md:flex md:flex-col",
+          sidebarCollapsed ? "w-[4.25rem]" : "w-60",
+        )}
+      >
+        <div
+          className={cn(
+            "flex h-16 shrink-0 border-b border-border/40",
+            sidebarCollapsed
+              ? "flex-col items-center justify-center gap-1.5 px-1"
+              : "flex flex-row items-center justify-between gap-2 px-3",
+          )}
         >
-          <img
-            src="/brand/graft-mark.png"
-            alt=""
-            aria-hidden
-            draggable={false}
-            className="h-5 w-auto"
-          />
-          <span className="frame text-[0.85rem] font-semibold">GRAFT SPRAY</span>
-        </Link>
+          <Link
+            href="/spray"
+            className={cn(
+              "flex min-w-0 items-center gap-2 text-foreground transition-colors hover:text-amber",
+              sidebarCollapsed ? "justify-center" : "min-w-0 flex-1",
+            )}
+            title="Graft Spray home"
+          >
+            <Image
+              src="/brand/graft-mark.png"
+              alt=""
+              width={80}
+              height={20}
+              draggable={false}
+              className="h-5 w-auto shrink-0"
+              priority
+            />
+            {!sidebarCollapsed && (
+              <span className="frame truncate text-[0.85rem] font-semibold">GRAFT SPRAY</span>
+            )}
+          </Link>
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border/30 text-foreground/60 transition-colors hover:border-amber/35 hover:bg-foreground/5 hover:text-amber"
+            aria-expanded={!sidebarCollapsed}
+            aria-label={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}
+          >
+            {sidebarCollapsed ? (
+              <ChevronRight className="h-4 w-4" aria-hidden />
+            ) : (
+              <ChevronLeft className="h-4 w-4" aria-hidden />
+            )}
+          </button>
+        </div>
 
-        <nav className="flex flex-1 flex-col gap-1 p-3">
+        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-2">
           {NAV.map((item) => {
             const Icon = item.icon;
             const active =
@@ -128,39 +192,43 @@ export function SprayShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
+                title={sidebarCollapsed ? item.label : undefined}
                 className={cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+                  "flex items-center rounded-md py-2 text-sm transition-colors",
+                  sidebarCollapsed ? "justify-center px-2" : "gap-3 px-3",
                   active
                     ? "bg-amber/10 text-amber"
-                    : "text-foreground/70 hover:bg-foreground/5 hover:text-foreground"
+                    : "text-foreground/70 hover:bg-foreground/5 hover:text-foreground",
                 )}
               >
-                <Icon className="h-4 w-4" />
-                {item.label}
+                <Icon className="h-4 w-4 shrink-0" aria-hidden />
+                {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
               </Link>
             );
           })}
         </nav>
 
-        <div className="border-t border-border/40 p-3">
+        <div className="border-t border-border/40 p-2">
           <Link
             href="/"
             target="_blank"
             rel="noopener noreferrer"
-            className="block px-3 py-2 text-xs text-foreground/50 transition-colors hover:text-amber"
+            title="Back to Graft Systems"
+            className={cn(
+              "block rounded-md px-2 py-2 text-xs text-foreground/50 transition-colors hover:bg-foreground/5 hover:text-amber",
+              sidebarCollapsed ? "text-center" : "px-3",
+            )}
           >
-            ← Back to Graft Systems
+            {sidebarCollapsed ? "←" : "← Back to Graft Systems"}
           </Link>
         </div>
       </aside>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between border-b border-border/40 bg-background/85 px-5 backdrop-blur">
-          <div className="flex items-center gap-3">
-            <span className="font-display text-lg">
-              {NAV.find((n) => pathname?.startsWith(n.href))?.label ?? "Graft Spray"}
-            </span>
-          </div>
+          <span className="min-w-0 truncate font-display text-lg">
+            {NAV.find((n) => pathname?.startsWith(n.href))?.label ?? "Graft Spray"}
+          </span>
           <div className="flex items-center gap-4">
             <OrgSwitcher />
             <UserButton

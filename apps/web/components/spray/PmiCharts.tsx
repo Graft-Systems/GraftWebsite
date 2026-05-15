@@ -104,7 +104,7 @@ export function PmiHistoryTable({ history }: { history: PmiHistoryDay[] }) {
 }
 
 export function PmiBlockPanel({
-  blockId,
+  blockId: _blockId,
   history,
 }: {
   blockId: string;
@@ -117,13 +117,8 @@ export function PmiBlockPanel({
       </h3>
       {history.length === 0 ? (
         <p className="mt-2 text-sm text-foreground/60">
-          No PMI rows yet for this block. Set{" "}
-          <code className="rounded bg-foreground/10 px-1 text-xs">budbreak_date</code> in block
-          settings (ISO date), then run{" "}
-          <code className="rounded bg-foreground/10 px-1 text-xs">
-            python manage.py rollup_pmi --block {blockId}
-          </code>{" "}
-          on the API host (or wait for the daily Celery job).
+          No index history for this block yet. Set a budbreak date in block settings on the
+          vineyard page, then check back after the next daily update.
         </p>
       ) : (
         <>

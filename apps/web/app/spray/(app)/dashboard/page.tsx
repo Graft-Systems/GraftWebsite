@@ -2,11 +2,10 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, Circle, RefreshCw } from "lucide-react";
+import { Check, Circle } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
 import { BlockInsightPanel } from "@/components/spray/BlockInsightPanel";
 import { SprayMap, type BlockFeature } from "@/components/spray/SprayMap";
-import { VerdictCard } from "@/components/spray/VerdictCard";
 import {
   type DashboardBlock,
   type DashboardCapture,
@@ -336,6 +335,7 @@ export default function SprayDashboardPage() {
                       selectedBlockId && void refreshDirective(selectedBlockId)
                     }
                     authedFetch={authedFetch}
+                    onDashboardReload={reload}
                   />
                 </div>
               )}
@@ -346,52 +346,6 @@ export default function SprayDashboardPage() {
             captures={summary.recent_captures ?? []}
             blocks={summary.blocks}
           />
-
-          {summary.blocks.length > 0 && (
-            <details className="mt-8 rounded-md border border-border/40 bg-background/30 p-4">
-              <summary className="cursor-pointer font-display text-lg text-foreground/85">
-                All block directives (list)
-              </summary>
-              <div id="spray-directives" className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {summary.blocks.map((block) =>
-                  block.latest_verdict ? (
-                    <div key={block.id} className="space-y-2">
-                      <VerdictCard
-                        verdict={block.latest_verdict}
-                        blockName={`${block.vineyard_name} · ${block.name}`}
-                        orgId={summary.org.id}
-                        powderyPmi={block.powdery_pmi_profile ?? null}
-                      />
-                      {block.latest_pmi_explain && (
-                        <p className="text-xs text-foreground/55">
-                          {block.latest_pmi_explain.headline}{" "}
-                          <Link
-                            href={block.latest_pmi_explain.link_to_forecasts}
-                            className="font-semibold text-amber hover:text-amber/80"
-                          >
-                            See breakdown →
-                          </Link>
-                        </p>
-                      )}
-                      <CardActions
-                        stale={block.verdict_stale}
-                        refreshing={refreshingBlock === block.id}
-                        onRefresh={() => refreshDirective(block.id)}
-                      />
-                    </div>
-                  ) : (
-                    <NoVerdictCard
-                      key={block.id}
-                      block={block}
-                      setup={summary.setup}
-                      refreshing={refreshingBlock === block.id}
-                      onRefresh={() => refreshDirective(block.id)}
-                    />
-                  ),
-                )}
-              </div>
-            </details>
-          )}
 
           <details className="mt-6 rounded-md border border-border/40 bg-background/20 p-4">
             <summary className="cursor-pointer font-display text-lg text-foreground/80">
@@ -619,7 +573,7 @@ function buildSprayDashboardIssueLines(
   }).length;
   if (sprayWindowBlocked > 0) {
     lines.push(
-      `${sprayWindowBlocked} block${sprayWindowBlocked === 1 ? "" : "s"} call for spray but the next window looks blocked — review spray window details on each card.`,
+      `${sprayWindowBlocked} block${sprayWindowBlocked === 1 ? "" : "s"} call for spray but the next window looks blocked — open a block on the map or check Forecasts for details.`,
     );
   }
   return lines;
@@ -781,85 +735,6 @@ function PmiOrgMetric({ orgPmi }: { orgPmi?: DashboardSummary["org_pmi"] }) {
         </Link>
       </p>
     </div>
-  );
-}
-
-function CardActions({
-  stale,
-  refreshing,
-  onRefresh,
-}: {
-  stale: boolean;
-  refreshing: boolean;
-  onRefresh: () => void;
-}) {
-  return (
-    <div className="flex items-center justify-between rounded-md border border-border/30 bg-background/30 px-3 py-2">
-      <span className={`text-xs ${stale ? "text-amber" : "text-foreground/50"}`}>
-        {stale ? "Data is stale" : "Directive is current"}
-      </span>
-      <button
-        type="button"
-        onClick={onRefresh}
-        disabled={refreshing}
-        className="inline-flex items-center gap-1 frame text-xs font-semibold text-amber hover:text-amber/80 disabled:opacity-50"
-      >
-        <RefreshCw className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
-        Refresh directive
-      </button>
-    </div>
-  );
-}
-
-function NoVerdictCard({
-  block,
-  setup,
-  refreshing,
-  onRefresh,
-}: {
-  block: DashboardBlock;
-  setup: SetupSummary;
-  refreshing: boolean;
-  onRefresh: () => void;
-}) {
-  const c = setup.counts;
-  let hint: { href: string; label: string } | null = null;
-  if (c.active_integrations === 0) {
-    hint = { href: "/spray/integrations", label: "Connect integrations" };
-  } else if (c.mapped_stations === 0) {
-    hint = { href: "/spray/integrations", label: "Map stations to blocks" };
-  } else {
-    hint = { href: "/spray/forecasts", label: "Forecasts & PMI" };
-  }
-  return (
-    <article className="rounded-md border border-dashed border-border/40 bg-background/30 p-5">
-      <p className="frame text-[0.65rem] font-semibold uppercase tracking-wider text-foreground/50">
-        {block.vineyard_name} · {block.name}
-      </p>
-      <p className="mt-3 text-sm text-foreground/60">
-        No directive yet for this block. Refresh when weather and integrations are current, or
-        open forecasts for PMI context.
-      </p>
-      <div className="mt-4 flex flex-wrap gap-3">
-        {hint && (
-          <Link
-            href={hint.href}
-            className="frame text-xs font-semibold text-amber transition-colors hover:text-amber/80"
-          >
-            {hint.label} →
-          </Link>
-        )}
-        <button
-          type="button"
-          onClick={onRefresh}
-          disabled={refreshing}
-          className="inline-flex items-center gap-1 frame text-xs font-semibold text-amber hover:text-amber/80 disabled:opacity-50"
-        >
-          <RefreshCw className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
-          Generate directive
-        </button>
-      </div>
-    </article>
   );
 }
 

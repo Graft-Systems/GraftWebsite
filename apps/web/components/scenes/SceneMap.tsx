@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import {
   AnimatePresence,
@@ -425,11 +426,13 @@ function Beat4Panel() {
       <span className="frame text-[0.62rem] text-foreground-muted">
         VINE 12–47
       </span>
-      <div className="mt-5 aspect-[4/3] overflow-hidden rounded-sm border border-border/60">
-        <img
+      <div className="mt-5 aspect-[4/3] overflow-hidden rounded-sm border border-border/60 relative">
+        <Image
           src="/photos/cluster/red-gamay-cluster.webp"
           alt="Close-up of a red grape cluster on the vine"
-          className="h-full w-full object-cover"
+          fill
+          sizes="(max-width: 1024px) 100vw, 33vw"
+          className="object-cover"
           draggable={false}
         />
       </div>

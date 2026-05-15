@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useRef } from "react";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { SplitTextReveal } from "@/components/ui/SplitTextReveal";
@@ -37,10 +38,12 @@ export function SceneProblem() {
         className="absolute inset-0"
         style={{ opacity: bgOpacity }}
       >
-        <img
+        <Image
           src="/photos/aerial/french-vineyard.jpg"
           alt=""
-          className="h-full w-full object-cover"
+          fill
+          sizes="100vw"
+          className="object-cover"
           style={{ filter: "saturate(0.55) contrast(1.1) brightness(0.55)" }}
         />
       </motion.div>

@@ -1,15 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { Suspense, useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import type { VerdictForecastDay } from "@/components/spray/VerdictCard";
 import { PmiBlockPanel, formatPmiDayLabel } from "@/components/spray/PmiCharts";
-import { useSprayDashboard } from "@/lib/sprayApi";
+import { useSprayDashboard, type DashboardBlock } from "@/lib/sprayApi";
 
-export default function ForecastsPage() {
+const EMPTY_DASHBOARD_BLOCKS: DashboardBlock[] = [];
+
+function ForecastsPageFallback() {
+  return (
+    <div className="mx-auto max-w-6xl pb-24 md:pb-0">
+      <div className="mt-8 h-48 animate-pulse rounded-md border border-border/40 bg-foreground/5" />
+    </div>
+  );
+}
+
+function ForecastsPageContent() {
   const { summary, loading, error, reload } = useSprayDashboard();
-  const blocks = summary?.blocks ?? [];
+  const blocks = useMemo(
+    () => summary?.blocks ?? EMPTY_DASHBOARD_BLOCKS,
+    [summary?.blocks],
+  );
   const searchParams = useSearchParams();
   const focusBlock = searchParams.get("block");
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
@@ -161,6 +174,14 @@ export default function ForecastsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ForecastsPage() {
+  return (
+    <Suspense fallback={<ForecastsPageFallback />}>
+      <ForecastsPageContent />
+    </Suspense>
   );
 }
 

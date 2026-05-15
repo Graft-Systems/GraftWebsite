@@ -1205,7 +1205,7 @@ def _setup_summary_payload(org_id):
             "id": "generate_verdict",
             "label": "Generate verdict",
             "complete": counts["verdicts"] > 0,
-            "href": "/spray/dashboard#spray-directives",
+            "href": "/spray/dashboard",
         },
     ]
 
@@ -1338,6 +1338,10 @@ class DashboardSummaryView(APIView):
                 else None
             )
 
+            _settings = block.settings or {}
+            _bb = _settings.get("budbreak_date")
+            budbreak_date = str(_bb) if _bb not in (None, "") else None
+
             block_rows.append(
                 {
                     "id": str(block.id),
@@ -1345,6 +1349,7 @@ class DashboardSummaryView(APIView):
                     "vineyard_id": str(block.vineyard_id),
                     "vineyard_name": block.vineyard.name,
                     "variety": block.variety,
+                    "budbreak_date": budbreak_date,
                     "latest_verdict": (
                         BlockVerdictSerializer(verdict).data if verdict else None
                     ),

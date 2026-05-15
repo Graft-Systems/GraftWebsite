@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { motion } from "framer-motion";
 import { MagneticButton } from "@/components/ui/MagneticButton";
 import { SplitTextReveal } from "@/components/ui/SplitTextReveal";
@@ -54,12 +55,14 @@ export function SceneHero() {
     >
       {/* Background photo with slow ken burns */}
       <div className="absolute inset-0">
-        <img
+        <Image
           src="/photos/aerial/french-vineyard.jpg"
           alt=""
-          aria-hidden
+          fill
+          priority
+          sizes="100vw"
           draggable={false}
-          className="h-full w-full object-cover animate-ken-burns motion-reduce:animate-none"
+          className="object-cover animate-ken-burns motion-reduce:animate-none"
           style={{
             filter: "saturate(0.92) contrast(1.06) brightness(0.82)",
           }}

@@ -61,6 +61,8 @@ export type DashboardBlock = {
   vineyard_id: string;
   vineyard_name: string;
   variety: string;
+  /** ISO date (YYYY-MM-DD) when set; needed for PMI trend and rollup context. */
+  budbreak_date?: string | null;
   latest_verdict: Verdict | null;
   verdict_stale: boolean;
   latest_pmi?: number | null;

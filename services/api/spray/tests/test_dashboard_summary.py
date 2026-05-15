@@ -74,6 +74,7 @@ def test_dashboard_summary_returns_blocks_and_latest_verdict(
     assert resp.status_code == 200
     assert resp.data["org"]["name"] == "Pilot Estate"
     assert resp.data["blocks"][0]["name"] == "North"
+    assert resp.data["blocks"][0]["budbreak_date"] is None
     assert resp.data["blocks"][0]["latest_verdict"]["action"] == "spray"
     assert resp.data["setup"]["counts"]["verdicts"] == 1
     assert "recent_captures" in resp.data
@@ -111,6 +112,27 @@ def test_dashboard_summary_includes_pmi_fields(
     assert row["pmi_history_14d"]
     assert row["latest_pmi_explain"]["headline"]
     assert resp.data["org_pmi"]["max_pmi"] == 55
+
+
+def test_dashboard_summary_includes_budbreak_date_from_block_settings(
+    auth_client,
+    make_org,
+    make_membership,
+):
+    client, user = auth_client()
+    org = make_org(name="Bud Org")
+    make_membership(user=user, org=org, role=Membership.Role.ADMIN)
+    vineyard = Vineyard.objects.create(org=org, name="V", region=org.region)
+    block = Block.objects.create(
+        vineyard=vineyard,
+        name="West",
+        geom=_polygon(),
+        settings={"budbreak_date": "2025-04-01"},
+    )
+    resp = client.get(f"/api/spray/orgs/{org.id}/dashboard-summary")
+    assert resp.status_code == 200
+    row = next(b for b in resp.data["blocks"] if b["id"] == str(block.id))
+    assert row["budbreak_date"] == "2025-04-01"
 
 
 def test_dashboard_summary_includes_recent_captures(

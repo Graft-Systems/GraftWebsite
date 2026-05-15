@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { motion } from "framer-motion";
 import { SplitTextReveal } from "@/components/ui/SplitTextReveal";
 
@@ -7,12 +8,15 @@ export function AboutHero() {
   return (
     <section className="relative flex h-[78vh] min-h-[560px] w-full items-end overflow-hidden bg-background">
       <div className="absolute inset-0">
-        <img
+        <Image
           src="/photos/aerial/sunset-vineyard.jpg"
           alt=""
+          fill
+          priority
+          sizes="100vw"
           aria-hidden
           draggable={false}
-          className="h-full w-full object-cover animate-ken-burns motion-reduce:animate-none"
+          className="object-cover animate-ken-burns motion-reduce:animate-none"
           style={{ filter: "saturate(0.85) brightness(0.62)" }}
         />
       </div>
