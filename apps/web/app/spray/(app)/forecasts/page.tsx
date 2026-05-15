@@ -127,7 +127,7 @@ function EmptyForecastState() {
         href="/spray/dashboard"
         className="mt-4 inline-flex rounded-md border border-border/40 px-4 py-2 frame text-xs font-semibold text-foreground/80 hover:text-foreground"
       >
-        Open dashboard
+        Go to Home
       </Link>
       <Link
         href="/spray/vineyards"

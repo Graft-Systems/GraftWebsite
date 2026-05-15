@@ -303,7 +303,7 @@ export const ForecastsBlockPanel = forwardRef<
               href="/spray/dashboard"
               className="font-semibold text-amber hover:text-amber/80"
             >
-              Dashboard
+              Home
             </Link>
             <Link
               href={`/spray/vineyards/${block.vineyard_id}`}

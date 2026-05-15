@@ -17,10 +17,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
-  Map,
   CloudSun,
   ClipboardList,
   ImageIcon,
+  Map,
   Cable,
   Settings as SettingsIcon,
   ChevronLeft,
@@ -33,14 +33,17 @@ import { useActiveOrg } from "@/lib/sprayApi";
 import { cn } from "@/lib/utils";
 
 const NAV = [
-  { href: "/spray/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/spray/dashboard", label: "Home", icon: LayoutDashboard },
+  { href: "/spray/forecasts", label: "Forecasts", icon: CloudSun },
+  { href: "/spray/captures", label: "Captures", icon: ImageIcon },
+  { href: "/spray/spray-records", label: "Spray Records", icon: ClipboardList },
   { href: "/spray/vineyards", label: "Vineyards", icon: Map },
   { href: "/spray/integrations", label: "Integrations", icon: Cable },
-  { href: "/spray/captures", label: "Captures", icon: ImageIcon },
-  { href: "/spray/forecasts", label: "Forecasts", icon: CloudSun },
-  { href: "/spray/spray-records", label: "Spray records", icon: ClipboardList },
   { href: "/spray/settings", label: "Settings", icon: SettingsIcon },
 ];
+
+/** Bottom bar order matches sidebar; keep in sync with NAV. */
+const MOBILE_NAV_HREFS = NAV.map((item) => item.href);
 
 const SIDEBAR_COLLAPSED_KEY = "spray.shell.sidebarCollapsed";
 
@@ -242,16 +245,10 @@ export function SprayShell({ children }: { children: React.ReactNode }) {
           {mainBody}
         </main>
       </div>
-      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-border/40 bg-background/95 px-2 py-2 backdrop-blur md:hidden">
-        {NAV.filter((item) =>
-          [
-            "/spray/dashboard",
-            "/spray/vineyards",
-            "/spray/integrations",
-            "/spray/forecasts",
-            "/spray/spray-records",
-          ].includes(item.href),
-        ).map((item) => {
+      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-7 border-t border-border/40 bg-background/95 px-1 py-2 backdrop-blur md:hidden">
+        {MOBILE_NAV_HREFS.map((href) => {
+          const item = NAV.find((n) => n.href === href);
+          if (!item) return null;
           const Icon = item.icon;
           const active =
             pathname === item.href ||
@@ -261,12 +258,12 @@ export function SprayShell({ children }: { children: React.ReactNode }) {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex min-h-12 flex-col items-center justify-center gap-1 rounded-md px-1 text-[0.65rem]",
+                "flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-md px-0.5 text-[0.6rem] leading-tight",
                 active ? "bg-amber/10 text-amber" : "text-foreground/60",
               )}
             >
-              <Icon className="h-4 w-4" />
-              <span className="truncate">{item.label.replace(" records", "")}</span>
+              <Icon className="h-4 w-4 shrink-0" />
+              <span className="line-clamp-2 w-full text-center">{item.label}</span>
             </Link>
           );
         })}
