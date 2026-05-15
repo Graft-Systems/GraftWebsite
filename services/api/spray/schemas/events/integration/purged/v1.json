@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "integration.purged.v1",
+  "title": "integration.purged",
+  "description": "Emitted when an org admin permanently removes a disconnected integration; stations and stored readings for that connection are deleted (CASCADE).",
+  "type": "object",
+  "required": ["org_id", "connection_id", "vendor"],
+  "properties": {
+    "org_id": { "type": "string", "format": "uuid" },
+    "connection_id": { "type": "string", "format": "uuid" },
+    "vendor": {
+      "type": "string",
+      "enum": ["davis", "pessl", "meter", "sencrop"]
+    }
+  },
+  "additionalProperties": false
+}

@@ -12,12 +12,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import maplibregl, { Map as MaplibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { cn } from "@/lib/utils";
 
 export type BlockFeature = {
   id: string;
   name: string;
   geom: GeoJSON.Polygon | GeoJSON.MultiPolygon;
   archived: boolean;
+  /** Per-block fill on map; defaults to vineyard amber when omitted. */
+  fillColor?: string;
 };
 
 export type DrawTool = "rectangle" | "polygon";
@@ -70,6 +73,17 @@ const DRAW_STROKE_COLOR = "#ffffff";
 
 const RECT_MIN_PX = 8;
 
+/** Layers that can receive a block hit (top → bottom for queryRenderedFeatures). */
+const BLOCK_HIT_LAYER_IDS = ["blocks-label", "blocks-stroke", "blocks-fill"] as const;
+
+function blockIdFromRenderedFeature(f: maplibregl.MapGeoJSONFeature): string | null {
+  const p = f.properties as Record<string, unknown> | null | undefined;
+  const raw = p?.block_id;
+  if (typeof raw === "string" && raw.length > 0) return raw;
+  if (f.id != null) return String(f.id);
+  return null;
+}
+
 function blocksToFeatureCollection(
   blocks: BlockFeature[]
 ): GeoJSON.FeatureCollection<GeoJSON.Polygon | GeoJSON.MultiPolygon> {
@@ -81,7 +95,11 @@ function blocksToFeatureCollection(
         type: "Feature",
         id: b.id,
         geometry: b.geom,
-        properties: { name: b.name },
+        properties: {
+          block_id: b.id,
+          name: b.name,
+          ...(b.fillColor ? { fill_color: b.fillColor } : {}),
+        },
       })),
   };
 }
@@ -243,6 +261,8 @@ export function SprayMap({
   const [searchHits, setSearchHits] = useState<GeocodeHit[]>([]);
   const [searchErr, setSearchErr] = useState<string | null>(null);
   const searchAbortRef = useRef<AbortController | null>(null);
+  const onBlockSelectRef = useRef(onBlockSelect);
+  onBlockSelectRef.current = onBlockSelect;
 
   drawingVertsRef.current = drawingVerts;
   rectDragRef.current = rectDrag;
@@ -298,6 +318,10 @@ export function SprayMap({
 
   const extendMode = extendBlockId != null && onBlockExtend != null;
   const drawActive = Boolean(editable) || extendMode;
+  const drawActiveRef = useRef(drawActive);
+  const drawToolRef = useRef(drawTool);
+  drawActiveRef.current = drawActive;
+  drawToolRef.current = drawTool;
 
   const finishDraw = useCallback(
     (polygon: GeoJSON.Polygon) => {
@@ -324,6 +348,8 @@ export function SprayMap({
   // Mount + unmount the map exactly once.
   useEffect(() => {
     if (!containerRef.current) return;
+    let destroyed = false;
+    let removeWheelCapture: (() => void) | null = null;
     const initialCenter = centroid ?? NAPA_CENTROID;
 
     const map = new maplibregl.Map({
@@ -335,13 +361,35 @@ export function SprayMap({
       doubleClickZoom: false,
     });
 
+    const mapRoot = map.getContainer();
+    // Cancel browser scroll on <main> for any wheel whose target is inside the map (capture
+    // phase + non-passive). MapLibre still receives the event afterward; map-root-only listeners
+    // miss some trackpad targets and leave scroll chaining to the shell.
+    const stopWheelFromScrollingShell = (ev: WheelEvent) => {
+      const t = ev.target;
+      if (!(t instanceof Node) || !mapRoot.contains(t)) return;
+      ev.preventDefault();
+    };
+    window.addEventListener("wheel", stopWheelFromScrollingShell, {
+      passive: false,
+      capture: true,
+    });
+    removeWheelCapture = () =>
+      window.removeEventListener("wheel", stopWheelFromScrollingShell, {
+        capture: true,
+      });
+
     map.on("load", () => {
+      if (destroyed) return;
       map.addSource("blocks", { type: "geojson", data: blocksToFeatureCollection([]) });
       map.addLayer({
         id: "blocks-fill",
         type: "fill",
         source: "blocks",
-        paint: { "fill-color": BLOCK_FILL_COLOR, "fill-opacity": 0.35 },
+        paint: {
+          "fill-color": ["coalesce", ["get", "fill_color"], BLOCK_FILL_COLOR],
+          "fill-opacity": 0.38,
+        },
       });
       map.addLayer({
         id: "blocks-stroke",
@@ -433,17 +481,30 @@ export function SprayMap({
       setReady(true);
     });
 
-    map.on("click", "blocks-fill", (e) => {
+    const blockHitLayers = () =>
+      BLOCK_HIT_LAYER_IDS.filter((id) => Boolean(map.getLayer(id)));
+
+    map.on("click", (e) => {
       if (drawingVertsRef.current.length > 0 || rectDragRef.current !== null) {
         return;
       }
-      const f = e.features?.[0];
-      if (f && f.id != null) onBlockSelect(String(f.id));
+      if (drawActiveRef.current && drawToolRef.current === "polygon") {
+        return;
+      }
+      const layers = blockHitLayers();
+      if (layers.length === 0) return;
+      const hits = map.queryRenderedFeatures(e.point, { layers: [...layers] });
+      const f = hits[0];
+      if (!f) return;
+      const bid = blockIdFromRenderedFeature(f);
+      if (bid) onBlockSelectRef.current(bid);
     });
 
     mapRef.current = map;
 
     return () => {
+      destroyed = true;
+      removeWheelCapture?.();
       map.remove();
       mapRef.current = null;
     };
@@ -473,13 +534,13 @@ export function SprayMap({
     const sid = selectedBlockId ?? "";
     map.setPaintProperty("blocks-label", "text-color", [
       "case",
-      ["==", ["to-string", ["id"]], sid],
+      ["==", ["to-string", ["get", "block_id"]], sid],
       "#ffd27a",
       "#fffef8",
     ]);
     map.setPaintProperty("blocks-label", "text-halo-width", [
       "case",
-      ["==", ["to-string", ["id"]], sid],
+      ["==", ["to-string", ["get", "block_id"]], sid],
       3,
       2,
     ]);
@@ -665,10 +726,16 @@ export function SprayMap({
   }, [drawActive]);
 
   return (
-    <div className="relative h-full min-h-[280px] w-full">
+    <div
+      className="relative h-full min-h-0 w-full overflow-hidden overscroll-contain"
+      data-lenis-prevent
+    >
       <div
         ref={containerRef}
-        className={className ?? "h-full min-h-[280px] w-full"}
+        className={cn(
+          "h-full min-h-[280px] w-full overscroll-contain",
+          className
+        )}
         data-testid="spray-map"
       />
 

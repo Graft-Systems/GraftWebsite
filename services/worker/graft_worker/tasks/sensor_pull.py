@@ -75,4 +75,4 @@ def pull_all_sensor_stations(vendor_slug: str) -> int:
 )
 def pull_sensor_station(self, station_id: str, vendor_slug: str) -> int:
     """Pull readings for one station, upsert + emit events."""
-    return execute_pull_sensor_station(station_id, vendor_slug)
+    return int(execute_pull_sensor_station(station_id, vendor_slug)["count"])

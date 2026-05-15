@@ -36,6 +36,15 @@ export type VerdictForecastDay = {
   rain_next_24h_mm?: number;
 };
 
+export type PowderyPmiProfile = {
+  pmi: number;
+  tier: string;
+  phase: string;
+  date: string;
+  rule_lines: string[];
+  data_sources_summary?: Record<string, unknown>;
+};
+
 export type Verdict = {
   id: string;
   block: string;
@@ -128,12 +137,15 @@ export function VerdictCard({
   verdict,
   blockName,
   orgId,
+  powderyPmi,
 }: {
   verdict: Verdict;
   blockName?: string;
   orgId?: string;
+  powderyPmi?: PowderyPmiProfile | null;
 }) {
   const [showDrivers, setShowDrivers] = useState(false);
+  const [showPmi, setShowPmi] = useState(false);
 
   const action = ACTION_STYLES[verdict.action];
   const powdery = num(verdict.powdery_severity_1_10);
@@ -186,6 +198,38 @@ export function VerdictCard({
         <p className="mt-4 text-xs italic text-foreground/60">
           {verdict.split_summary}
         </p>
+      )}
+
+      {powderyPmi && (
+        <section className="mt-4 rounded-md border border-border/30 bg-background/25 p-3">
+          <button
+            type="button"
+            onClick={() => setShowPmi((s) => !s)}
+            className="flex w-full items-center justify-between frame text-[0.65rem] font-semibold uppercase tracking-wider text-amber transition-colors hover:text-amber/90"
+          >
+            <span>Powdery mildew (Gubler–Thomas PMI)</span>
+            <span aria-hidden>{showPmi ? "▴" : "▾"}</span>
+          </button>
+          {showPmi && (
+            <div className="mt-3 space-y-2 text-xs text-foreground/75">
+              <p>
+                Index{" "}
+                <span className="font-semibold text-foreground">{powderyPmi.pmi}</span>{" "}
+                ({powderyPmi.tier}) · last rollup {powderyPmi.date} · phase{" "}
+                {powderyPmi.phase}
+              </p>
+              {powderyPmi.rule_lines.length > 0 ? (
+                <ul className="list-disc space-y-1 pl-4">
+                  {powderyPmi.rule_lines.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-foreground/50">No rule lines on the latest rollup row.</p>
+              )}
+            </div>
+          )}
+        </section>
       )}
 
       {directive && (

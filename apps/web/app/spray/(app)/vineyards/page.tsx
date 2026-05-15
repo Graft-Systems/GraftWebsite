@@ -10,7 +10,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { CreateVineyardDialog } from "@/components/spray/CreateVineyardDialog";
-import { useActiveOrg } from "@/lib/sprayApi";
+import { formatSprayHttpError, orgCanArchiveVineyards, useActiveOrg } from "@/lib/sprayApi";
 
 type Vineyard = {
   id: string;
@@ -24,6 +24,7 @@ export default function VineyardsPage() {
   const [vineyards, setVineyards] = useState<Vineyard[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!org) {
@@ -64,6 +65,35 @@ export default function VineyardsPage() {
     setVineyards((vs) => [...(vs ?? []), created]);
     setShowCreate(false);
   }
+
+  async function handleDeleteVineyard(v: Vineyard) {
+    if (!org) return;
+    if (
+      !window.confirm(
+        `Archive vineyard “${v.name}”? All blocks under it will be archived.`,
+      )
+    ) {
+      return;
+    }
+    setDeletingId(v.id);
+    setError(null);
+    try {
+      const res = await authedFetch(`/api/spray/orgs/${org.id}/vineyards/${v.id}`, {
+        method: "DELETE",
+      });
+      if (res.status === 204) {
+        setVineyards((vs) => (vs ?? []).filter((x) => x.id !== v.id));
+        return;
+      }
+      setError(await formatSprayHttpError(res));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  const canDeleteVineyard = orgCanArchiveVineyards(org);
 
   return (
     <div className="mx-auto max-w-5xl pb-24 md:pb-0">
@@ -112,16 +142,37 @@ export default function VineyardsPage() {
             .filter((v) => v.archived_at === null)
             .map((v) => (
               <li key={v.id}>
-                <Link
-                  href={`/spray/vineyards/${v.id}`}
-                  className="flex items-center justify-between rounded-md border border-border/40 bg-background/40 px-4 py-3 transition-colors hover:border-amber/50"
-                >
-                  <span className="font-display text-lg">{v.name}</span>
-                  <span className="text-xs uppercase text-foreground/50">{v.region}</span>
-                </Link>
+                <div className="flex items-stretch gap-2 rounded-md border border-border/40 bg-background/40 transition-colors hover:border-amber/50">
+                  <Link
+                    href={`/spray/vineyards/${v.id}`}
+                    className="flex min-w-0 flex-1 items-center justify-between px-4 py-3"
+                  >
+                    <span className="font-display text-lg">{v.name}</span>
+                    <span className="shrink-0 text-xs uppercase text-foreground/50">
+                      {v.region}
+                    </span>
+                  </Link>
+                  {canDeleteVineyard && (
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteVineyard(v)}
+                      disabled={deletingId === v.id}
+                      className="shrink-0 rounded-r-md border-l border-border/40 px-3 py-3 frame text-xs font-semibold uppercase tracking-wide text-red-300/90 transition-colors hover:bg-red-500/10 hover:text-red-200 disabled:opacity-40"
+                    >
+                      {deletingId === v.id ? "…" : "Delete"}
+                    </button>
+                  )}
+                </div>
               </li>
             ))}
         </ul>
+      )}
+
+      {org && vineyards && vineyards.length > 0 && !canDeleteVineyard && (
+        <p className="mt-4 text-xs text-foreground/45">
+          Deleting a vineyard archives it and its blocks. Only organization owners and
+          admins see the delete action.
+        </p>
       )}
 
       {showCreate && org && (
