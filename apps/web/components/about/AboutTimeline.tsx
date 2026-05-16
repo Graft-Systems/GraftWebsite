@@ -46,7 +46,6 @@ const MILESTONES: Milestone[] = [
     title: "On-site visits",
     description:
       "Meeting winemakers where they work — walking rows, understanding workflows, refining the tool in the field.",
-    future: true,
   },
   {
     date: "Aug 2026",
