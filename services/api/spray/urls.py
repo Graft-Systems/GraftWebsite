@@ -81,6 +81,21 @@ urlpatterns = [
         name="block_forecast_weather",
     ),
     path(
+        "orgs/<uuid:org_id>/blocks/<uuid:block_id>/vines/row",
+        views.BlockVineRowBulkView.as_view(),
+        name="block_vine_row_bulk",
+    ),
+    path(
+        "orgs/<uuid:org_id>/blocks/<uuid:block_id>/vines",
+        views.BlockVineListCreateView.as_view(),
+        name="block_vine_list_create",
+    ),
+    path(
+        "orgs/<uuid:org_id>/vines/<uuid:vine_id>",
+        views.VineDetailView.as_view(),
+        name="vine_detail",
+    ),
+    path(
         "orgs/<uuid:org_id>/blocks/<uuid:block_id>",
         views.BlockDetailView.as_view(),
         name="block_detail",

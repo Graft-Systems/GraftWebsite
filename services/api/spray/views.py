@@ -1034,6 +1034,125 @@ class BlockDetailView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+class BlockVineListCreateView(APIView):
+    """GET/POST /api/spray/orgs/<org_id>/blocks/<block_id>/vines."""
+
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [IsOrgViewer()]
+        return [IsOrgMember()]
+
+    def _get_block(self, org_id, block_id):
+        from spray.models import Block
+
+        return get_object_or_404(
+            Block.objects.for_org(org_id).filter(archived_at__isnull=True),
+            id=block_id,
+        )
+
+    @transaction.atomic
+    def get(self, request, org_id, block_id):
+        from spray.models import Vine
+        from spray.serializers import VineSerializer
+
+        set_current_org_id(str(org_id))
+        block = self._get_block(org_id, block_id)
+        qs = (
+            Vine.objects.for_org(org_id)
+            .filter(block=block, archived_at__isnull=True)
+            .order_by("row_index", "vine_index")
+        )
+        return Response(VineSerializer(qs, many=True).data)
+
+    @transaction.atomic
+    def post(self, request, org_id, block_id):
+        from spray.serializers import VineSerializer
+
+        set_current_org_id(str(org_id))
+        block = self._get_block(org_id, block_id)
+        serializer = VineSerializer(
+            data=request.data,
+            context={"block": block},
+        )
+        serializer.is_valid(raise_exception=True)
+        vine = serializer.save()
+        return Response(
+            VineSerializer(vine).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class BlockVineRowBulkView(APIView):
+    """POST /api/spray/orgs/<org_id>/blocks/<block_id>/vines/row — evenly spaced row."""
+
+    permission_classes = [IsOrgMember]
+
+    @transaction.atomic
+    def post(self, request, org_id, block_id):
+        from spray.models import Block, Vine
+        from spray.serializers import VineRowBulkSerializer, VineSerializer
+
+        set_current_org_id(str(org_id))
+        block = get_object_or_404(
+            Block.objects.for_org(org_id).filter(archived_at__isnull=True),
+            id=block_id,
+        )
+        serializer = VineRowBulkSerializer(
+            data=request.data,
+            context={"block": block},
+        )
+        serializer.is_valid(raise_exception=True)
+        created = serializer.save()
+        return Response(
+            VineSerializer(created, many=True).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class VineDetailView(APIView):
+    """PATCH/DELETE /api/spray/orgs/<org_id>/vines/<vine_id>."""
+
+    def get_permissions(self):
+        if self.request.method == "PATCH":
+            return [IsOrgMember()]
+        if self.request.method == "DELETE":
+            return [IsOrgMember()]
+        return [IsOrgViewer()]
+
+    def _get_vine(self, org_id, vine_id):
+        from spray.models import Vine
+
+        return get_object_or_404(
+            Vine.objects.for_org(org_id).select_related("block"),
+            id=vine_id,
+            archived_at__isnull=True,
+        )
+
+    @transaction.atomic
+    def patch(self, request, org_id, vine_id):
+        from spray.serializers import VineSerializer
+
+        set_current_org_id(str(org_id))
+        vine = self._get_vine(org_id, vine_id)
+        serializer = VineSerializer(
+            vine,
+            data=request.data,
+            partial=True,
+            context={"block": vine.block},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(VineSerializer(vine).data)
+
+    @transaction.atomic
+    def delete(self, request, org_id, vine_id):
+        set_current_org_id(str(org_id))
+        vine = self._get_vine(org_id, vine_id)
+        vine.archived_at = timezone.now()
+        vine.save(update_fields=["archived_at"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class BlockSensorReadingsView(APIView):
     """GET /api/spray/orgs/<org_id>/blocks/<block_id>/sensor-readings.
 

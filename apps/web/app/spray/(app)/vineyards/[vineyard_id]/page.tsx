@@ -6,16 +6,46 @@
  */
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { SprayMap, type BlockFeature } from "@/components/spray/SprayMap";
+import {
+  SprayMap,
+  type BlockFeature,
+  type VineMapFeature,
+  type VinePlacementMode,
+} from "@/components/spray/SprayMap";
+import { BlockVinePanel } from "@/components/spray/BlockVinePanel";
+import { SprayMapAddressSearch } from "@/components/spray/SprayMapAddressSearch";
 import { CaptureUploader } from "@/components/spray/CaptureUploader";
 import {
   formatSprayHttpError,
   orgCanArchiveVineyards,
   useActiveOrg,
 } from "@/lib/sprayApi";
+import { useBlockVinePlacement } from "@/lib/useBlockVinePlacement";
+import { defaultRowLengthM } from "@/lib/vinePlacementUtils";
+
+export type VinePlacementHandlers = {
+  placeSingleVine: (lngLat: [number, number]) => void;
+  placeRowCommit: (segment: {
+    start: [number, number];
+    end: [number, number];
+  }) => void;
+  rowDefaultLengthM: number;
+  busy: boolean;
+  error: string | null;
+  setError: (msg: string | null) => void;
+  loadVines: () => Promise<void>;
+};
 
 type Vineyard = {
   id: string;
@@ -48,9 +78,77 @@ export default function VineyardDetailPage() {
   const [editable, setEditable] = useState(false);
   const [footprintExtend, setFootprintExtend] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [vines, setVines] = useState<VineMapFeature[]>([]);
+  const [vinePlacementMode, setVinePlacementMode] = useState<VinePlacementMode>(null);
+  const [selectedVineId, setSelectedVineId] = useState<string | null>(null);
+  const [rowIndex, setRowIndex] = useState("1");
+  const [rowCount, setRowCount] = useState("12");
+  const [vineNodeScale, setVineNodeScale] = useState(1.0);
+  const mapFlyToRef = useRef<((lng: number, lat: number, zoom?: number) => void) | null>(
+    null,
+  );
+
+  const selectedBlock = blocks.find((b) => b.id === selectedId) ?? null;
+
+  const toggleFootprintExtend = useCallback(() => {
+    setFootprintExtend((x) => {
+      if (x) return false;
+      setEditable(false);
+      setVinePlacementMode(null);
+      return true;
+    });
+  }, []);
+
+  const toggleBlockEditable = useCallback(() => {
+    setEditable((x) => {
+      if (x) return false;
+      setFootprintExtend(false);
+      setVinePlacementMode(null);
+      return true;
+    });
+  }, []);
+
+  const {
+    busy,
+    error: vineError,
+    setError: setVineError,
+    loadVines,
+    placeSingleVine,
+    placeRowCommit,
+    updateVineStatus,
+    deleteVine,
+    clearRow,
+  } = useBlockVinePlacement({
+    orgId: org?.id ?? null,
+    blockId: selectedBlock?.id ?? null,
+    blockGeom: selectedBlock?.geom ?? null,
+    authedFetch,
+    vines,
+    onVinesChange: setVines,
+    rowIndex,
+    rowCount,
+    onPlacementModeChange: setVinePlacementMode,
+  });
+
+  const onVineMapClick = useCallback((lngLat: [number, number]) => {
+    void placeSingleVine(lngLat);
+  }, [placeSingleVine]);
+
+  const onVineRowCommit = useCallback(
+    (segment: { start: [number, number]; end: [number, number] }) => {
+      void placeRowCommit(segment);
+    },
+    [placeRowCommit],
+  );
 
   useEffect(() => {
     if (!selectedId) setFootprintExtend(false);
+  }, [selectedId]);
+
+  useEffect(() => {
+    setVines([]);
+    setVinePlacementMode(null);
+    setSelectedVineId(null);
   }, [selectedId]);
 
   useEffect(() => {
@@ -113,7 +211,10 @@ export default function VineyardDetailPage() {
   }
 
   function selectBlock(blockId: string | null) {
-    if (blockId !== selectedId) setFootprintExtend(false);
+    if (blockId !== selectedId) {
+      setFootprintExtend(false);
+      setVinePlacementMode(null);
+    }
     setSelectedId(blockId);
   }
 
@@ -216,7 +317,6 @@ export default function VineyardDetailPage() {
     }
   }
 
-  const selectedBlock = blocks.find((b) => b.id === selectedId) ?? null;
   const canArchiveVineyard = orgCanArchiveVineyards(org);
 
   if (!org && !orgLoading) {
@@ -228,64 +328,163 @@ export default function VineyardDetailPage() {
   }
 
   return (
-    <div className="-m-6 flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="shrink-0 border-b border-border/40 bg-background/60 px-6 py-3">
-        <Link
-          href="/spray/vineyards"
-          className="frame text-xs font-semibold text-foreground/60 transition-colors hover:text-amber"
-        >
-          ← Vineyards
-        </Link>
-        {vineyard && (
-          <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
-            <h1 className="font-display text-xl">{vineyard.name}</h1>
-            {canArchiveVineyard && (
-              <button
-                type="button"
-                onClick={() => void archiveVineyard()}
-                disabled={deletingVineyard}
-                className="shrink-0 rounded-md border border-red-500/40 px-3 py-1.5 frame text-xs font-semibold uppercase tracking-wide text-red-300 transition-colors hover:bg-red-500/10 disabled:opacity-40"
-              >
-                {deletingVineyard ? "Archiving…" : "Delete vineyard"}
-              </button>
+    <div className="-m-4 flex flex-1 flex-col overflow-hidden md:-m-6 md:h-[calc(100vh-4rem)] md:flex-row">
+      <div className="flex min-w-0 flex-1 flex-col border-b border-border/40 md:border-b-0">
+        <div className="shrink-0 bg-background/60 px-6 py-3">
+          <Link
+            href="/spray/vineyards"
+            className="frame text-xs font-semibold text-foreground/60 transition-colors hover:text-amber"
+          >
+            ← Vineyards
+          </Link>
+          {vineyard && (
+            <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
+              <h1 className="font-display text-xl">{vineyard.name}</h1>
+              {canArchiveVineyard && (
+                <button
+                  type="button"
+                  onClick={() => void archiveVineyard()}
+                  disabled={deletingVineyard}
+                  className="shrink-0 rounded-md border border-red-500/40 px-3 py-1.5 frame text-xs font-semibold uppercase tracking-wide text-red-300 transition-colors hover:bg-red-500/10 disabled:opacity-40"
+                >
+                  {deletingVineyard ? "Archiving…" : "Delete vineyard"}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {error && (
+          <p className="mx-6 mt-3 rounded-md border border-red-500/50 bg-red-500/10 p-3 text-sm text-red-300">
+            {error}
+          </p>
+        )}
+
+        {vineyard && !centroid && (
+          <p className="mx-6 mt-3 rounded-md border border-amber/40 bg-amber/10 p-3 text-sm text-amber">
+            This vineyard has no map centroid yet. The map defaults to Napa until coordinates are set.
+          </p>
+        )}
+
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="shrink-0 space-y-3 border-b border-border/40 bg-background/50 px-4 py-3">
+            <SprayMapAddressSearch
+              className="max-w-md"
+              onFlyTo={(lng, lat) => mapFlyToRef.current?.(lng, lat)}
+            />
+
+            {selectedBlock && org && (
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch">
+                <div className="min-w-0 flex-1 rounded-lg border border-border/50 bg-background/80 p-3">
+                  <p className="text-[0.65rem] font-semibold uppercase tracking-wider text-foreground/55">
+                    Block footprint
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={toggleFootprintExtend}
+                      disabled={editable}
+                      className={`min-h-[36px] rounded-md border px-3 py-1.5 frame text-xs font-semibold transition-colors disabled:opacity-40 ${
+                        footprintExtend
+                          ? "border-amber/70 bg-amber/15 text-foreground hover:bg-amber/25"
+                          : "border-border/60 text-foreground/85 hover:bg-background/80"
+                      }`}
+                    >
+                      {footprintExtend ? "Cancel extend" : "Add to footprint"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={toggleBlockEditable}
+                      disabled={footprintExtend}
+                      className={`min-h-[36px] rounded-md border px-3 py-1.5 frame text-xs font-semibold transition-colors disabled:opacity-40 ${
+                        editable
+                          ? "border-amber/70 bg-amber/15 text-foreground"
+                          : "border-border/60 text-foreground/85 hover:bg-background/80"
+                      }`}
+                    >
+                      {editable ? "Done editing outline" : "Edit block outline"}
+                    </button>
+                  </div>
+                  {footprintExtend && (
+                    <p className="mt-2 text-[0.65rem] leading-relaxed text-foreground/55">
+                      Draw a rectangle or polygon on the map (top-left). Shapes merge into this
+                      block.
+                    </p>
+                  )}
+                </div>
+
+                {!footprintExtend && !editable && (
+                  <div className="min-w-0 flex-[1.4] rounded-lg border border-amber/30 bg-background/80 p-3">
+                    <p className="text-[0.65rem] font-semibold uppercase tracking-wider text-foreground/55">
+                      Vine map
+                    </p>
+                    <div className="mt-2">
+                      <BlockVinePanel
+                        blockId={selectedBlock.id}
+                        placementMode={vinePlacementMode}
+                        onPlacementModeChange={(mode) => {
+                          setVinePlacementMode(mode);
+                          if (mode) {
+                            setEditable(false);
+                            setFootprintExtend(false);
+                          }
+                        }}
+                        rowIndex={rowIndex}
+                        onRowIndexChange={setRowIndex}
+                        rowCount={rowCount}
+                        onRowCountChange={setRowCount}
+                        nodeScale={vineNodeScale}
+                        onNodeScaleChange={setVineNodeScale}
+                        busy={busy}
+                        error={vineError}
+                        setError={setVineError}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </div>
-        )}
-      </div>
 
-      {error && (
-        <p className="mx-6 mt-3 rounded-md border border-red-500/50 bg-red-500/10 p-3 text-sm text-red-300">
-          {error}
-        </p>
-      )}
-
-      {vineyard && !centroid && (
-        <p className="mx-6 mt-3 rounded-md border border-amber/40 bg-amber/10 p-3 text-sm text-amber">
-          This vineyard has no map centroid yet. The map defaults to Napa until coordinates are set.
-        </p>
-      )}
-
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row md:items-stretch md:overflow-hidden">
-        <div className="h-[min(45vh,24rem)] min-h-[280px] w-full min-w-0 shrink-0 md:h-auto md:min-h-0 md:flex-1">
-          <SprayMap
+          <div className="relative min-h-[280px] flex-1">
+            <SprayMap
             centroid={centroid}
             vineyardName={vineyard?.name ?? null}
             blocks={blockFeatures}
             selectedBlockId={selectedId}
-            editable={editable}
-            extendBlockId={footprintExtend ? selectedId : null}
+            editable={editable && !vinePlacementMode}
+            extendBlockId={footprintExtend && !vinePlacementMode ? selectedId : null}
             onBlockExtend={handleBlockExtend}
             onBlockSelect={selectBlock}
             onBlockCreate={handleBlockCreate}
             onBlockUpdate={handleBlockUpdate}
-            className="h-full min-h-[280px] w-full md:min-h-0"
+            vines={selectedId ? vines : []}
+            selectedVineId={selectedVineId}
+            vinePlacementMode={selectedId ? vinePlacementMode : null}
+            onVineSelect={setSelectedVineId}
+            onVineMapClick={selectedId ? onVineMapClick : undefined}
+            onVineRowCommit={selectedId ? onVineRowCommit : undefined}
+            vineRowPreviewCount={parseInt(rowCount, 10) || 0}
+            rowDefaultLengthM={defaultRowLengthM(
+              selectedBlock?.row_spacing_m,
+              parseInt(rowCount, 10) || 12,
+            )}
+            vineNodeScale={vineNodeScale}
+            suppressBlockSelect={vinePlacementMode != null}
+            showAddressSearch={false}
+            onMapReady={({ flyTo }) => {
+              mapFlyToRef.current = flyTo;
+            }}
+            className="h-full w-full"
           />
+          </div>
         </div>
+      </div>
 
-        <aside
-          className="min-h-0 w-full shrink-0 border-t border-border/40 bg-background/40 p-5 [-webkit-overflow-scrolling:touch] [touch-action:pan-y] md:h-full md:min-h-0 md:w-80 md:max-w-[20rem] md:shrink-0 md:self-stretch md:overflow-y-auto md:overscroll-y-contain md:border-l md:border-t-0"
-          data-lenis-prevent
-        >
+      <aside
+        className="flex h-1/2 w-full shrink-0 flex-col overflow-y-auto border-t border-border/40 bg-background/40 p-5 [-webkit-overflow-scrolling:touch] md:h-full md:w-80 md:max-w-[20rem] md:border-l md:border-t-0"
+        data-lenis-prevent
+      >
           {!selectedBlock && (
             <>
               <h2 className="frame text-xs font-semibold uppercase tracking-wider text-foreground/60">
@@ -328,25 +527,23 @@ export default function VineyardDetailPage() {
           {selectedBlock && org && (
             <BlockEditor
               block={selectedBlock}
-              footprintExtendActive={footprintExtend}
-              onToggleFootprintExtend={() => {
-                setFootprintExtend((x) => {
-                  if (x) return false;
-                  setEditable(false);
-                  return true;
-                });
-              }}
               onClose={() => selectBlock(null)}
               onSave={(patch) => patchBlock(selectedBlock.id, patch)}
               onDelete={() => deleteBlock(selectedBlock.id)}
               onExport={() => exportGeoJSON(selectedBlock)}
               orgId={org.id}
               authedFetch={authedFetch}
+              vines={vines}
+              selectedVineId={selectedVineId}
+              onSelectVine={setSelectedVineId}
+              updateVineStatus={updateVineStatus}
+              deleteVine={deleteVine}
+              clearRow={clearRow}
+              busy={busy}
             />
           )}
         </aside>
       </div>
-    </div>
   );
 }
 
@@ -357,9 +554,14 @@ function BlockEditor({
   onDelete,
   onExport,
   orgId,
-  footprintExtendActive,
-  onToggleFootprintExtend,
   authedFetch,
+  vines,
+  selectedVineId,
+  onSelectVine,
+  updateVineStatus,
+  deleteVine,
+  clearRow,
+  busy,
 }: {
   block: Block;
   onClose: () => void;
@@ -367,9 +569,14 @@ function BlockEditor({
   onDelete: () => Promise<void>;
   onExport: () => void;
   orgId: string;
-  footprintExtendActive: boolean;
-  onToggleFootprintExtend: () => void;
   authedFetch: (path: string, init?: RequestInit) => Promise<Response>;
+  vines: VineMapFeature[];
+  selectedVineId: string | null;
+  onSelectVine: (id: string | null) => void;
+  updateVineStatus: (vineId: string, status: VineMapFeature["status"]) => Promise<void>;
+  deleteVine: (vineId: string, onSelectVine: (id: string | null) => void) => Promise<void>;
+  clearRow: (row: number, onSelectVine: (id: string | null) => void) => Promise<void>;
+  busy: boolean;
 }) {
   const [name, setName] = useState(block.name);
   const [variety, setVariety] = useState(block.variety);
@@ -420,6 +627,26 @@ function BlockEditor({
     }
   }
 
+  const vinesByRow = useMemo(() => {
+    const map = new Map<number, VineMapFeature[]>();
+    for (const v of vines) {
+      const list = map.get(v.row_index) ?? [];
+      list.push(v);
+      map.set(v.row_index, list);
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => a.vine_index - b.vine_index);
+    }
+    return [...map.entries()].sort((a, b) => a[0] - b[0]);
+  }, [vines]);
+
+  const selectedVine = vines.find((v) => v.id === selectedVineId) ?? null;
+  const STATUS_OPTIONS: { value: VineMapFeature["status"]; label: string }[] = [
+    { value: "ok", label: "OK" },
+    { value: "watch", label: "Watch" },
+    { value: "alert", label: "Alert" },
+  ];
+
   return (
     <>
       <div className="flex items-center justify-between">
@@ -460,22 +687,6 @@ function BlockEditor({
         </button>
         <button
           type="button"
-          onClick={onToggleFootprintExtend}
-          className={`min-h-[44px] w-full rounded-md border px-4 py-2 frame text-xs font-semibold transition-colors ${
-            footprintExtendActive
-              ? "border-amber/70 bg-amber/15 text-foreground hover:bg-amber/25"
-              : "border-border/60 text-foreground/85 hover:bg-background/80"
-          }`}
-        >
-          {footprintExtendActive ? "Cancel extend" : "Add to footprint"}
-        </button>
-        {footprintExtendActive && (
-          <p className="text-xs text-foreground/60">
-            Draw a rectangle or polygon on the map; it merges into this block&apos;s geometry.
-          </p>
-        )}
-        <button
-          type="button"
           onClick={onExport}
           className="min-h-[44px] w-full rounded-md border border-border/60 px-4 py-2 frame text-xs font-semibold text-foreground/70 transition-colors hover:text-foreground"
         >
@@ -491,6 +702,75 @@ function BlockEditor({
       </div>
 
       <div className="mt-8">
+        <h3 className="frame text-xs font-semibold uppercase tracking-wider text-foreground/60">
+          Vines
+        </h3>
+        <p className="mt-1 text-[0.65rem] text-foreground/50">
+          {vines.length} vine{vines.length === 1 ? "" : "s"} on this block
+        </p>
+
+        {selectedVine && (
+          <div className="mt-4 rounded-md border border-amber/30 bg-amber/5 p-3">
+            <p className="text-xs font-semibold text-foreground/80">
+              Row {selectedVine.row_index} · Vine {selectedVine.vine_index}
+            </p>
+            <label className="mt-2 block text-xs text-foreground/60">
+              Status
+              <select
+                value={selectedVine.status}
+                disabled={busy}
+                onChange={(e) =>
+                  void updateVineStatus(
+                    selectedVine.id,
+                    e.target.value as VineMapFeature["status"],
+                  )
+                }
+                className="mt-1 w-full rounded-md border border-border/40 bg-background/60 px-2 py-1.5 text-sm"
+              >
+                {STATUS_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void deleteVine(selectedVine.id, onSelectVine)}
+              className="mt-2 text-xs text-red-300 hover:text-red-200"
+            >
+              Remove vine
+            </button>
+          </div>
+        )}
+
+        <ul className="mt-4 max-h-40 space-y-2 overflow-y-auto text-xs">
+          {vinesByRow.length === 0 && (
+            <li className="text-foreground/45">No vines mapped yet. Use the tools on the map to add vines.</li>
+          )}
+          {vinesByRow.map(([row, rowVines]) => (
+            <li
+              key={row}
+              className="flex items-center justify-between gap-2 rounded-md border border-border/30 bg-background/30 px-2 py-1.5"
+            >
+              <span className="font-medium text-foreground/70">
+                Row {row} · {rowVines.length} vines
+              </span>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void clearRow(row, onSelectVine)}
+                className="text-[0.65rem] text-red-300/80 hover:text-red-300"
+              >
+                Clear
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="mt-8 border-t border-border/40 pt-8">
         <div className="flex items-center justify-between gap-2">
           <h3 className="frame text-xs font-semibold uppercase tracking-wider text-foreground/60">
             Captures
@@ -548,6 +828,7 @@ function BlockEditor({
     </>
   );
 }
+
 
 function Field({
   label,

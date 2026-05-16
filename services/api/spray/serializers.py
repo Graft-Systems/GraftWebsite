@@ -8,6 +8,7 @@ M0-02 step 6 + step 7 + step 9.
 
 from __future__ import annotations
 
+from django.utils import timezone
 from rest_framework import serializers
 
 from spray.models import (
@@ -322,6 +323,132 @@ class CaptureUpdateSerializer(serializers.ModelSerializer):
 
         model = _Capture
         fields = ["notes"]
+
+
+def _validate_vine_location_in_block(block, location) -> None:
+    if location is None:
+        raise serializers.ValidationError({"location": "Location is required."})
+    if not block.geom.contains(location):
+        raise serializers.ValidationError(
+            {"location": "Vine must be inside the block footprint."}
+        )
+
+
+def _next_vine_index(block, row_index: int) -> int:
+    from django.db.models import Max
+
+    from spray.models import Vine
+
+    agg = (
+        Vine.objects.filter(
+            block=block,
+            row_index=row_index,
+            archived_at__isnull=True,
+        ).aggregate(m=Max("vine_index"))
+    )
+    return int(agg["m"] or 0) + 1
+
+
+class VineSerializer(serializers.ModelSerializer):
+    """Vine read/write; `location` is GeoJSON Point."""
+
+    location = GeometryField()
+    block_id = serializers.UUIDField(source="block.id", read_only=True)
+
+    class Meta:
+        from spray.models import Vine as _Vine
+
+        model = _Vine
+        fields = [
+            "id",
+            "block_id",
+            "location",
+            "row_index",
+            "vine_index",
+            "status",
+            "label",
+            "settings",
+            "created_at",
+            "archived_at",
+        ]
+        read_only_fields = ["id", "block_id", "created_at", "archived_at"]
+        extra_kwargs = {"vine_index": {"required": False}}
+
+    def validate(self, data):
+        block = self.context.get("block")
+        if block is None:
+            return data
+        loc = data.get("location")
+        if loc is not None or self.instance is None:
+            point = loc if loc is not None else getattr(self.instance, "location", None)
+            _validate_vine_location_in_block(block, point)
+        row_index = data.get("row_index")
+        vine_index = data.get("vine_index")
+        if self.instance is None and vine_index is None and row_index is not None:
+            data["vine_index"] = _next_vine_index(block, row_index)
+        return data
+
+    def create(self, validated_data):
+        validated_data["block"] = self.context["block"]
+        return super().create(validated_data)
+
+
+class VineRowBulkSerializer(serializers.Serializer):
+    """Place evenly spaced vines along a row segment."""
+
+    row_index = serializers.IntegerField(min_value=1)
+    start = serializers.ListField(
+        child=serializers.FloatField(), min_length=2, max_length=2
+    )
+    end = serializers.ListField(
+        child=serializers.FloatField(), min_length=2, max_length=2
+    )
+    count = serializers.IntegerField(min_value=2, max_value=250)
+    replace_row = serializers.BooleanField(default=True)
+
+    def validate(self, data):
+        block = self.context.get("block")
+        if block is None:
+            return data
+        from django.contrib.gis.geos import Point
+
+        for key in ("start", "end"):
+            lng, lat = data[key]
+            _validate_vine_location_in_block(block, Point(lng, lat, srid=4326))
+        return data
+
+    def create(self, validated_data):
+        from django.contrib.gis.geos import Point
+
+        from spray.models import Vine
+
+        block = self.context["block"]
+        row_index = validated_data["row_index"]
+        count = validated_data["count"]
+        lng0, lat0 = validated_data["start"]
+        lng1, lat1 = validated_data["end"]
+
+        if validated_data.get("replace_row", True):
+            Vine.objects.filter(
+                block=block,
+                row_index=row_index,
+                archived_at__isnull=True,
+            ).update(archived_at=timezone.now())
+
+        created = []
+        for i in range(count):
+            t = i / (count - 1) if count > 1 else 0.0
+            lng = lng0 + (lng1 - lng0) * t
+            lat = lat0 + (lat1 - lat0) * t
+            vine = Vine.objects.create(
+                block=block,
+                location=Point(lng, lat, srid=4326),
+                row_index=row_index,
+                vine_index=i + 1,
+                status=Vine.Status.OK,
+            )
+            created.append(vine)
+        return created
 
 
 # ---------------------------------------------------------------------
