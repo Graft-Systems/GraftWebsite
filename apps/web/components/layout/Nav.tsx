@@ -99,7 +99,7 @@ export function Nav() {
               </li>
             );
           })}
-          <li className="flex items-center">
+          <li>
             {isLoaded && isSignedIn ? (
               <UserButton
                 appearance={{ variables: { colorPrimary: "#c08a3e" } }}
