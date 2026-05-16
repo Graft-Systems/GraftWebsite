@@ -124,3 +124,29 @@ export function useNewsroomMe() {
 
   return { me, loading, error, reload, authedFetch };
 }
+
+export function useNewsImageUpload() {
+  const { getToken } = useAuth();
+  return useCallback(
+    async (file: File) => {
+      const token = await getToken();
+      const formData = new FormData();
+      formData.append("image", file);
+
+      const res = await fetch("/api/news/images/upload", {
+        method: "POST",
+        body: formData,
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+
+      if (!res.ok) {
+        throw new Error(await formatNewsHttpError(res));
+      }
+
+      return (await res.json()) as { id: string; image: string };
+    },
+    [getToken],
+  );
+}

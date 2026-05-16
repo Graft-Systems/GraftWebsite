@@ -5,8 +5,15 @@ from __future__ import annotations
 from django.utils import timezone
 from rest_framework import serializers
 
-from api.models import NewsArticle, NewsroomAccess
+from api.models import NewsArticle, NewsroomAccess, NewsImage
 from spray.models import User
+
+
+class NewsImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NewsImage
+        fields = ("id", "image", "created_at")
+        read_only_fields = ("id", "created_at")
 
 
 class NewsAuthorSerializer(serializers.ModelSerializer):
@@ -37,7 +44,6 @@ class NewsArticlePublicSerializer(serializers.ModelSerializer):
 
 class NewsArticleManageSerializer(serializers.ModelSerializer):
     author = NewsAuthorSerializer(read_only=True)
-    slug = serializers.SlugField(required=False, allow_blank=True, max_length=220)
 
     class Meta:
         model = NewsArticle
@@ -53,7 +59,14 @@ class NewsArticleManageSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "author", "published_at", "created_at", "updated_at")
+        read_only_fields = (
+            "id",
+            "slug",
+            "author",
+            "published_at",
+            "created_at",
+            "updated_at",
+        )
 
     def validate_status(self, value: str) -> str:
         if value not in NewsArticle.Status.values:
@@ -63,10 +76,7 @@ class NewsArticleManageSerializer(serializers.ModelSerializer):
     def create(self, validated_data: dict) -> NewsArticle:
         request = self.context["request"]
         title = validated_data["title"]
-        slug = (validated_data.get("slug") or "").strip()
-        if not slug:
-            slug = NewsArticle.unique_slug_from_title(title)
-        validated_data["slug"] = slug
+        validated_data["slug"] = NewsArticle.unique_slug_from_title(title)
         validated_data["author"] = request.user
         article = NewsArticle(**validated_data)
         if article.status == NewsArticle.Status.PUBLISHED:
@@ -76,15 +86,6 @@ class NewsArticleManageSerializer(serializers.ModelSerializer):
 
     def update(self, instance: NewsArticle, validated_data: dict) -> NewsArticle:
         new_status = validated_data.pop("status", instance.status)
-        slug = validated_data.get("slug")
-        if slug is not None:
-            slug = slug.strip()
-            if not slug:
-                slug = NewsArticle.unique_slug_from_title(
-                    validated_data.get("title", instance.title),
-                    exclude_id=instance.id,
-                )
-            validated_data["slug"] = slug
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)

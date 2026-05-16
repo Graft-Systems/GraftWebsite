@@ -28,6 +28,11 @@ urlpatterns = [
         name="news_articles_manage_detail",
     ),
     path(
+        "news/images/upload",
+        newsroom_views.NewsImageUploadView.as_view(),
+        name="news_images_upload",
+    ),
+    path(
         "news/articles/<slug:slug>",
         newsroom_views.NewsArticlePublicDetailView.as_view(),
         name="news_articles_public_detail",

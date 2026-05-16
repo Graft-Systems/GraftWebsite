@@ -92,9 +92,6 @@ export default function NewsStudioPage() {
               >
                 <div>
                   <p className="font-medium text-foreground">{article.title}</p>
-                  <p className="mt-1 text-xs text-foreground-muted">
-                    /news/{article.slug}
-                  </p>
                 </div>
                 <div className="flex items-center gap-4 text-xs">
                   <span

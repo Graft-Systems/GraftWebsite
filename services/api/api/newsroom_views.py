@@ -8,7 +8,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.models import NewsArticle, NewsroomAccess
+from api.models import NewsArticle, NewsroomAccess, NewsImage
 from api.newsroom_permissions import (
     IsNewsroomPermissionManager,
     IsNewsroomPublisher,
@@ -22,6 +22,7 @@ from api.newsroom_serializers import (
     NewsroomAccessGrantSerializer,
     NewsroomAccessSerializer,
     NewsroomMeSerializer,
+    NewsImageSerializer,
 )
 
 
@@ -120,6 +121,16 @@ class NewsArticleManageDetailView(APIView):
         article = get_object_or_404(NewsArticle, id=article_id)
         article.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class NewsImageUploadView(APIView):
+    permission_classes = [IsNewsroomPublisher]
+
+    def post(self, request):
+        serializer = NewsImageSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(uploaded_by=request.user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class NewsroomAccessListCreateView(APIView):

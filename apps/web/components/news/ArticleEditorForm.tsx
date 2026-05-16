@@ -1,15 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
-import type { NewsArticle } from "@/lib/newsApi";
+import { type NewsArticle, useNewsImageUpload } from "@/lib/newsApi";
 
 type ArticleEditorFormProps = {
   initial?: Partial<NewsArticle>;
   submitLabel: string;
   onSubmit: (payload: {
     title: string;
-    slug: string;
     excerpt: string;
     body: string;
     status: "draft" | "published";
@@ -27,7 +26,6 @@ export function ArticleEditorForm({
   onDelete,
 }: ArticleEditorFormProps) {
   const [title, setTitle] = useState(initial?.title ?? "");
-  const [slug, setSlug] = useState(initial?.slug ?? "");
   const [excerpt, setExcerpt] = useState(initial?.excerpt ?? "");
   const [body, setBody] = useState(initial?.body ?? "");
   const [status, setStatus] = useState<"draft" | "published">(
@@ -35,6 +33,28 @@ export function ArticleEditorForm({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadImage = useNewsImageUpload();
+
+  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    setError(null);
+    try {
+      const { image } = await uploadImage(file);
+      const imageMarkdown = `\n\n![${file.name}](${image})\n\n`;
+      setBody((prev) => prev + imageMarkdown);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not upload image.");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -43,7 +63,6 @@ export function ArticleEditorForm({
     try {
       await onSubmit({
         title: title.trim(),
-        slug: slug.trim(),
         excerpt: excerpt.trim(),
         body: body.trim(),
         status,
@@ -75,19 +94,6 @@ export function ArticleEditorForm({
       </label>
 
       <label className="block">
-        <span className="frame text-[0.62rem] text-foreground-muted">
-          SLUG (optional)
-        </span>
-        <input
-          className={inputClass}
-          value={slug}
-          onChange={(e) => setSlug(e.target.value)}
-          placeholder="auto-generated-from-title"
-          maxLength={220}
-        />
-      </label>
-
-      <label className="block">
         <span className="frame text-[0.62rem] text-foreground-muted">EXCERPT</span>
         <textarea
           className={`${inputClass} min-h-[80px] resize-y`}
@@ -105,9 +111,26 @@ export function ArticleEditorForm({
           onChange={(e) => setBody(e.target.value)}
           required
         />
-        <p className="mt-2 text-xs text-foreground-muted">
-          Separate paragraphs with a blank line.
-        </p>
+        <div className="mt-2 flex items-center justify-between">
+          <p className="text-xs text-foreground-muted">
+            Separate paragraphs with a blank line.
+          </p>
+          <button
+            type="button"
+            disabled={uploading || busy}
+            onClick={() => fileInputRef.current?.click()}
+            className="frame text-[0.62rem] font-semibold text-amber hover:text-amber-300 disabled:opacity-50"
+          >
+            {uploading ? "UPLOADING..." : "INSERT IMAGE"}
+          </button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleImageUpload}
+            accept="image/*"
+            className="hidden"
+          />
+        </div>
       </label>
 
       <label className="block">
