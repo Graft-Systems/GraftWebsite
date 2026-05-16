@@ -205,12 +205,38 @@ def merge_block_geometries(existing, addition):
         f"Could not merge footprint: union returned {merged.geom_type}"
     )
 
+def subtract_block_geometries(existing, subtraction):
+    """Difference existing - subtraction polygon; persist as MultiPolygon (EPSG:4326)."""
+    from django.contrib.gis.geos import MultiPolygon, Polygon
+
+    if subtraction.geom_type != "Polygon":
+        raise serializers.ValidationError("subtract_geom must be a Polygon")
+    diff = existing.difference(subtraction)
+    
+    if diff.empty:
+        raise serializers.ValidationError("Cannot completely erase block geometry.")
+        
+    if diff.geom_type == "Polygon":
+        return MultiPolygon(diff)
+    if diff.geom_type == "MultiPolygon":
+        return diff
+    if diff.geom_type == "GeometryCollection":
+        # Keep only polygons from the collection
+        polys = [g for g in diff if g.geom_type == "Polygon"]
+        if not polys:
+             raise serializers.ValidationError("Erase operation resulted in no valid polygons.")
+        return MultiPolygon(polys)
+        
+    raise serializers.ValidationError(
+        f"Could not erase footprint: difference returned {diff.geom_type}"
+    )
 
 class BlockSerializer(serializers.ModelSerializer):
-    """Block read/write. `geom` is GeoJSON Polygon or MultiPolygon; `append_geom` merges a Polygon into the stored footprint."""
+    """Block read/write. `geom` is GeoJSON Polygon or MultiPolygon; `append_geom` merges, `subtract_geom` subtracts."""
 
     geom = GeometryField(required=False)
     append_geom = GeometryField(write_only=True, required=False)
+    subtract_geom = GeometryField(write_only=True, required=False)
     vineyard_id = serializers.UUIDField(write_only=True, required=False)
 
     class Meta:
@@ -221,6 +247,7 @@ class BlockSerializer(serializers.ModelSerializer):
             "name",
             "geom",
             "append_geom",
+            "subtract_geom",
             "variety",
             "training_system",
             "row_spacing_m",
@@ -231,14 +258,16 @@ class BlockSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at", "archived_at"]
 
     def validate(self, data):
-        if data.get("geom") is not None and data.get("append_geom") is not None:
+        geom_keys = [k for k in ["geom", "append_geom", "subtract_geom"] if data.get(k) is not None]
+        if len(geom_keys) > 1:
             raise serializers.ValidationError(
-                "Send either geom (replace footprint) or append_geom (add to footprint), not both."
+                "Send only one of geom, append_geom, or subtract_geom."
             )
         return data
 
     def create(self, validated_data):
         validated_data.pop("append_geom", None)
+        validated_data.pop("subtract_geom", None)
         if "geom" not in validated_data or validated_data["geom"] is None:
             raise serializers.ValidationError({"geom": "geom is required when creating a block"})
         return super().create(validated_data)
@@ -247,6 +276,11 @@ class BlockSerializer(serializers.ModelSerializer):
         append = validated_data.pop("append_geom", None)
         if append is not None:
             validated_data["geom"] = merge_block_geometries(instance.geom, append)
+            
+        subtract = validated_data.pop("subtract_geom", None)
+        if subtract is not None:
+            validated_data["geom"] = subtract_block_geometries(instance.geom, subtract)
+            
         incoming_settings = validated_data.pop("settings", None)
         if incoming_settings is not None:
             merged = {**(instance.settings or {}), **incoming_settings}

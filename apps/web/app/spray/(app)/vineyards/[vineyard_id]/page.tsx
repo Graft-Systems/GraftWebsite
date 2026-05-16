@@ -77,6 +77,7 @@ export default function VineyardDetailPage() {
   const [deletingVineyard, setDeletingVineyard] = useState(false);
   const [editable, setEditable] = useState(false);
   const [footprintExtend, setFootprintExtend] = useState(false);
+  const [footprintErase, setFootprintErase] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [vines, setVines] = useState<VineMapFeature[]>([]);
   const [vinePlacementMode, setVinePlacementMode] = useState<VinePlacementMode>(null);
@@ -93,6 +94,17 @@ export default function VineyardDetailPage() {
   const toggleFootprintExtend = useCallback(() => {
     setFootprintExtend((x) => {
       if (x) return false;
+      setFootprintErase(false);
+      setEditable(false);
+      setVinePlacementMode(null);
+      return true;
+    });
+  }, []);
+
+  const toggleFootprintErase = useCallback(() => {
+    setFootprintErase((x) => {
+      if (x) return false;
+      setFootprintExtend(false);
       setEditable(false);
       setVinePlacementMode(null);
       return true;
@@ -103,6 +115,7 @@ export default function VineyardDetailPage() {
     setEditable((x) => {
       if (x) return false;
       setFootprintExtend(false);
+      setFootprintErase(false);
       setVinePlacementMode(null);
       return true;
     });
@@ -210,9 +223,26 @@ export default function VineyardDetailPage() {
     setFootprintExtend(false);
   }
 
+  async function handleBlockErase(blockId: string, geom: GeoJSON.Polygon) {
+    if (!org) return;
+    const res = await authedFetch(`/api/spray/orgs/${org.id}/blocks/${blockId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subtract_geom: geom }),
+    });
+    if (!res.ok) {
+      setError(await formatSprayHttpError(res));
+      throw new Error("block erase failed");
+    }
+    const updated = (await res.json()) as Block;
+    setBlocks((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
+    setFootprintErase(false);
+  }
+
   function selectBlock(blockId: string | null) {
     if (blockId !== selectedId) {
       setFootprintExtend(false);
+      setFootprintErase(false);
       setVinePlacementMode(null);
     }
     setSelectedId(blockId);
@@ -383,7 +413,7 @@ export default function VineyardDetailPage() {
                     <button
                       type="button"
                       onClick={toggleFootprintExtend}
-                      disabled={editable}
+                      disabled={footprintErase || editable}
                       className={`min-h-[36px] rounded-md border px-3 py-1.5 frame text-xs font-semibold transition-colors disabled:opacity-40 ${
                         footprintExtend
                           ? "border-amber/70 bg-amber/15 text-foreground hover:bg-amber/25"
@@ -394,15 +424,15 @@ export default function VineyardDetailPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={toggleBlockEditable}
-                      disabled={footprintExtend}
+                      onClick={toggleFootprintErase}
+                      disabled={footprintExtend || editable}
                       className={`min-h-[36px] rounded-md border px-3 py-1.5 frame text-xs font-semibold transition-colors disabled:opacity-40 ${
-                        editable
-                          ? "border-amber/70 bg-amber/15 text-foreground"
+                        footprintErase
+                          ? "border-red-500/50 bg-red-500/10 text-red-300 hover:bg-red-500/20"
                           : "border-border/60 text-foreground/85 hover:bg-background/80"
                       }`}
                     >
-                      {editable ? "Done editing outline" : "Edit block outline"}
+                      {footprintErase ? "Cancel erase" : "Erase from footprint"}
                     </button>
                   </div>
                   {footprintExtend && (
@@ -411,9 +441,15 @@ export default function VineyardDetailPage() {
                       block.
                     </p>
                   )}
+                  {footprintErase && (
+                    <p className="mt-2 text-[0.65rem] leading-relaxed text-amber/90">
+                      Draw a rectangle or polygon on the map. Shapes are subtracted from this
+                      block.
+                    </p>
+                  )}
                 </div>
 
-                {!footprintExtend && !editable && (
+                {!footprintExtend && !footprintErase && !editable && (
                   <div className="min-w-0 flex-[1.4] rounded-lg border border-amber/30 bg-background/80 p-3">
                     <p className="text-[0.65rem] font-semibold uppercase tracking-wider text-foreground/55">
                       Vine map
@@ -455,6 +491,8 @@ export default function VineyardDetailPage() {
             editable={editable && !vinePlacementMode}
             extendBlockId={footprintExtend && !vinePlacementMode ? selectedId : null}
             onBlockExtend={handleBlockExtend}
+            eraseBlockId={footprintErase && !vinePlacementMode ? selectedId : null}
+            onBlockErase={handleBlockErase}
             onBlockSelect={selectBlock}
             onBlockCreate={handleBlockCreate}
             onBlockUpdate={handleBlockUpdate}

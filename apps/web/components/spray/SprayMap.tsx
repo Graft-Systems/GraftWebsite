@@ -59,7 +59,12 @@ export type SprayMapProps = {
    * instead of creating a new block. Side panel should offer a way to exit extend mode.
    */
   extendBlockId?: string | null;
-  onBlockExtend?: (blockId: string, geom: GeoJSON.Polygon) => void;
+  onBlockExtend?: (blockId: string, geom: GeoJSON.Polygon) => void | Promise<void>;
+  /**
+   * With `onBlockErase`, commits subtract from this block (API `subtract_geom`).
+   */
+  eraseBlockId?: string | null;
+  onBlockErase?: (blockId: string, geom: GeoJSON.Polygon) => void | Promise<void>;
   className?: string;
   /** Show OSM-backed address search overlay on the map (default true). */
   showAddressSearch?: boolean;
@@ -369,6 +374,8 @@ export function SprayMap({
   onBlockUpdate: _onBlockUpdate,
   extendBlockId = null,
   onBlockExtend,
+  eraseBlockId = null,
+  onBlockErase,
   className,
   showAddressSearch = true,
   onMapReady,
@@ -440,7 +447,8 @@ export function SprayMap({
   }, []);
 
   const extendMode = extendBlockId != null && onBlockExtend != null;
-  const drawActive = Boolean(editable) || extendMode;
+  const eraseMode = eraseBlockId != null && onBlockErase != null;
+  const drawActive = Boolean(editable) || extendMode || eraseMode;
   const drawActiveRef = useRef(drawActive);
   const drawToolRef = useRef(drawTool);
   drawActiveRef.current = drawActive;
@@ -451,6 +459,8 @@ export function SprayMap({
       try {
         if (extendBlockId != null && onBlockExtend) {
           await onBlockExtend(extendBlockId, polygon);
+        } else if (eraseBlockId != null && onBlockErase) {
+          await onBlockErase(eraseBlockId, polygon);
         } else {
           await onBlockCreate(polygon);
         }
@@ -459,7 +469,7 @@ export function SprayMap({
         /* Parent surfaces errors; keep sketch on map so the user can retry. */
       }
     },
-    [extendBlockId, onBlockExtend, onBlockCreate, clearDrawing]
+    [extendBlockId, onBlockExtend, eraseBlockId, onBlockErase, onBlockCreate, clearDrawing]
   );
 
   const commitPolygon = useCallback(() => {
@@ -1027,11 +1037,17 @@ export function SprayMap({
     };
 
     const onDown = (e: MouseEvent | TouchEvent) => {
+      // Allow drawing for extendMode, eraseMode, and plain editable mode
       if (vinePlacementModeRef.current) return;
+      if (!drawActiveRef.current) return;
+      if (drawToolRef.current !== "rectangle") return;
+      
       if ("button" in e && e.button !== 0) return;
       if ("touches" in e && e.touches.length !== 1) return;
       const ll = lngLatFromEvent(map, e);
       if (!ll) return;
+      
+      // Stop the map from moving while we draw
       dragging = true;
       map.dragPan.disable();
       map.scrollZoom.disable();
@@ -1039,6 +1055,7 @@ export function SprayMap({
         map as unknown as { touchZoomRotate?: { disable(): void; enable(): void } }
       ).touchZoomRotate;
       touchZoom?.disable();
+      
       const session = { start: ll, current: ll };
       rectSessionRef.current = session;
       setRectDrag(session);
@@ -1189,6 +1206,15 @@ export function SprayMap({
                 Draw a <strong>rectangle</strong> (click-drag) or <strong>polygon</strong> (tap
                 corners, then Done). The shape merges with this block. Use{" "}
                 <strong>Cancel extend</strong> in the toolbar above the map when finished.
+              </p>
+            </>
+          ) : eraseMode ? (
+            <>
+              <div className="font-semibold text-foreground">Erase from block footprint</div>
+              <p className="text-foreground/70">
+                Draw a <strong>rectangle</strong> (click-drag) or <strong>polygon</strong> (tap
+                corners, then Done). The shape will be subtracted from this block. Use{" "}
+                <strong>Cancel erase</strong> in the toolbar above the map when finished.
               </p>
             </>
           ) : (
