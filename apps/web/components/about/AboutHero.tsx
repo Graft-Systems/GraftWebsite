@@ -46,8 +46,8 @@ export function AboutHero() {
           className="mt-6 max-w-xl text-base text-foreground/75 sm:text-lg"
         >
           A working vineyard makes a thousand decisions before fermentation.
-          Graft exists to make one of them — how much fruit is actually out
-          there — less of a guess.
+          Graft exists to make the most consequential ones – like spraying for
+          Powdery Mildew – less of a guess.
         </motion.p>
       </div>
     </section>
