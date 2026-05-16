@@ -56,7 +56,7 @@ export default function NewsroomPage() {
             sizes="100vw"
             aria-hidden
             draggable={false}
-            className="object-cover object-center"
+            className="object-cover object-[center_110%]"
             style={{ filter: "saturate(0.9) brightness(0.75)" }}
           />
           <div aria-hidden className="absolute inset-0 bg-black/10" />
