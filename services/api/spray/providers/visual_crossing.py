@@ -224,6 +224,11 @@ def _current_conditions_from_payload(
     return latest_ts, latest_hour
 
 
+def _utc_now() -> datetime:
+    """Wall-clock UTC `now`; overridden in tests."""
+    return datetime.now(tz=dt_tz.utc)
+
+
 def _reading_dict(ts: datetime, hour: dict[str, Any]) -> dict[str, Any]:
     temp = hour.get("temp")
     if temp is None:
@@ -251,16 +256,22 @@ def fetch_current_conditions(
     Used for lightweight "is the feed working?" checks on Integrations.
     Prefers the API ``currentConditions`` object; otherwise the latest
     hourly row at or before now (UTC).
+
+    The request spans **yesterday through today (UTC inclusive)**. A single
+    UTC ``today`` window often has no ``hours`` rows at or before ``now``
+    (early UTC morning, or bucketing skew), which previously surfaced as a
+    false "no observations" state on the Weather Feed card.
     """
     try:
         key = _api_key()
     except ProviderAuthError as exc:
         return None, str(exc)
 
-    now = datetime.now(tz=dt_tz.utc)
+    now = _utc_now()
     today = now.date()
+    start_day = today - timedelta(days=1)
     url = TIMELINE_URL.format(
-        lat=lat, lon=lon, start=today.isoformat(), end=today.isoformat()
+        lat=lat, lon=lon, start=start_day.isoformat(), end=today.isoformat()
     )
     try:
         payload = _request(
@@ -279,7 +290,10 @@ def fetch_current_conditions(
 
     ts, hour = _current_conditions_from_payload(payload, now=now)
     if ts is None or hour is None:
-        return None, "No current or past hourly observations for today."
+        return (
+            None,
+            "No current or past hourly observations in the Visual Crossing response.",
+        )
 
     try:
         return _reading_dict(ts, hour), None

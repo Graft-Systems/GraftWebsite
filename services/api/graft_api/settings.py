@@ -170,10 +170,17 @@ LLM_BRIEF_TIMEOUT_SEC = int(os.environ.get("LLM_BRIEF_TIMEOUT_SEC", "10"))
 
 # M1-09: Imagery bucket (separate from M0-04's data-lake bucket so
 # retention rules + KMS-CMK swaps can diverge per spec §17.1).
-AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "")
-AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
+AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "testing" if DEBUG else "")
+AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "testing" if DEBUG else "")
 AWS_REGION = os.environ.get("AWS_REGION", "us-west-2")
 IMAGERY_BUCKET = os.environ.get("IMAGERY_BUCKET", "graft-spray-imagery-dev")
+
+# Local testing mode: save captures to local disk instead of S3.
+# Default to true in DEBUG if we don't have real keys.
+USE_LOCAL_STORAGE = _env_bool(
+    "USE_LOCAL_STORAGE",
+    DEBUG and (AWS_ACCESS_KEY_ID == "testing" or not AWS_ACCESS_KEY_ID),
+)
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",

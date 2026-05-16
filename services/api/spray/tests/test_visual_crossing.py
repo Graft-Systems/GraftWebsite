@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from unittest.mock import patch
 
 import pytest
 import responses
@@ -72,6 +73,50 @@ def test_fetch_current_conditions_happy_path():
     assert current["temp_c"] == 18.5
     assert current["temp_f"] == 65.3
     assert current["source"] == "live"
+
+
+@override_settings(VISUAL_CROSSING_API_KEY="test-key")
+@responses.activate
+def test_fetch_current_conditions_prior_day_fills_gap_when_today_only_future():
+    """UTC ``today`` can have only future hours; a 2-day window still finds past obs."""
+    fixed_now = datetime(2026, 5, 16, 3, 30, tzinfo=timezone.utc)
+    past_epoch = int(fixed_now.timestamp()) - 4 * 3600
+    future_epoch = int(fixed_now.timestamp()) + 2 * 3600
+    responses.add(
+        responses.GET,
+        responses.matchers.re.compile(r"https://weather\.visualcrossing\.com/.*"),
+        json={
+            "days": [
+                {
+                    "hours": [
+                        {
+                            "datetimeEpoch": past_epoch,
+                            "temp": 17.0,
+                            "humidity": 55,
+                        },
+                    ]
+                },
+                {
+                    "hours": [
+                        {
+                            "datetimeEpoch": future_epoch,
+                            "temp": 40.0,
+                            "humidity": 20,
+                        },
+                    ]
+                },
+            ]
+        },
+        status=200,
+    )
+    with patch(
+        "spray.providers.visual_crossing._utc_now",
+        return_value=fixed_now,
+    ):
+        current, err = fetch_current_conditions(38.30, -122.31)
+    assert err is None
+    assert current is not None
+    assert current["temp_c"] == 17.0
 
 
 @override_settings(VISUAL_CROSSING_API_KEY="test-key")

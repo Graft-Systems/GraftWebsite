@@ -71,6 +71,11 @@ urlpatterns = [
         name="block_sensor_readings",
     ),
     path(
+        "orgs/<uuid:org_id>/blocks/<uuid:block_id>/weather-comparison",
+        views.BlockDailyWeatherComparisonView.as_view(),
+        name="block_weather_comparison",
+    ),
+    path(
         "orgs/<uuid:org_id>/blocks/<uuid:block_id>/forecast-weather",
         views.BlockForecastWeatherView.as_view(),
         name="block_forecast_weather",
@@ -131,6 +136,11 @@ urlpatterns = [
         "orgs/<uuid:org_id>/captures/<uuid:capture_id>",
         views.CaptureDetailView.as_view(),
         name="capture_detail",
+    ),
+    path(
+        "local-upload",
+        views.local_upload,
+        name="local_upload",
     ),
     # M1.5 PR-C: Aggregation engine — verdict endpoints.
     path(

@@ -24,6 +24,11 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from rest_framework import status
+from rest_framework.decorators import (
+    api_view,
+    authentication_classes,
+    permission_classes,
+)
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -1133,6 +1138,105 @@ class BlockSensorReadingsView(APIView):
         )
 
 
+class BlockDailyWeatherComparisonView(APIView):
+    """GET /api/spray/orgs/<org_id>/blocks/<block_id>/weather-comparison.
+
+    Returns daily max air temperature for the last N days (default 14):
+    - actual_max_f: on-site sensors linked to the block (historic readings).
+    - virtual_max_f: Visual Crossing gridded daily max at the block/vineyard
+      pin (live Timeline API). Stored WeatherObservation rows are used only to
+      backfill days when the API returns no temperature for that date.
+    """
+
+    permission_classes = [IsOrgViewer]
+
+    def get(self, request, org_id, block_id):
+        from django.db.models import Max
+        from django.db.models.functions import TruncDate
+        from spray.models import SensorReading, WeatherObservation
+        from spray.providers.visual_crossing import fetch_daily_weather_window
+
+        set_current_org_id(str(org_id))
+        block = get_object_or_404(
+            Block.objects.for_org(org_id).filter(archived_at__isnull=True),
+            id=block_id,
+        )
+
+        days = int(request.query_params.get("days", "14"))
+        days = max(1, min(days, 30))
+        today = timezone.now().date()
+        cutoff = today - timedelta(days=days)
+
+        date_strings: list[str] = []
+        d = cutoff
+        while d <= today:
+            date_strings.append(d.isoformat())
+            d += timedelta(days=1)
+
+        # Actuals (historic on-site sensors)
+        actuals = (
+            SensorReading.objects.for_org(org_id)
+            .filter(
+                station__linked_blocks__id=block.id,
+                ts__date__gte=cutoff,
+            )
+            .annotate(day=TruncDate("ts"))
+            .values("day")
+            .annotate(max_temp_c=Max("air_temp_c"))
+            .order_by("day")
+        )
+
+        def _f(c):
+            return round(float(c) * 9.0 / 5.0 + 32.0, 1) if c is not None else None
+
+        actual_map = {}
+        for a in actuals:
+            actual_map[a["day"].isoformat()] = _f(a["max_temp_c"])
+
+        virtual_map: dict[str, float | None] = {}
+        coords = _block_forecast_lat_lon(block)
+        if coords is not None:
+            lat, lon = coords
+            vc_days, vc_err = fetch_daily_weather_window(lat, lon, cutoff, today)
+            if vc_err is None:
+                for row in vc_days:
+                    iso = row["date"]
+                    tmf = row.get("temp_max_f")
+                    virtual_map[iso] = (
+                        float(tmf) if tmf is not None else None
+                    )
+
+        # Backfill virtual from stored observations when API omitted temps
+        station = _resolve_org_weather_feed_station(block.vineyard.org)
+        if station:
+            stored = (
+                WeatherObservation.objects.filter(
+                    station=station,
+                    ts__date__gte=cutoff,
+                    is_forecast=False,
+                )
+                .annotate(day=TruncDate("ts"))
+                .values("day")
+                .annotate(max_temp_c=Max("temp_c"))
+                .order_by("day")
+            )
+            for v in stored:
+                iso = v["day"].isoformat()
+                if iso not in virtual_map or virtual_map.get(iso) is None:
+                    virtual_map[iso] = _f(v["max_temp_c"])
+
+        results = [
+            {
+                "date": iso,
+                "actual_max_f": actual_map.get(iso),
+                "virtual_max_f": virtual_map.get(iso),
+            }
+            for iso in date_strings
+        ]
+
+        return Response({"results": results})
+
+
 def _block_forecast_lat_lon(block: Block) -> tuple[float, float] | None:
     """Pick a representative lat/lon for Visual Crossing (vineyard pin, else block shape)."""
     vineyard = block.vineyard
@@ -1790,6 +1894,58 @@ class CaptureFinalizeView(APIView):
         )
 
         return Response(CaptureSerializer(capture).data)
+
+
+@api_view(["POST"])
+@authentication_classes([])  # S3 doesn't have our auth; local mock shouldn't either
+@permission_classes([])
+def local_upload(request):
+    """POST /api/spray/local-upload
+    Mocks S3 POST upload for local dev.
+    """
+    if not settings.USE_LOCAL_STORAGE:
+        return Response({"detail": "disabled"}, status=status.HTTP_404_NOT_FOUND)
+
+    file_obj = request.FILES.get("file")
+    # S3-style POST puts the key in the body. DRF might put it in .data or .POST.
+    key = request.data.get("key") or request.POST.get("key")
+
+    if not file_obj or not key:
+        # Some clients might send 'Key' instead of 'key'
+        key = request.data.get("Key") or request.POST.get("Key")
+
+    if not file_obj or not key:
+        logger.error(
+            "local_upload: missing file or key. files=%s, data=%s, POST=%s",
+            list(request.FILES.keys()),
+            list(request.data.keys()),
+            list(request.POST.keys()),
+        )
+        return Response(
+            {"detail": "missing file or key"}, status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Basic security check: ensure key doesn't escape MEDIA_ROOT
+    import os
+
+    if ".." in key or key.startswith("/"):
+        logger.error("local_upload: invalid key attempted: %s", key)
+        return Response({"detail": "invalid key"}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Save to media root
+    full_path = os.path.join(settings.MEDIA_ROOT, key)
+    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+
+    try:
+        with open(full_path, "wb+") as destination:
+            for chunk in file_obj.chunks():
+                destination.write(chunk)
+        logger.info("local_upload: successfully saved %s to %s", key, full_path)
+    except Exception as e:
+        logger.exception("local_upload: failed to write file %s: %s", full_path, e)
+        return Response({"detail": "write failed"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class CaptureListView(APIView):

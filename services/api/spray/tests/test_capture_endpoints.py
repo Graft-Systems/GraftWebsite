@@ -50,6 +50,7 @@ def aws_env(monkeypatch):
     dj_settings.AWS_SECRET_ACCESS_KEY = "test"
     dj_settings.AWS_REGION = "us-west-2"
     dj_settings.IMAGERY_BUCKET = BUCKET
+    dj_settings.USE_LOCAL_STORAGE = False
 
 
 @pytest.fixture
