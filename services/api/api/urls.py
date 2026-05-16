@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import path, include
 
 from . import views
 from . import drf_views
@@ -64,4 +64,6 @@ urlpatterns = [
 
     # Protected filler page — frontend can redirect users here after auth.
     path("toolsdashboard", drf_views.ToolsDashboardView.as_view(), name="toolsdashboard"),
+    
+    path("crm/", include("crm.urls")),
 ]

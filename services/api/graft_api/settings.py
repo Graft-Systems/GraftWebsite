@@ -68,6 +68,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "api",
     "spray",
+    "crm",
 ]
 
 # DRF config for the Spray app. The existing `api` app uses plain Django
