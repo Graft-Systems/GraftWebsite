@@ -2024,23 +2024,48 @@ class CaptureListView(APIView):
 
 
 class CaptureDetailView(APIView):
-    """GET / DELETE /api/spray/orgs/<org_id>/captures/<id>.
+    """GET / PATCH / DELETE /api/spray/orgs/<org_id>/captures/<id>.
 
-    DELETE archives (sets archived_at); the S3 object stays around for
-    the data-lake retention window per spec §17.1.
+    PATCH updates user notes. DELETE archives (sets archived_at); the S3
+    object stays around for the data-lake retention window per spec §17.1.
     """
 
-    permission_classes = [IsOrgViewer]
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [IsOrgViewer()]
+        return [IsOrgMember()]
+
+    def _get_capture(self, org_id, capture_id):
+        from spray.models import Capture
+
+        return get_object_or_404(
+            Capture.objects.for_org(org_id).select_related(
+                "block",
+                "block__vineyard",
+            ),
+            id=capture_id,
+        )
 
     @transaction.atomic
     def get(self, request, org_id, capture_id):
-        from spray.models import Capture
         from spray.serializers import CaptureSerializer
 
         set_current_org_id(str(org_id))
-        capture = get_object_or_404(
-            Capture.objects.for_org(org_id), id=capture_id
+        return Response(CaptureSerializer(self._get_capture(org_id, capture_id)).data)
+
+    @transaction.atomic
+    def patch(self, request, org_id, capture_id):
+        from spray.serializers import CaptureSerializer, CaptureUpdateSerializer
+
+        set_current_org_id(str(org_id))
+        capture = self._get_capture(org_id, capture_id)
+        serializer = CaptureUpdateSerializer(
+            capture,
+            data=request.data,
+            partial=True,
         )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
         return Response(CaptureSerializer(capture).data)
 
     @transaction.atomic
@@ -2048,9 +2073,7 @@ class CaptureDetailView(APIView):
         from spray.models import Capture
 
         set_current_org_id(str(org_id))
-        capture = get_object_or_404(
-            Capture.objects.for_org(org_id), id=capture_id
-        )
+        capture = self._get_capture(org_id, capture_id)
         if capture.archived_at is not None:
             return Response(
                 {"detail": "already archived"},

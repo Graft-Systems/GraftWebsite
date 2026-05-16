@@ -307,10 +307,21 @@ class CaptureSerializer(serializers.ModelSerializer):
             "taken_at",
             "uploaded_at",
             "status",
+            "notes",
             "download_url",
             "created_at",
         ]
         read_only_fields = fields
+
+
+class CaptureUpdateSerializer(serializers.ModelSerializer):
+    """PATCH body for capture detail — notes only."""
+
+    class Meta:
+        from spray.models import Capture as _Capture
+
+        model = _Capture
+        fields = ["notes"]
 
 
 # ---------------------------------------------------------------------

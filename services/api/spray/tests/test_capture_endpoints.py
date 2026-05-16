@@ -314,3 +314,26 @@ def test_detail_archive(
     assert resp.status_code == 204
     cap.refresh_from_db()
     assert cap.archived_at is not None
+
+
+def test_detail_patch_notes(
+    s3_bucket, auth_client, make_org, make_membership
+):
+    client, user, org, _, block = _setup(auth_client, make_org, make_membership)
+    cap = Capture.objects.unscoped().create(
+        block=block,
+        uploader=user,
+        kind=Capture.Kind.PHOTO,
+        s3_key="k_notes",
+        status=Capture.Status.UPLOADED,
+    )
+
+    resp = client.patch(
+        f"/api/spray/orgs/{org.id}/captures/{cap.id}",
+        {"notes": "Leaf wetness visible on north rows."},
+        format="json",
+    )
+    assert resp.status_code == 200, resp.data
+    assert resp.data["notes"] == "Leaf wetness visible on north rows."
+    cap.refresh_from_db()
+    assert cap.notes == "Leaf wetness visible on north rows."
