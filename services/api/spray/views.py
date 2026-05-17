@@ -2776,12 +2776,29 @@ class PesslOAuthStartView(APIView):
 
     @transaction.atomic
     def post(self, request, org_id):
-        from spray.connectors.sensors.pessl.oauth import build_authorize_url
+        from spray.connectors.base import ConnectorAuthError
+        from spray.connectors.sensors.pessl.oauth import (
+            build_authorize_url,
+            pessl_oauth_config_error,
+        )
 
         set_current_org_id(str(org_id))
+        config_error = pessl_oauth_config_error()
+        if config_error:
+            logger.warning("PesslOAuthStartView: %s", config_error)
+            return Response(
+                {"detail": config_error, "code": "pessl_not_configured"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         state_row = _new_oauth_state(org_id, vendor="pessl")
         try:
             url = build_authorize_url(state=state_row.state)
+        except ConnectorAuthError as exc:
+            logger.warning("PesslOAuthStartView: %s", exc)
+            return Response(
+                {"detail": str(exc), "code": "pessl_not_configured"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         except Exception as exc:  # noqa: BLE001
             logger.exception("PesslOAuthStartView: build_authorize_url failed")
             return Response(
@@ -3554,11 +3571,10 @@ class DavisConnectView(APIView):
 class MeterConnectView(APIView):
     """POST /api/spray/orgs/<org_id>/integrations/meter/connect
 
-    Body: {token, label?}.
-    Validates via METER /devices/ smoke call before saving. Generates
-    a per-connection webhook_secret and returns it ONCE (the user pastes
-    it into METER ZENTRA Cloud's Push setup). The secret is encrypted
-    alongside the bearer token.
+    Body: {token, device_sn, label?}.
+    Validates via METER ``GET /get_readings/`` (v4 has no device-list API).
+    Registers the device as a SensorStation so the Push webhook can
+    accept data. Generates a per-connection webhook_secret returned ONCE.
     """
 
     permission_classes = [IsOrgAdmin]
@@ -3574,40 +3590,57 @@ class MeterConnectView(APIView):
         from spray.connectors.sensors.meter.webhook import (
             generate_webhook_secret,
         )
-        from spray.models import IntegrationConnection
+        from spray.models import IntegrationConnection, SensorStation
 
         token = (request.data.get("token") or "").strip()
+        device_sn = (request.data.get("device_sn") or "").strip()
         if not token:
             return Response(
                 {"detail": "token required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if not device_sn:
+            return Response(
+                {
+                    "detail": (
+                        "device_sn required — copy the serial from "
+                        "ZENTRA Cloud → Devices (e.g. z6-12345)"
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         try:
             client = MeterClient(creds={"token": token, "webhook_secret": ""})
-            devices = client.list_devices()
+            payload = client.validate_token(device_sn)
         except ConnectorAuthError as exc:
             return Response(
                 {"detail": f"METER rejected the token: {exc}"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        except (ConnectorRateLimitError, ConnectorResponseError) as exc:
+        except ConnectorRateLimitError as exc:
             return Response(
-                {"detail": f"METER unavailable: {exc}"},
+                {"detail": f"METER rate-limited: {exc}"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except ConnectorResponseError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         webhook_secret = generate_webhook_secret()
         import hashlib
-        account_id = ""
-        if devices and isinstance(devices[0], dict):
-            account_id = str(
-                devices[0].get("account_id")
-                or devices[0].get("organization_id")
-                or ""
+
+        account_id = hashlib.sha256(token.encode()).hexdigest()[:16]
+        device_meta = payload.get("device") if isinstance(payload, dict) else {}
+        station_name = device_sn
+        if isinstance(device_meta, dict):
+            station_name = str(
+                device_meta.get("device_name")
+                or device_meta.get("name")
+                or device_sn
             )
-        if not account_id:
-            account_id = hashlib.sha256(token.encode()).hexdigest()[:16]
 
         ciphertext = creds.encrypt_token_blob(
             {"token": token, "webhook_secret": webhook_secret}
@@ -3626,6 +3659,11 @@ class MeterConnectView(APIView):
                     "status": IntegrationConnection.Status.ACTIVE,
                     "disconnected_at": None,
                 },
+            )
+            SensorStation.objects.unscoped().update_or_create(
+                connection=conn,
+                vendor_station_id=device_sn,
+                defaults={"name": station_name},
             )
 
         try:

@@ -91,6 +91,19 @@ def test_list_returns_org_connections(auth_client, make_org, make_membership):
     assert "token_ciphertext" not in body["results"][0]
 
 
+@override_settings(PESSL_CLIENT_ID="", PESSL_CLIENT_SECRET="")
+def test_oauth_start_returns_503_when_pessl_not_configured(
+    auth_client, make_org, make_membership
+):
+    client, _, org = _setup_admin(auth_client, make_org, make_membership)
+    r = client.post(f"/api/spray/orgs/{org.id}/integrations/pessl/oauth/start")
+    assert r.status_code == 503
+    body = r.json()
+    assert body["code"] == "pessl_not_configured"
+    assert "PESSL_CLIENT_ID" in body["detail"]
+    assert OAuthState.objects.filter(org=org, vendor="pessl").count() == 0
+
+
 @override_settings(
     PESSL_CLIENT_ID="cid",
     PESSL_CLIENT_SECRET="cs",

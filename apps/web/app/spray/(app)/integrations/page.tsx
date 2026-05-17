@@ -616,9 +616,19 @@ function IntegrationsPageInner() {
         <PasteKeyDialog
           vendorLabel="METER ZENTRA"
           fields={[
-            { name: "token", label: "API Token", placeholder: "from ZENTRA Cloud → Settings → API" },
+            {
+              name: "token",
+              label: "API Token",
+              placeholder: "ZENTRA Cloud → API → Keys → Copy token",
+            },
+            {
+              name: "device_sn",
+              label: "Device serial",
+              type: "text",
+              placeholder: "e.g. z6-12345 (Devices page in ZENTRA Cloud)",
+            },
           ]}
-          helpText="On connect we generate a webhook secret you'll paste into METER's Push API setup. The secret is shown once — copy it now."
+          helpText="We validate the token against that device via the v4 get_readings API (see ZENTRA Cloud API docs). On success you get a one-time webhook secret to paste into METER Push API setup."
           onSubmit={connectMeter}
           onClose={() => setShowMeterDialog(false)}
         />

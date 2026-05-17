@@ -130,15 +130,20 @@ def _spray_integration_fernet_key() -> str:
 SPRAY_INTEGRATION_FERNET_KEY = _spray_integration_fernet_key()
 PESSL_CLIENT_ID = os.environ.get("PESSL_CLIENT_ID", "")
 PESSL_CLIENT_SECRET = os.environ.get("PESSL_CLIENT_SECRET", "")
-PESSL_REDIRECT_URI = os.environ.get(
-    "PESSL_REDIRECT_URI",
-    "https://api.graft-systems.app/api/spray/integrations/pessl/oauth/callback",
+_default_pessl_redirect = (
+    "http://127.0.0.1:8080/api/spray/integrations/pessl/oauth/callback"
+    if DEBUG
+    else "https://api.graft-systems.app/api/spray/integrations/pessl/oauth/callback"
 )
+PESSL_REDIRECT_URI = os.environ.get("PESSL_REDIRECT_URI", _default_pessl_redirect)
 PESSL_API_BASE = os.environ.get(
     "PESSL_API_BASE", "https://api.fieldclimate.com/v2"
 )
 # Frontend origin used for OAuth callback redirects (set in Render env).
-SPRAY_FRONTEND_BASE_URL = os.environ.get("SPRAY_FRONTEND_BASE_URL", "")
+SPRAY_FRONTEND_BASE_URL = os.environ.get(
+    "SPRAY_FRONTEND_BASE_URL",
+    "http://localhost:3000" if DEBUG else "",
+)
 # API origin surfaced in PR-E's METER webhook reveal flow so the user
 # can paste a complete webhook URL into METER ZENTRA Cloud.
 SPRAY_API_BASE_URL = os.environ.get(
