@@ -12,6 +12,7 @@ import { crmFetch } from "@/lib/admin/api";
 import { tagsToJson } from "@/lib/admin/crm";
 import { touchCompany } from "@/lib/admin/work/activity";
 import { requireAdmin } from "@/lib/admin/auth-check";
+import { isOneOf } from "@/lib/admin/validation";
 
 const dealStageValues = DEAL_STAGES.map((item) => item.value);
 const pilotStatusValues = PILOT_STATUSES.map((item) => item.value);
@@ -96,7 +97,7 @@ function parseDealForm(formData: FormData) {
   const notes = formData.get("notes")?.toString().trim();
 
   if (!name) throw new Error("Competition name is required.");
-  if (!dealStageValues.includes(stage)) throw new Error("Invalid stage.");
+  if (!isOneOf(stage, dealStageValues)) throw new Error("Invalid stage.");
   if (link && !/^https?:\/\//i.test(link)) {
     throw new Error("Link must start with http:// or https://");
   }
@@ -210,7 +211,7 @@ export async function createPilotAction(companyId: string, formData: FormData) {
   const notes = formData.get("notes")?.toString().trim();
 
   if (!name) throw new Error("Pilot name is required.");
-  if (!pilotStatusValues.includes(status)) throw new Error("Invalid pilot status.");
+  if (!isOneOf(status, pilotStatusValues)) throw new Error("Invalid pilot status.");
 
   const company = await getCompanyForWorkspace("00000000-0000-4000-8000-000000000001", companyId);
   if (!company) {
@@ -251,7 +252,7 @@ export async function updatePilotAction(pilotId: string, formData: FormData) {
   const notes = formData.get("notes")?.toString().trim();
 
   if (!name) throw new Error("Pilot name is required.");
-  if (!pilotStatusValues.includes(status)) throw new Error("Invalid pilot status.");
+  if (!isOneOf(status, pilotStatusValues)) throw new Error("Invalid pilot status.");
 
   const pilot = await crmFetch(`/pilots/${pilotId}/`);
 
@@ -290,7 +291,7 @@ export async function upsertInvestorProfileAction(companyId: string, formData: F
   const nextStep = formData.get("nextStep")?.toString().trim();
   const notes = formData.get("notes")?.toString().trim();
 
-  if (!investorStageValues.includes(stage)) throw new Error("Invalid investor stage.");
+  if (!isOneOf(stage, investorStageValues)) throw new Error("Invalid investor stage.");
 
   const company = await getCompanyForWorkspace("00000000-0000-4000-8000-000000000001", companyId);
   if (!company) {
@@ -331,7 +332,9 @@ export async function upsertPartnerProfileAction(companyId: string, formData: Fo
   const integrationNotes = formData.get("integrationNotes")?.toString().trim();
   const notes = formData.get("notes")?.toString().trim();
 
-  if (!partnerStatusValues.includes(programStatus)) throw new Error("Invalid partner program status.");
+  if (!isOneOf(programStatus, partnerStatusValues)) {
+    throw new Error("Invalid partner program status.");
+  }
 
   const company = await getCompanyForWorkspace("00000000-0000-4000-8000-000000000001", companyId);
   if (!company) {

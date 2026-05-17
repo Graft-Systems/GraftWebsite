@@ -25,13 +25,18 @@ export default async function CompanyNotesPage({ params }: CompanyNotesPageProps
   const { userId } = await requireAdmin();
   const { companyId } = await params;
 
-  const [company, interactions, ingests, companies, stages] = await Promise.all([
+  const [company, interactions, companies, stages] = await Promise.all([
     getCompany("00000000-0000-4000-8000-000000000001", companyId),
     listCompanyInteractions(companyId),
-    listWisprIngestsForCompany("00000000-0000-4000-8000-000000000001", companyId),
     listWorkspaceCompaniesForSelect("00000000-0000-4000-8000-000000000001"),
     listRelationshipStages("00000000-0000-4000-8000-000000000001"),
   ]);
+
+  const ingests = await listWisprIngestsForCompany(
+    "00000000-0000-4000-8000-000000000001",
+    companyId,
+    companies.map((item) => ({ id: item.id, name: item.name })),
+  );
 
   if (!company) {
     notFound();

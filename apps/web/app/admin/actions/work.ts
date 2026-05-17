@@ -6,6 +6,7 @@ import { INTERACTION_TYPES, TASK_STATUSES } from "@/lib/admin/constants";
 import { crmFetch } from "@/lib/admin/api";
 import { touchCompany } from "@/lib/admin/work/activity";
 import { requireAdmin } from "@/lib/admin/auth-check";
+import { isOneOf } from "@/lib/admin/validation";
 
 const interactionTypeValues = INTERACTION_TYPES.map((item) => item.value);
 const taskStatusValues = TASK_STATUSES.map((item) => item.value);
@@ -62,7 +63,7 @@ export async function createInteractionAction(companyId: string, formData: FormD
   const notes = (formData.get("notes") as string | null)?.trim() || null;
   const contactId = (formData.get("contactId") as string | null)?.trim() || null;
 
-  if (!type || !interactionTypeValues.includes(type)) {
+  if (!type || !isOneOf(type, interactionTypeValues)) {
     throw new Error("Invalid interaction type.");
   }
   if (!occurredAt) {
@@ -112,7 +113,7 @@ export async function createTaskAction(companyId: string, formData: FormData) {
   if (!title) {
     throw new Error("Task title is required.");
   }
-  if (!taskStatusValues.includes(status)) {
+  if (!isOneOf(status, taskStatusValues)) {
     throw new Error("Invalid task status.");
   }
 
@@ -163,7 +164,7 @@ export async function updateTaskAction(taskId: string, formData: FormData) {
   if (!title) {
     throw new Error("Task title is required.");
   }
-  if (!taskStatusValues.includes(status)) {
+  if (!isOneOf(status, taskStatusValues)) {
     throw new Error("Invalid task status.");
   }
 
@@ -240,9 +241,8 @@ export async function createCommentAction(companyId: string, formData: FormData)
   await crmFetch("/comments/", {
     method: "POST",
     body: JSON.stringify({
-      company_id: companyId,
-      interaction_id: interactionId,
-      author_id: userId,
+      company: companyId,
+      interaction: interactionId,
       body: bodyText,
     }),
   });

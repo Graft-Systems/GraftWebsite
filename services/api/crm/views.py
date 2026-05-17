@@ -246,9 +246,25 @@ class EmailDigestViewSet(BaseCRMViewSet):
 
 class CommentViewSet(BaseCRMViewSet):
     serializer_class = CommentSerializer
+
     def get_queryset(self):
-        qs = Comment.objects.filter(workspace=self.get_workspace())
+        qs = Comment.objects.filter(workspace=self.get_workspace()).select_related(
+            'author__user', 'interaction', 'company',
+        )
         company_id = self.request.query_params.get('company_id')
         if company_id:
             qs = qs.filter(company_id=company_id)
-        return qs
+        interaction_id = self.request.query_params.get('interaction_id')
+        if interaction_id:
+            qs = qs.filter(interaction_id=interaction_id)
+        return qs.order_by('-created_at')
+
+    def perform_create(self, serializer):
+        workspace = self.get_workspace()
+        user = self.request.user
+        profile = getattr(user, 'crm_profile', None)
+        if profile is None:
+            from crm.workspace import get_workspace_for_user
+            get_workspace_for_user(user)
+            profile = user.crm_profile
+        serializer.save(workspace=workspace, author=profile)

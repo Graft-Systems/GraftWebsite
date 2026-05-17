@@ -7,6 +7,7 @@ import { parseTags, tagsToJson } from "@/lib/admin/crm";
 import { crmFetch } from "@/lib/admin/api";
 import { touchCompany } from "@/lib/admin/work/activity";
 import { requireAdmin } from "@/lib/admin/auth-check";
+import { isOneOf } from "@/lib/admin/validation";
 
 const interactionTypeValues = INTERACTION_TYPES.map((item) => item.value);
 
@@ -98,7 +99,9 @@ export async function applyWisprIngestAction(ingestId: string, formData: FormDat
   const stageHint = formData.get("stageHint")?.toString().trim();
 
   if (!companyId) throw new Error("Pick a company.");
-  if (!type || !interactionTypeValues.includes(type)) throw new Error("Invalid interaction type.");
+  if (!type || !isOneOf(type, interactionTypeValues)) {
+    throw new Error("Invalid interaction type.");
+  }
   if (!occurredAt) throw new Error("Date is required.");
   if (!summary) throw new Error("Summary is required.");
 

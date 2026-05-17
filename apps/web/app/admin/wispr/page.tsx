@@ -7,6 +7,7 @@ import { WisprIngestCard } from "@/components/admin/wispr/wispr-ingest-card";
 import { listWorkspaceCompaniesForSelect } from "@/lib/admin/calendar/companies";
 import { listRelationshipStages } from "@/lib/admin/companies/queries";
 import { requireAdmin } from "@/lib/admin/auth-check";
+import { enrichWisprIngestCompanies } from "@/lib/admin/wispr/types";
 import { getWisprConnectionForUser, listWisprIngests } from "@/lib/admin/wispr/queries";
 
 type WisprPageProps = {
@@ -25,9 +26,13 @@ export default async function WisprPage({ searchParams }: WisprPageProps) {
   ]);
 
   const stageOptions = stages.map((stage) => ({ key: stage.key, label: stage.label }));
-  const pending = ingests.filter((ingest) => ingest.status === "pending");
-  const applied = ingests.filter((ingest) => ingest.status === "applied");
-  const discarded = ingests.filter((ingest) => ingest.status === "discarded");
+  const ingestsWithNames = enrichWisprIngestCompanies(
+    ingests,
+    companies.map((company) => ({ id: company.id, name: company.name })),
+  );
+  const pending = ingestsWithNames.filter((ingest) => ingest.status === "pending");
+  const applied = ingestsWithNames.filter((ingest) => ingest.status === "applied");
+  const discarded = ingestsWithNames.filter((ingest) => ingest.status === "discarded");
 
   return (
     <div className="space-y-6">

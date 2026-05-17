@@ -9,6 +9,7 @@ import { crmFetch } from "@/lib/admin/api";
 import { getCompany } from "@/lib/admin/companies/queries";
 import { touchCompany } from "@/lib/admin/work/activity";
 import { requireAdmin } from "@/lib/admin/auth-check";
+import { isOneOf } from "@/lib/admin/validation";
 
 const interactionTypeValues = INTERACTION_TYPES.map((item) => item.value);
 const interactionSourceValues = INTERACTION_SOURCES.map((item) => item.value);
@@ -126,9 +127,13 @@ export async function applyCaptureReviewAction(companyId: string, formData: Form
   const stageHint = formData.get("stageHint")?.toString().trim();
   const tasksPayload = formData.get("tasksPayload")?.toString().trim();
 
-  if (!source || !interactionSourceValues.includes(source)) throw new Error("Invalid capture source.");
+  if (!source || !isOneOf(source, interactionSourceValues)) {
+    throw new Error("Invalid capture source.");
+  }
   if (!transcript) throw new Error("Transcript is required.");
-  if (!type || !interactionTypeValues.includes(type)) throw new Error("Invalid interaction type.");
+  if (!type || !isOneOf(type, interactionTypeValues)) {
+    throw new Error("Invalid interaction type.");
+  }
   if (!occurredAt) throw new Error("Date is required.");
   if (!summary) throw new Error("Summary is required.");
 

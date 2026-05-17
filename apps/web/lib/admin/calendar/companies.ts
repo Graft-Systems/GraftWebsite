@@ -1,6 +1,20 @@
 import { crmFetch } from "@/lib/admin/api";
 
-export async function listWorkspaceCompaniesForSelect(_workspaceId: string) {
+export type CompanySelectOption = {
+  id: string;
+  name: string;
+  domain: string | null;
+  contacts: {
+    id: string;
+    name: string;
+    email: string | null;
+    isPrimary: boolean;
+  }[];
+};
+
+export async function listWorkspaceCompaniesForSelect(
+  _workspaceId: string,
+): Promise<CompanySelectOption[]> {
   const [companiesRaw, contactsRaw] = await Promise.all([
     crmFetch("/companies/"),
     crmFetch("/contacts/"),

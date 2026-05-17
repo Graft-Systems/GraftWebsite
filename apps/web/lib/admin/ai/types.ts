@@ -1,4 +1,9 @@
-export type CaptureSource = "in_app_voice" | "paste" | "wispr_api";
+export type CaptureSource =
+  | "in_app_voice"
+  | "paste"
+  | "wispr_api"
+  | "manual"
+  | "calendar";
 
 export type SuggestedCaptureTask = {
   title: string;

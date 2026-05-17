@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { normalizeSplitBuckets, splitBucketTotalPercent } from "@/lib/admin/capital/parse";
 import { crmFetch } from "@/lib/admin/api";
 import { requireAdmin } from "@/lib/admin/auth-check";
+import { isOneOf } from "@/lib/admin/validation";
 
 export async function updateCapitalSplitBucketsAction(formData: FormData) {
   await requireAdmin();
@@ -68,8 +69,8 @@ export async function createCapitalReceiptAction(formData: FormData) {
   if (!amountStr) throw new Error("Amount is required.");
   if (!receivedAtStr) throw new Error("Date is required.");
 
-  const validSources = ["deal", "investor", "partner", "other"];
-  if (!source || !validSources.includes(source)) {
+  const validSources = ["deal", "investor", "partner", "other"] as const;
+  if (!source || !isOneOf(source, validSources)) {
     throw new Error("Invalid source selected.");
   }
 

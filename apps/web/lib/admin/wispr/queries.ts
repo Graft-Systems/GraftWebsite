@@ -1,4 +1,12 @@
 import { crmFetch } from "../api";
+import {
+  enrichWisprIngestCompanies,
+  mapWisprIngest,
+  mapWisprIngestList,
+  type WisprIngestRow,
+} from "./types";
+
+export type { WisprIngestRow };
 
 export async function getWisprConnectionForUser(userId: string) {
   const connections = await crmFetch(
@@ -11,21 +19,25 @@ export async function getWisprConnectionForUser(userId: string) {
 export async function listWisprIngests(
   _workspaceId: string,
   options: { status?: string; mineUserId?: string } = {},
-) {
+): Promise<WisprIngestRow[]> {
   const params = new URLSearchParams();
   if (options.status) params.append("status", options.status);
   if (options.mineUserId) params.append("user_id", options.mineUserId);
 
-  return crmFetch(`/wispr-ingests/?${params.toString()}`);
+  const data = await crmFetch(`/wispr-ingests/?${params.toString()}`);
+  return mapWisprIngestList(data);
 }
 
 export async function getWisprIngest(_workspaceId: string, ingestId: string) {
-  return crmFetch(`/wispr-ingests/${ingestId}/`);
+  const data = await crmFetch(`/wispr-ingests/${ingestId}/`);
+  return data ? mapWisprIngest(data as Record<string, unknown>) : null;
 }
 
 export async function listWisprIngestsForCompany(
   _workspaceId: string,
   companyId: string,
-) {
-  return crmFetch(`/wispr-ingests/?company_id=${companyId}`);
+  companies: { id: string; name: string }[] = [],
+): Promise<WisprIngestRow[]> {
+  const data = await crmFetch(`/wispr-ingests/?company_id=${companyId}`);
+  return enrichWisprIngestCompanies(mapWisprIngestList(data), companies);
 }

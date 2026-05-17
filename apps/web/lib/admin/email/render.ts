@@ -1,8 +1,29 @@
 import { formatDate, formatDateTime } from "@/lib/admin/crm";
-
-import type { DigestMeeting, DigestTask, UserDigest } from "./digest";
-
 import { getAppBaseUrl } from "@/lib/admin/env";
+
+export type DigestTask = {
+  title: string;
+  dueAt: Date | null;
+  company: { id: string; name: string };
+  contact: { name: string } | null;
+};
+
+export type DigestMeeting = {
+  title: string;
+  startsAt: Date;
+  company: { id: string; name: string } | null;
+};
+
+export type UserDigest = {
+  name: string | null;
+  email: string;
+  taskCount: number;
+  meetingCount: number;
+  overdue: DigestTask[];
+  dueToday: DigestTask[];
+  dueThisWeek: DigestTask[];
+  meetingsToday: DigestMeeting[];
+};
 
 const baseUrl = getAppBaseUrl();
 

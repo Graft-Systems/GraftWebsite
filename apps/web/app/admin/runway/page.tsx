@@ -26,8 +26,8 @@ function formatMoney(value: number) {
 export default async function RunwayPage() {
   const { userId } = await requireAdmin();
   const [runway, deals] = await Promise.all([
-    getWorkspaceRunway("00000000-0000-4000-8000-000000000001"),
-    listWorkspaceDealsForSelect("00000000-0000-4000-8000-000000000001"),
+    getWorkspaceRunway(),
+    listWorkspaceDealsForSelect(),
   ]);
 
   if (!runway) {

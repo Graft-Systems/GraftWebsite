@@ -1,27 +1,48 @@
-import { prisma } from "@/lib/admin/db";
+import { crmFetch } from "@/lib/admin/api";
 
-const commentInclude = {
-  author: {
-    select: { id: true, name: true, email: true },
-  },
-  interaction: {
-    select: { id: true, type: true, occurredAt: true },
-  },
-} as const;
+type CommentRow = Record<string, unknown>;
+
+function mapComment(row: CommentRow) {
+  const author = (row.author as CommentRow | undefined) ?? {};
+  const interaction = row.interaction as CommentRow | null | undefined;
+
+  return {
+    id: String(row.id),
+    body: String(row.body ?? ""),
+    createdAt: new Date(String(row.created_at ?? row.createdAt)),
+    author: {
+      id: String(author.clerk_id ?? author.clerkId ?? author.id ?? ""),
+      name: (author.name as string | null) ?? null,
+      email: String(author.email ?? ""),
+    },
+    interaction: interaction
+      ? {
+          id: String(interaction.id),
+          type: String(interaction.type ?? "note"),
+          occurredAt: new Date(
+            String(interaction.occurred_at ?? interaction.occurredAt),
+          ),
+        }
+      : null,
+  };
+}
+
+function normalizeList(payload: unknown): CommentRow[] {
+  if (Array.isArray(payload)) {
+    return payload as CommentRow[];
+  }
+  if (payload && typeof payload === "object" && Array.isArray((payload as { results?: unknown }).results)) {
+    return (payload as { results: CommentRow[] }).results;
+  }
+  return [];
+}
 
 export async function listCompanyComments(companyId: string) {
-  return prisma.comment.findMany({
-    where: { companyId },
-    include: commentInclude,
-    orderBy: { createdAt: "desc" },
-    take: 50,
-  });
+  const rows = await crmFetch(`/comments/?company_id=${companyId}`);
+  return normalizeList(rows).map(mapComment);
 }
 
 export async function listInteractionComments(interactionId: string) {
-  return prisma.comment.findMany({
-    where: { interactionId },
-    include: commentInclude,
-    orderBy: { createdAt: "asc" },
-  });
+  const rows = await crmFetch(`/comments/?interaction_id=${interactionId}`);
+  return normalizeList(rows).map(mapComment);
 }

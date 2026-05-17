@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { STALE_DAYS_OPTIONS } from "@/lib/admin/constants";
 import { cn } from "@/lib/admin/utils";
 
@@ -113,12 +115,12 @@ export function CompanyFilters({ users, stages, tags, values }: CompanyFiltersPr
         >
           Apply filters
         </button>
-        <a
+        <Link
           href="/admin/companies"
           className="inline-flex h-9 items-center justify-center rounded-md border px-4 text-sm font-medium"
         >
           Reset
-        </a>
+        </Link>
       </div>
     </form>
   );

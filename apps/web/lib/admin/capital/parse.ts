@@ -1,5 +1,3 @@
-import type { Prisma } from "@/generated/prisma/client";
-
 export type SplitBucket = {
   key: string;
   label: string;
@@ -44,8 +42,8 @@ export function normalizeSplitBuckets(buckets: SplitBucket[]): SplitBucket[] {
     .filter((bucket) => bucket.key && bucket.label && bucket.percent > 0);
 }
 
-export function splitBucketsToJson(buckets: SplitBucket[]): Prisma.InputJsonValue {
-  return buckets as unknown as Prisma.InputJsonValue;
+export function splitBucketsToJson(buckets: SplitBucket[]): SplitBucket[] {
+  return buckets;
 }
 
 export function splitBucketTotalPercent(buckets: SplitBucket[]): number {

@@ -95,7 +95,26 @@ class EmailDigestSerializer(serializers.ModelSerializer):
         model = EmailDigest
         fields = '__all__'
 
+class CommentAuthorSerializer(serializers.ModelSerializer):
+    name = serializers.CharField(source='user.name', read_only=True)
+    email = serializers.EmailField(source='user.email', read_only=True)
+    clerk_id = serializers.CharField(source='user.clerk_user_id', read_only=True)
+
+    class Meta:
+        model = CRMProfile
+        fields = ('id', 'name', 'email', 'clerk_id')
+
+
+class CommentInteractionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Interaction
+        fields = ('id', 'type', 'occurred_at')
+
+
 class CommentSerializer(serializers.ModelSerializer):
+    author = CommentAuthorSerializer(read_only=True)
+    interaction = CommentInteractionSerializer(read_only=True)
+
     class Meta:
         model = Comment
         fields = '__all__'

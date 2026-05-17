@@ -32,23 +32,20 @@ type CompanyDetailPageProps = {
 export default async function CompanyDetailPage({ params }: CompanyDetailPageProps) {
   const { userId } = await requireAdmin();
   const { companyId } = await params;
-  const [
-    company,
-    users,
-    interactions,
-    tasks,
-    deals,
-    investorProfile,
-    comments,
-  ] = await Promise.all([
-    getCompany("00000000-0000-4000-8000-000000000001", companyId),
-    listWorkspaceUsers("00000000-0000-4000-8000-000000000001"),
-    listCompanyInteractions(companyId),
-    listCompanyTasks(companyId),
-    listCompanyDeals(companyId),
-    getCompanyInvestorProfile(companyId),
-    listCompanyComments(companyId),
-  ]);
+  const workspaceId = "00000000-0000-4000-8000-000000000001";
+  const [company, users, interactions, tasks, deals, investorProfile, comments] =
+    await Promise.all([
+      getCompany(workspaceId, companyId),
+      listWorkspaceUsers(workspaceId),
+      listCompanyInteractions(companyId),
+      listCompanyTasks(companyId),
+      listCompanyDeals(companyId),
+      getCompanyInvestorProfile(companyId),
+      listCompanyComments(companyId),
+    ]);
+
+  const currentUser = users.find((user) => user.clerkId === userId);
+  const currentUserRole = currentUser?.role ?? "admin";
 
   if (!company) {
     notFound();
@@ -146,7 +143,7 @@ export default async function CompanyDetailPage({ params }: CompanyDetailPagePro
       <CommentsSection
         companyId={company.id}
         currentUserId={userId}
-        currentUserRole={session.user.role}
+        currentUserRole={currentUserRole}
         comments={comments}
       />
 
