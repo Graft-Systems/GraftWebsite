@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { NewsArticle } from "@/lib/newsApi";
 import { formatArticleDate } from "@/lib/newsApi";
+import { resolveMediaUrl } from "@/lib/resolveMediaUrl";
 
 type NewsArticleCardProps = {
   article: NewsArticle;
@@ -22,7 +23,7 @@ export function NewsArticleCard({ article, featured }: NewsArticleCardProps) {
           <div className="relative aspect-video w-full overflow-hidden border-b border-border/40 lg:aspect-[4/3] lg:w-1/2 lg:border-b-0 lg:border-r">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={previewImage}
+              src={resolveMediaUrl(previewImage)}
               alt={article.title}
               className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
             />
@@ -77,7 +78,7 @@ export function NewsArticleCard({ article, featured }: NewsArticleCardProps) {
         <div className="relative aspect-[16/9] overflow-hidden border-b border-border/30">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={previewImage}
+            src={resolveMediaUrl(previewImage)}
             alt={article.title}
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
           />

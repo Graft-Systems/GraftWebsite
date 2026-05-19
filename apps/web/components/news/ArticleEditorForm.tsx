@@ -2,6 +2,8 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
+import { NewsImageInsertDialog } from "@/components/news/NewsImageInsertDialog";
+import { formatImageBlock } from "@/lib/newsBody";
 import { type NewsArticle, useNewsImageUpload } from "@/lib/newsApi";
 
 type ArticleEditorFormProps = {
@@ -34,6 +36,10 @@ export function ArticleEditorForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [pendingImage, setPendingImage] = useState<{
+    url: string;
+    defaultAlt: string;
+  } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadImage = useNewsImageUpload();
@@ -46,14 +52,28 @@ export function ArticleEditorForm({
     setError(null);
     try {
       const { image } = await uploadImage(file);
-      const imageMarkdown = `\n\n![${file.name}](${image})\n\n`;
-      setBody((prev) => prev + imageMarkdown);
+      const baseName = file.name.replace(/\.[^.]+$/, "") || "Image";
+      setPendingImage({ url: image, defaultAlt: baseName });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not upload image.");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
+  }
+
+  function handleImageInsertConfirm(alt: string, caption: string) {
+    if (!pendingImage) return;
+    setBody(
+      (prev) =>
+        prev +
+        formatImageBlock({
+          alt,
+          url: pendingImage.url,
+          caption: caption || undefined,
+        }),
+    );
+    setPendingImage(null);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -75,7 +95,15 @@ export function ArticleEditorForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="max-w-2xl space-y-8">
+    <>
+      {pendingImage ? (
+        <NewsImageInsertDialog
+          defaultAlt={pendingImage.defaultAlt}
+          onConfirm={handleImageInsertConfirm}
+          onClose={() => setPendingImage(null)}
+        />
+      ) : null}
+      <form onSubmit={handleSubmit} className="max-w-2xl space-y-8">
       {error ? (
         <p className="border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           {error}
@@ -113,7 +141,9 @@ export function ArticleEditorForm({
         />
         <div className="mt-2 flex items-center justify-between">
           <p className="text-xs text-foreground-muted">
-            Separate paragraphs with a blank line.
+            Separate paragraphs with a blank line. Image captions appear on the
+            line after the photo as{" "}
+            <span className="font-mono text-foreground/50">::caption:: …</span>.
           </p>
           <button
             type="button"
@@ -171,5 +201,6 @@ export function ArticleEditorForm({
         ) : null}
       </div>
     </form>
+    </>
   );
 }
