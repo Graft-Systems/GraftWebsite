@@ -8,10 +8,10 @@ import { cn } from "@/lib/utils";
 
 const LINKS = [
   { href: "/", label: "Home" },
+  { href: "/spray", label: "Spray" },
+  { href: "/tool", label: "Yield Preview" },
   { href: "/about", label: "About" },
   { href: "/news", label: "News" },
-  { href: "/tool", label: "Yield preview" },
-  { href: "/spray", label: "Spray" },
   { href: "/contact", label: "Contact" },
 ];
 
@@ -92,14 +92,14 @@ export function Nav() {
               <li key={link.href}>
                 <Link
                   href={href}
-                  className="frame text-[0.7rem] font-semibold text-foreground/80 transition-colors hover:text-amber"
+                  className="frame inline-flex items-center text-[0.7rem] font-semibold leading-none text-foreground/80 transition-colors hover:text-amber"
                 >
                   {link.label}
                 </Link>
               </li>
             );
           })}
-          <li className="flex h-5 items-center">
+          <li>
             {isLoaded && isSignedIn ? (
               <UserButton
                 appearance={{ variables: { colorPrimary: "#c08a3e" } }}
@@ -108,7 +108,7 @@ export function Nav() {
             ) : (
               <Link
                 href="/sign-in"
-                className="frame text-[0.7rem] font-semibold text-foreground/80 transition-colors hover:text-amber"
+                className="frame inline-flex items-center text-[0.7rem] font-semibold leading-none text-foreground/80 transition-colors hover:text-amber"
               >
                 Log in
               </Link>

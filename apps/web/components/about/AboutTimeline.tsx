@@ -37,16 +37,15 @@ const MILESTONES: Milestone[] = [
   },
   {
     date: "Mar 2026",
-    title: "Cluster estimation",
+    title: "Fungicide Management",
     description:
-      "Grape cluster weight estimation becomes the core product. One photo. One reliable range.",
+      "Learning to anticipate when wineries should and shouldn't spray their vineyards with fungicide to combat mildew becomes the focus.",
   },
   {
     date: "May 2026",
     title: "On-site visits",
     description:
       "Meeting winemakers where they work — walking rows, understanding workflows, refining the tool in the field.",
-    future: true,
   },
   {
     date: "Aug 2026",
@@ -59,7 +58,7 @@ const MILESTONES: Milestone[] = [
     date: "Nov 2026",
     title: "Launch",
     description:
-      "A working estimation model paired with purpose-built capture hardware, ready for wineries to use in the field.",
+      "A working and integrated platform that provides live weather feeds with models and sensory data to provide actionable spray recommendations long before sporulation",
     future: true,
   },
 ];

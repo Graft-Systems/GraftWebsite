@@ -127,3 +127,45 @@ def test_weather_window_uses_regional_weather_when_no_sensor_reading_exists():
     assert len(window.observations) == 1
     assert window.observations[0].temp_c == 18.0
     assert window.observations[0].precip_mm == 1.2
+
+
+def test_weather_window_includes_and_prioritizes_org_stations():
+    from spray.aggregation.weather import _regional_weather_observations, _regional_weather_evidence
+    org = Org.objects.create(name="Grower", region="napa")
+    v = Vineyard.objects.create(org=org, name="V", region="napa", centroid=Point(-122.3, 38.3, srid=4326))
+    block = Block.objects.create(vineyard=v, name="B", geom=Point(-122.3, 38.3, srid=4326).buffer(0.01))
+
+    # Regional default station
+    reg_station = WeatherStation.objects.create(
+        provider="visual_crossing",
+        station_id="reg-default",
+        is_regional_default=True,
+        region="napa",
+        location=Point(-122.3, 38.3, srid=4326)
+    )
+
+    # Org specific station
+    org_station = WeatherStation.objects.create(
+        org=org,
+        provider="visual_crossing",
+        station_id="org-custom",
+        location=Point(-122.301, 38.301, srid=4326)
+    )
+
+    ts = datetime(2024, 1, 1, 12, tzinfo=timezone.utc)
+    WeatherObservation.objects.create(station=reg_station, ts=ts, temp_c=20)
+    WeatherObservation.objects.create(station=org_station, ts=ts, temp_c=25)
+
+    obs = list(_regional_weather_observations(block, ts, ts))
+    assert len(obs) == 2
+    assert {o.station.station_id for o in obs} == {"reg-default", "org-custom"}
+
+    evidence = _regional_weather_evidence(block, ts, ts)
+    assert len(evidence) == 2
+
+    # Check prioritization (quality)
+    reg_ev = next(e for e in evidence if "reg-default" in e.source)
+    org_ev = next(e for e in evidence if "org-custom" in e.source)
+
+    assert reg_ev.quality == 0.82
+    assert org_ev.quality == 0.92

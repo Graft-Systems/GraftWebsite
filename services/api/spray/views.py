@@ -24,6 +24,11 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from rest_framework import status
+from rest_framework.decorators import (
+    api_view,
+    authentication_classes,
+    permission_classes,
+)
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -1029,6 +1034,125 @@ class BlockDetailView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+class BlockVineListCreateView(APIView):
+    """GET/POST /api/spray/orgs/<org_id>/blocks/<block_id>/vines."""
+
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [IsOrgViewer()]
+        return [IsOrgMember()]
+
+    def _get_block(self, org_id, block_id):
+        from spray.models import Block
+
+        return get_object_or_404(
+            Block.objects.for_org(org_id).filter(archived_at__isnull=True),
+            id=block_id,
+        )
+
+    @transaction.atomic
+    def get(self, request, org_id, block_id):
+        from spray.models import Vine
+        from spray.serializers import VineSerializer
+
+        set_current_org_id(str(org_id))
+        block = self._get_block(org_id, block_id)
+        qs = (
+            Vine.objects.for_org(org_id)
+            .filter(block=block, archived_at__isnull=True)
+            .order_by("row_index", "vine_index")
+        )
+        return Response(VineSerializer(qs, many=True).data)
+
+    @transaction.atomic
+    def post(self, request, org_id, block_id):
+        from spray.serializers import VineSerializer
+
+        set_current_org_id(str(org_id))
+        block = self._get_block(org_id, block_id)
+        serializer = VineSerializer(
+            data=request.data,
+            context={"block": block},
+        )
+        serializer.is_valid(raise_exception=True)
+        vine = serializer.save()
+        return Response(
+            VineSerializer(vine).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class BlockVineRowBulkView(APIView):
+    """POST /api/spray/orgs/<org_id>/blocks/<block_id>/vines/row — evenly spaced row."""
+
+    permission_classes = [IsOrgMember]
+
+    @transaction.atomic
+    def post(self, request, org_id, block_id):
+        from spray.models import Block, Vine
+        from spray.serializers import VineRowBulkSerializer, VineSerializer
+
+        set_current_org_id(str(org_id))
+        block = get_object_or_404(
+            Block.objects.for_org(org_id).filter(archived_at__isnull=True),
+            id=block_id,
+        )
+        serializer = VineRowBulkSerializer(
+            data=request.data,
+            context={"block": block},
+        )
+        serializer.is_valid(raise_exception=True)
+        created = serializer.save()
+        return Response(
+            VineSerializer(created, many=True).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class VineDetailView(APIView):
+    """PATCH/DELETE /api/spray/orgs/<org_id>/vines/<vine_id>."""
+
+    def get_permissions(self):
+        if self.request.method == "PATCH":
+            return [IsOrgMember()]
+        if self.request.method == "DELETE":
+            return [IsOrgMember()]
+        return [IsOrgViewer()]
+
+    def _get_vine(self, org_id, vine_id):
+        from spray.models import Vine
+
+        return get_object_or_404(
+            Vine.objects.for_org(org_id).select_related("block"),
+            id=vine_id,
+            archived_at__isnull=True,
+        )
+
+    @transaction.atomic
+    def patch(self, request, org_id, vine_id):
+        from spray.serializers import VineSerializer
+
+        set_current_org_id(str(org_id))
+        vine = self._get_vine(org_id, vine_id)
+        serializer = VineSerializer(
+            vine,
+            data=request.data,
+            partial=True,
+            context={"block": vine.block},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(VineSerializer(vine).data)
+
+    @transaction.atomic
+    def delete(self, request, org_id, vine_id):
+        set_current_org_id(str(org_id))
+        vine = self._get_vine(org_id, vine_id)
+        vine.archived_at = timezone.now()
+        vine.save(update_fields=["archived_at"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class BlockSensorReadingsView(APIView):
     """GET /api/spray/orgs/<org_id>/blocks/<block_id>/sensor-readings.
 
@@ -1131,6 +1255,105 @@ class BlockSensorReadingsView(APIView):
                 "readings_truncated": readings_total > len(readings),
             }
         )
+
+
+class BlockDailyWeatherComparisonView(APIView):
+    """GET /api/spray/orgs/<org_id>/blocks/<block_id>/weather-comparison.
+
+    Returns daily max air temperature for the last N days (default 14):
+    - actual_max_f: on-site sensors linked to the block (historic readings).
+    - virtual_max_f: Visual Crossing gridded daily max at the block/vineyard
+      pin (live Timeline API). Stored WeatherObservation rows are used only to
+      backfill days when the API returns no temperature for that date.
+    """
+
+    permission_classes = [IsOrgViewer]
+
+    def get(self, request, org_id, block_id):
+        from django.db.models import Max
+        from django.db.models.functions import TruncDate
+        from spray.models import SensorReading, WeatherObservation
+        from spray.providers.visual_crossing import fetch_daily_weather_window
+
+        set_current_org_id(str(org_id))
+        block = get_object_or_404(
+            Block.objects.for_org(org_id).filter(archived_at__isnull=True),
+            id=block_id,
+        )
+
+        days = int(request.query_params.get("days", "14"))
+        days = max(1, min(days, 30))
+        today = timezone.now().date()
+        cutoff = today - timedelta(days=days)
+
+        date_strings: list[str] = []
+        d = cutoff
+        while d <= today:
+            date_strings.append(d.isoformat())
+            d += timedelta(days=1)
+
+        # Actuals (historic on-site sensors)
+        actuals = (
+            SensorReading.objects.for_org(org_id)
+            .filter(
+                station__linked_blocks__id=block.id,
+                ts__date__gte=cutoff,
+            )
+            .annotate(day=TruncDate("ts"))
+            .values("day")
+            .annotate(max_temp_c=Max("air_temp_c"))
+            .order_by("day")
+        )
+
+        def _f(c):
+            return round(float(c) * 9.0 / 5.0 + 32.0, 1) if c is not None else None
+
+        actual_map = {}
+        for a in actuals:
+            actual_map[a["day"].isoformat()] = _f(a["max_temp_c"])
+
+        virtual_map: dict[str, float | None] = {}
+        coords = _block_forecast_lat_lon(block)
+        if coords is not None:
+            lat, lon = coords
+            vc_days, vc_err = fetch_daily_weather_window(lat, lon, cutoff, today)
+            if vc_err is None:
+                for row in vc_days:
+                    iso = row["date"]
+                    tmf = row.get("temp_max_f")
+                    virtual_map[iso] = (
+                        float(tmf) if tmf is not None else None
+                    )
+
+        # Backfill virtual from stored observations when API omitted temps
+        station = _resolve_org_weather_feed_station(block.vineyard.org)
+        if station:
+            stored = (
+                WeatherObservation.objects.filter(
+                    station=station,
+                    ts__date__gte=cutoff,
+                    is_forecast=False,
+                )
+                .annotate(day=TruncDate("ts"))
+                .values("day")
+                .annotate(max_temp_c=Max("temp_c"))
+                .order_by("day")
+            )
+            for v in stored:
+                iso = v["day"].isoformat()
+                if iso not in virtual_map or virtual_map.get(iso) is None:
+                    virtual_map[iso] = _f(v["max_temp_c"])
+
+        results = [
+            {
+                "date": iso,
+                "actual_max_f": actual_map.get(iso),
+                "virtual_max_f": virtual_map.get(iso),
+            }
+            for iso in date_strings
+        ]
+
+        return Response({"results": results})
 
 
 def _block_forecast_lat_lon(block: Block) -> tuple[float, float] | None:
@@ -1792,6 +2015,58 @@ class CaptureFinalizeView(APIView):
         return Response(CaptureSerializer(capture).data)
 
 
+@api_view(["POST"])
+@authentication_classes([])  # S3 doesn't have our auth; local mock shouldn't either
+@permission_classes([])
+def local_upload(request):
+    """POST /api/spray/local-upload
+    Mocks S3 POST upload for local dev.
+    """
+    if not settings.USE_LOCAL_STORAGE:
+        return Response({"detail": "disabled"}, status=status.HTTP_404_NOT_FOUND)
+
+    file_obj = request.FILES.get("file")
+    # S3-style POST puts the key in the body. DRF might put it in .data or .POST.
+    key = request.data.get("key") or request.POST.get("key")
+
+    if not file_obj or not key:
+        # Some clients might send 'Key' instead of 'key'
+        key = request.data.get("Key") or request.POST.get("Key")
+
+    if not file_obj or not key:
+        logger.error(
+            "local_upload: missing file or key. files=%s, data=%s, POST=%s",
+            list(request.FILES.keys()),
+            list(request.data.keys()),
+            list(request.POST.keys()),
+        )
+        return Response(
+            {"detail": "missing file or key"}, status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Basic security check: ensure key doesn't escape MEDIA_ROOT
+    import os
+
+    if ".." in key or key.startswith("/"):
+        logger.error("local_upload: invalid key attempted: %s", key)
+        return Response({"detail": "invalid key"}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Save to media root
+    full_path = os.path.join(settings.MEDIA_ROOT, key)
+    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+
+    try:
+        with open(full_path, "wb+") as destination:
+            for chunk in file_obj.chunks():
+                destination.write(chunk)
+        logger.info("local_upload: successfully saved %s to %s", key, full_path)
+    except Exception as e:
+        logger.exception("local_upload: failed to write file %s: %s", full_path, e)
+        return Response({"detail": "write failed"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class CaptureListView(APIView):
     """GET /api/spray/orgs/<org_id>/captures.
 
@@ -1868,23 +2143,48 @@ class CaptureListView(APIView):
 
 
 class CaptureDetailView(APIView):
-    """GET / DELETE /api/spray/orgs/<org_id>/captures/<id>.
+    """GET / PATCH / DELETE /api/spray/orgs/<org_id>/captures/<id>.
 
-    DELETE archives (sets archived_at); the S3 object stays around for
-    the data-lake retention window per spec §17.1.
+    PATCH updates user notes. DELETE archives (sets archived_at); the S3
+    object stays around for the data-lake retention window per spec §17.1.
     """
 
-    permission_classes = [IsOrgViewer]
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [IsOrgViewer()]
+        return [IsOrgMember()]
+
+    def _get_capture(self, org_id, capture_id):
+        from spray.models import Capture
+
+        return get_object_or_404(
+            Capture.objects.for_org(org_id).select_related(
+                "block",
+                "block__vineyard",
+            ),
+            id=capture_id,
+        )
 
     @transaction.atomic
     def get(self, request, org_id, capture_id):
-        from spray.models import Capture
         from spray.serializers import CaptureSerializer
 
         set_current_org_id(str(org_id))
-        capture = get_object_or_404(
-            Capture.objects.for_org(org_id), id=capture_id
+        return Response(CaptureSerializer(self._get_capture(org_id, capture_id)).data)
+
+    @transaction.atomic
+    def patch(self, request, org_id, capture_id):
+        from spray.serializers import CaptureSerializer, CaptureUpdateSerializer
+
+        set_current_org_id(str(org_id))
+        capture = self._get_capture(org_id, capture_id)
+        serializer = CaptureUpdateSerializer(
+            capture,
+            data=request.data,
+            partial=True,
         )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
         return Response(CaptureSerializer(capture).data)
 
     @transaction.atomic
@@ -1892,9 +2192,7 @@ class CaptureDetailView(APIView):
         from spray.models import Capture
 
         set_current_org_id(str(org_id))
-        capture = get_object_or_404(
-            Capture.objects.for_org(org_id), id=capture_id
-        )
+        capture = self._get_capture(org_id, capture_id)
         if capture.archived_at is not None:
             return Response(
                 {"detail": "already archived"},
@@ -2480,12 +2778,29 @@ class PesslOAuthStartView(APIView):
 
     @transaction.atomic
     def post(self, request, org_id):
-        from spray.connectors.sensors.pessl.oauth import build_authorize_url
+        from spray.connectors.base import ConnectorAuthError
+        from spray.connectors.sensors.pessl.oauth import (
+            build_authorize_url,
+            pessl_oauth_config_error,
+        )
 
         set_current_org_id(str(org_id))
+        config_error = pessl_oauth_config_error()
+        if config_error:
+            logger.warning("PesslOAuthStartView: %s", config_error)
+            return Response(
+                {"detail": config_error, "code": "pessl_not_configured"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         state_row = _new_oauth_state(org_id, vendor="pessl")
         try:
             url = build_authorize_url(state=state_row.state)
+        except ConnectorAuthError as exc:
+            logger.warning("PesslOAuthStartView: %s", exc)
+            return Response(
+                {"detail": str(exc), "code": "pessl_not_configured"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         except Exception as exc:  # noqa: BLE001
             logger.exception("PesslOAuthStartView: build_authorize_url failed")
             return Response(
@@ -2611,6 +2926,169 @@ class PesslOAuthCallbackView(APIView):
                 "created": created,
             }
         )
+
+
+def _resolve_org_weather_feed_station(org):
+    """Org-owned virtual station, else regional default for the org's AVA."""
+    from spray.models import WeatherStation
+
+    org_station = WeatherStation.objects.filter(org_id=org.id).first()
+    if org_station:
+        return org_station
+    return WeatherStation.objects.filter(
+        is_regional_default=True,
+        region=org.region,
+        provider="visual_crossing",
+    ).first()
+
+
+def _cached_weather_current(station):
+    """Most recent stored observation (fallback when live fetch fails)."""
+    from datetime import timedelta
+
+    from spray.models import WeatherObservation
+
+    obs = (
+        WeatherObservation.objects.filter(
+            station=station,
+            is_forecast=False,
+            temp_c__isnull=False,
+            ts__gte=timezone.now() - timedelta(hours=6),
+        )
+        .order_by("-ts")
+        .first()
+    )
+    if not obs:
+        return None
+    temp_c = float(obs.temp_c)
+    rh_pct = float(obs.rh_pct) if obs.rh_pct is not None else None
+    return {
+        "temp_c": round(temp_c, 1),
+        "temp_f": round(temp_c * 9.0 / 5.0 + 32.0, 1),
+        "rh_pct": round(rh_pct, 1) if rh_pct is not None else None,
+        "observed_at": obs.ts.isoformat(),
+        "source": "cached",
+    }
+
+
+def _weather_station_get_payload(org):
+    from spray.providers.visual_crossing import fetch_current_conditions
+    from spray.serializers import WeatherStationSerializer
+
+    from spray.models import WeatherStation
+
+    org_station = WeatherStation.objects.filter(org_id=org.id).first()
+    feed_station = _resolve_org_weather_feed_station(org)
+
+    results = (
+        [WeatherStationSerializer(org_station).data] if org_station else []
+    )
+
+    current = {
+        "available": False,
+        "temp_c": None,
+        "temp_f": None,
+        "rh_pct": None,
+        "observed_at": None,
+        "source": None,
+        "detail": None,
+    }
+    feed = None
+
+    if feed_station:
+        lon, lat = feed_station.location.x, feed_station.location.y
+        feed = {
+            "name": feed_station.name,
+            "coordinates": [lon, lat],
+            "provider": feed_station.provider,
+            "is_regional_default": bool(
+                feed_station.is_regional_default and not org_station
+            ),
+        }
+        live, err = fetch_current_conditions(lat, lon)
+        if live:
+            current = {**current, **live, "available": True}
+        else:
+            cached = _cached_weather_current(feed_station)
+            if cached:
+                current = {**current, **cached, "available": True}
+                current["detail"] = err
+            else:
+                current["detail"] = err or "No recent weather data."
+    else:
+        current["detail"] = "No weather feed configured for this region."
+
+    return {"results": results, "feed": feed, "current": current}
+
+
+class OrgWeatherStationView(APIView):
+    """GET/POST /api/spray/orgs/<org_id>/weather-station
+    Manage the organization's virtual (gridded) weather station.
+    """
+
+    permission_classes = [IsOrgMember]
+
+    def get(self, request, org_id):
+        from spray.models import Org
+
+        set_current_org_id(str(org_id))
+        org = get_object_or_404(Org, id=org_id)
+        return Response(_weather_station_get_payload(org))
+
+    @transaction.atomic
+    def post(self, request, org_id):
+        from spray.models import WeatherStation, Membership, Org
+        from spray.serializers import WeatherStationSerializer
+
+        org = get_object_or_404(Org, id=org_id)
+        if not request.user.memberships.filter(
+            org_id=org_id,
+            role__in=[Membership.Role.OWNER, Membership.Role.ADMIN],
+        ).exists():
+            return Response(
+                {"detail": "Only admins can set the weather location."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        set_current_org_id(str(org_id))
+        existing = WeatherStation.objects.filter(org_id=org_id).first()
+        serializer = (
+            WeatherStationSerializer(existing, data=request.data)
+            if existing
+            else WeatherStationSerializer(data=request.data)
+        )
+        serializer.is_valid(raise_exception=True)
+
+        validated = serializer.validated_data
+        if existing:
+            existing.provider = validated["provider"]
+            existing.station_id = validated["station_id"]
+            existing.name = validated.get("name", "")
+            existing.location = validated["location"]
+            existing.region = org.region
+            existing.settings = validated.get("settings", {})
+            existing.save(
+                update_fields=[
+                    "provider",
+                    "station_id",
+                    "name",
+                    "location",
+                    "region",
+                    "settings",
+                ]
+            )
+            station = existing
+        else:
+            station = WeatherStation.objects.create(
+                org_id=org_id,
+                provider=validated["provider"],
+                station_id=validated["station_id"],
+                name=validated.get("name", ""),
+                location=validated["location"],
+                region=org.region,
+                settings=validated.get("settings", {}),
+            )
+        return Response(WeatherStationSerializer(station).data)
 
 
 class IntegrationStationListView(APIView):
@@ -3095,11 +3573,10 @@ class DavisConnectView(APIView):
 class MeterConnectView(APIView):
     """POST /api/spray/orgs/<org_id>/integrations/meter/connect
 
-    Body: {token, label?}.
-    Validates via METER /devices/ smoke call before saving. Generates
-    a per-connection webhook_secret and returns it ONCE (the user pastes
-    it into METER ZENTRA Cloud's Push setup). The secret is encrypted
-    alongside the bearer token.
+    Body: {token, device_sn, label?}.
+    Validates via METER ``GET /get_readings/`` (v4 has no device-list API).
+    Registers the device as a SensorStation so the Push webhook can
+    accept data. Generates a per-connection webhook_secret returned ONCE.
     """
 
     permission_classes = [IsOrgAdmin]
@@ -3115,40 +3592,57 @@ class MeterConnectView(APIView):
         from spray.connectors.sensors.meter.webhook import (
             generate_webhook_secret,
         )
-        from spray.models import IntegrationConnection
+        from spray.models import IntegrationConnection, SensorStation
 
         token = (request.data.get("token") or "").strip()
+        device_sn = (request.data.get("device_sn") or "").strip()
         if not token:
             return Response(
                 {"detail": "token required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if not device_sn:
+            return Response(
+                {
+                    "detail": (
+                        "device_sn required — copy the serial from "
+                        "ZENTRA Cloud → Devices (e.g. z6-12345)"
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         try:
             client = MeterClient(creds={"token": token, "webhook_secret": ""})
-            devices = client.list_devices()
+            payload = client.validate_token(device_sn)
         except ConnectorAuthError as exc:
             return Response(
                 {"detail": f"METER rejected the token: {exc}"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        except (ConnectorRateLimitError, ConnectorResponseError) as exc:
+        except ConnectorRateLimitError as exc:
             return Response(
-                {"detail": f"METER unavailable: {exc}"},
+                {"detail": f"METER rate-limited: {exc}"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except ConnectorResponseError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         webhook_secret = generate_webhook_secret()
         import hashlib
-        account_id = ""
-        if devices and isinstance(devices[0], dict):
-            account_id = str(
-                devices[0].get("account_id")
-                or devices[0].get("organization_id")
-                or ""
+
+        account_id = hashlib.sha256(token.encode()).hexdigest()[:16]
+        device_meta = payload.get("device") if isinstance(payload, dict) else {}
+        station_name = device_sn
+        if isinstance(device_meta, dict):
+            station_name = str(
+                device_meta.get("device_name")
+                or device_meta.get("name")
+                or device_sn
             )
-        if not account_id:
-            account_id = hashlib.sha256(token.encode()).hexdigest()[:16]
 
         ciphertext = creds.encrypt_token_blob(
             {"token": token, "webhook_secret": webhook_secret}
@@ -3167,6 +3661,11 @@ class MeterConnectView(APIView):
                     "status": IntegrationConnection.Status.ACTIVE,
                     "disconnected_at": None,
                 },
+            )
+            SensorStation.objects.unscoped().update_or_create(
+                connection=conn,
+                vendor_station_id=device_sn,
+                defaults={"name": station_name},
             )
 
         try:

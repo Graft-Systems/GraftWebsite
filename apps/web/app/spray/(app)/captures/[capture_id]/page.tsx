@@ -1,5 +1,5 @@
 /**
- * Capture detail — metadata, preview, archive (M1-09 pilot shell).
+ * Capture detail — image preview, notes, metadata (M1-09 pilot shell).
  */
 "use client";
 
@@ -19,9 +19,20 @@ type CaptureDetail = {
   taken_at: string | null;
   uploaded_at: string | null;
   status: string;
+  notes: string;
   download_url: string | null;
   created_at: string;
 };
+
+function formatCaptureWhen(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
 
 export default function CaptureDetailPage() {
   const params = useParams<{ capture_id: string }>();
@@ -29,8 +40,11 @@ export default function CaptureDetailPage() {
   const router = useRouter();
   const { org, loading: orgLoading, authedFetch } = useActiveOrg();
   const [capture, setCapture] = useState<CaptureDetail | null>(null);
+  const [notesDraft, setNotesDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notesError, setNotesError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [savingNotes, setSavingNotes] = useState(false);
 
   const load = useCallback(async () => {
     if (!org || !captureId) return;
@@ -43,12 +57,41 @@ export default function CaptureDetailPage() {
       setCapture(null);
       return;
     }
-    setCapture((await res.json()) as CaptureDetail);
+    const data = (await res.json()) as CaptureDetail;
+    setCapture(data);
+    setNotesDraft(data.notes ?? "");
   }, [authedFetch, org, captureId]);
 
   useEffect(() => {
     if (!orgLoading && org) void load();
   }, [org, orgLoading, load]);
+
+  async function saveNotes() {
+    if (!org || !captureId || !capture) return;
+    const trimmed = notesDraft.trim();
+    if (trimmed === (capture.notes ?? "").trim()) return;
+    setSavingNotes(true);
+    setNotesError(null);
+    try {
+      const res = await authedFetch(
+        `/api/spray/orgs/${org.id}/captures/${captureId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ notes: trimmed }),
+        },
+      );
+      if (!res.ok) {
+        setNotesError(`Could not save notes (${res.status}).`);
+        return;
+      }
+      const updated = (await res.json()) as CaptureDetail;
+      setCapture(updated);
+      setNotesDraft(updated.notes ?? "");
+    } finally {
+      setSavingNotes(false);
+    }
+  }
 
   async function archive() {
     if (!org || !captureId) return;
@@ -68,6 +111,9 @@ export default function CaptureDetailPage() {
       setBusy(false);
     }
   }
+
+  const notesDirty =
+    capture != null && notesDraft.trim() !== (capture.notes ?? "").trim();
 
   return (
     <div className="mx-auto max-w-4xl pb-24 md:pb-0">
@@ -93,7 +139,7 @@ export default function CaptureDetailPage() {
       )}
 
       {capture && (
-        <article className="mt-6 space-y-4">
+        <article className="mt-6 space-y-6">
           <header>
             <h1 className="font-display text-2xl">Capture</h1>
             <p className="mt-1 text-sm text-foreground/60">
@@ -103,48 +149,77 @@ export default function CaptureDetailPage() {
             </p>
           </header>
 
-          <dl className="grid gap-2 text-sm text-foreground/70 md:grid-cols-2">
-            <div>
-              <dt className="text-foreground/50">Status</dt>
-              <dd>{capture.status}</dd>
-            </div>
-            <div>
-              <dt className="text-foreground/50">Kind</dt>
-              <dd>{capture.kind}</dd>
-            </div>
-            <div>
-              <dt className="text-foreground/50">Uploaded</dt>
-              <dd>{capture.uploaded_at ?? capture.created_at}</dd>
-            </div>
-            <div>
-              <dt className="text-foreground/50">Analysis</dt>
-              <dd>
-                {capture.status === "uploaded"
-                  ? "Photo received. Analysis results appear in your block's recommendation once processed."
-                  : "Awaiting upload — no analysis available yet."}
-              </dd>
-            </div>
-          </dl>
-
+          <p className="text-sm text-foreground/65">
+            {capture.status === "uploaded"
+              ? "Photo received. Analysis results appear in your block recommendation once processed."
+              : "Awaiting upload — no analysis available yet."}
+          </p>
           {capture.download_url ? (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
               src={capture.download_url}
               alt=""
-              className="mt-4 max-h-[70vh] w-auto rounded-md border border-border/40"
+              className="max-h-[70vh] w-auto rounded-md border border-border/40"
             />
           ) : (
-            <p className="mt-4 text-sm text-foreground/50">No preview URL for this status.</p>
+            <p className="text-sm text-foreground/50">No preview URL for this status.</p>
           )}
 
-          <div className="flex flex-wrap gap-3">
+          <section className="rounded-xl border border-border/40 bg-background/20 p-4">
+            <h2 className="text-sm font-semibold text-foreground/80">Notes</h2>
+            <p className="mt-1 text-xs text-foreground/50">
+              Field observations for this capture — visible to your team.
+            </p>
+            <textarea
+              value={notesDraft}
+              onChange={(e) => setNotesDraft(e.target.value)}
+              placeholder="e.g. powdery mildew on upper canopy, north-facing rows…"
+              className="mt-3 min-h-28 w-full rounded-md border border-border/40 bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-foreground/35"
+            />
+            {notesError && (
+              <p className="mt-2 text-xs text-red-300">{notesError}</p>
+            )}
+            <div className="mt-3 flex flex-wrap gap-3">
+              <button
+                type="button"
+                disabled={savingNotes || !notesDirty}
+                onClick={() => void saveNotes()}
+                className="rounded-md bg-amber px-4 py-2 frame text-xs font-semibold text-background transition-colors hover:bg-amber/90 disabled:opacity-40"
+              >
+                {savingNotes ? "Saving…" : "Save notes"}
+              </button>
+            </div>
+          </section>
+
+          <dl className="grid gap-4 border-t border-border/30 pt-4 text-sm text-foreground/70 md:grid-cols-2">
+            <div>
+              <dt className="text-foreground/50">Status</dt>
+              <dd className="mt-0.5 capitalize">{capture.status}</dd>
+            </div>
+            <div>
+              <dt className="text-foreground/50">Kind</dt>
+              <dd className="mt-0.5 capitalize">{capture.kind}</dd>
+            </div>
+            <div>
+              <dt className="text-foreground/50">Uploaded</dt>
+              <dd className="mt-0.5">{formatCaptureWhen(capture.uploaded_at ?? capture.created_at)}</dd>
+            </div>
+            {capture.taken_at && (
+              <div>
+                <dt className="text-foreground/50">Taken</dt>
+                <dd className="mt-0.5">{formatCaptureWhen(capture.taken_at)}</dd>
+              </div>
+            )}
+          </dl>
+
+          <div className="flex flex-wrap gap-3 border-t border-border/30 pt-4">
             <button
               type="button"
               disabled={busy}
               onClick={() => void archive()}
               className="rounded-md border border-red-500/40 px-4 py-2 frame text-xs font-semibold text-red-300 transition-colors hover:border-red-500 disabled:opacity-40"
             >
-              Archive
+              Delete
             </button>
           </div>
         </article>

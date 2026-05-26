@@ -635,6 +635,7 @@ class Capture(models.Model):
     status = models.CharField(
         max_length=10, choices=Status.choices, default=Status.PENDING
     )
+    notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     archived_at = models.DateTimeField(null=True, blank=True)
 
@@ -648,6 +649,54 @@ class Capture(models.Model):
 
     def __str__(self) -> str:
         return f"{self.kind} {self.s3_key} ({self.status})"
+
+
+class Vine(models.Model):
+    """A single grapevine position inside a block footprint.
+
+    Used for vine-level insights: map nodes per row, status coloring, and
+    future capture / sensor association.
+    """
+
+    class Status(models.TextChoices):
+        OK = "ok", "OK"
+        WATCH = "watch", "Watch"
+        ALERT = "alert", "Alert"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    block = models.ForeignKey(Block, on_delete=models.CASCADE, related_name="vines")
+    location = gis_models.PointField(srid=4326)
+    row_index = models.PositiveIntegerField()
+    vine_index = models.PositiveIntegerField(
+        help_text="Position along the row (1 = headland start)."
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=Status.choices,
+        default=Status.OK,
+    )
+    label = models.CharField(max_length=80, blank=True)
+    settings = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
+
+    objects = OrgScopedManager(via="block__vineyard__org_id")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["block", "row_index", "vine_index"],
+                condition=models.Q(archived_at__isnull=True),
+                name="unique_active_vine_position_per_block",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["block", "row_index", "vine_index"]),
+            models.Index(fields=["block", "archived_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"Row {self.row_index} · Vine {self.vine_index} ({self.status})"
 
 
 # =====================================================================

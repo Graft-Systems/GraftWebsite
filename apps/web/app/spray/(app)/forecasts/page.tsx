@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useEffect, useMemo, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { ForecastsBlockPanel } from "@/components/spray/ForecastsBlockPanel";
 import { useSprayDashboard, type DashboardBlock } from "@/lib/sprayApi";
+import { ChevronRight, LayoutGrid, List } from "lucide-react";
 
 const EMPTY_DASHBOARD_BLOCKS: DashboardBlock[] = [];
 
@@ -18,40 +19,44 @@ function ForecastsPageFallback() {
 
 function ForecastsPageContent() {
   const { summary, loading, error, reload, authedFetch } = useSprayDashboard();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  
   const blocks = useMemo(
     () => summary?.blocks ?? EMPTY_DASHBOARD_BLOCKS,
     [summary?.blocks],
   );
-  const searchParams = useSearchParams();
-  const focusBlock = searchParams.get("block");
-  const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
 
-  useEffect(() => {
-    if (!focusBlock) return;
-    const el = sectionRefs.current[focusBlock];
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }, [focusBlock, blocks]);
+  const activeBlockId = searchParams.get("block") || (blocks.length > 0 ? blocks[0].id : null);
+  const activeBlock = useMemo(
+    () => blocks.find((b) => b.id === activeBlockId) || blocks[0],
+    [blocks, activeBlockId]
+  );
+
+  const setBlock = (id: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("block", id);
+    router.replace(`/spray/forecasts?${params.toString()}`);
+  };
 
   return (
     <div className="mx-auto max-w-6xl pb-24 md:pb-0">
-      <header className="flex flex-wrap items-start justify-between gap-4">
+      <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="font-display text-3xl">Forecasts</h1>
-          <p className="mt-2 max-w-2xl text-sm text-foreground/60">
-            Mildew pressure timeline and a seven-day spray window from live
-            weather. Use it to line up sprays when the index is climbing and
-            the day is calm and dry enough.
+          <p className="mt-1 text-sm text-foreground/60">
+            Weather and disease pressure outlook for your blocks.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={reload}
-          className="rounded-md border border-border/40 px-3 py-2 frame text-xs font-semibold text-foreground/80 hover:text-foreground"
-        >
-          Refresh
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={reload}
+            className="rounded-md border border-border/40 px-3 py-1.5 frame text-xs font-semibold text-foreground/80 hover:text-foreground"
+          >
+            Refresh
+          </button>
+        </div>
       </header>
 
       {error && (
@@ -59,27 +64,62 @@ function ForecastsPageContent() {
           {error}
         </p>
       )}
+
       {loading && !error && (
-        <div className="mt-8 h-48 animate-pulse rounded-md border border-border/40 bg-foreground/5" />
-      )}
-      {!loading && blocks.length === 0 && (
-        <EmptyForecastState />
+        <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-4">
+          <div className="lg:col-span-1 space-y-2">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-12 animate-pulse rounded-md bg-foreground/5" />
+            ))}
+          </div>
+          <div className="lg:col-span-3 h-96 animate-pulse rounded-md border border-border/40 bg-foreground/5" />
+        </div>
       )}
 
-      {blocks.length > 0 && summary?.org?.id && (
-        <div className="mt-8 space-y-4">
-          {blocks.map((block) => (
-            <ForecastsBlockPanel
-              key={block.id}
-              ref={(el) => {
-                sectionRefs.current[block.id] = el;
-              }}
-              orgId={summary.org.id}
-              block={block}
-              spraySettings={sprayProgram(summary.org.settings)}
-              authedFetch={authedFetch}
-            />
-          ))}
+      {!loading && blocks.length === 0 && <EmptyForecastState />}
+
+      {!loading && blocks.length > 0 && summary?.org?.id && (
+        <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-4">
+          {/* Sidebar / Block Selector */}
+          <aside className="lg:col-span-1">
+            <h2 className="frame mb-3 text-[0.65rem] font-bold uppercase tracking-widest text-foreground/40">
+              Select Block
+            </h2>
+            <nav className="flex flex-col gap-1">
+              {blocks.map((b) => (
+                <button
+                  key={b.id}
+                  onClick={() => setBlock(b.id)}
+                  className={`flex items-center justify-between rounded-md px-3 py-2.5 text-left transition-all ${
+                    activeBlockId === b.id
+                      ? "bg-amber/10 text-amber shadow-sm ring-1 ring-amber/30"
+                      : "text-foreground/70 hover:bg-foreground/5 hover:text-foreground"
+                  }`}
+                >
+                  <div className="overflow-hidden">
+                    <p className="truncate text-sm font-semibold">{b.name}</p>
+                    <p className="truncate text-[0.65rem] opacity-70">
+                      {b.vineyard_name}
+                    </p>
+                  </div>
+                  {activeBlockId === b.id && <ChevronRight className="h-4 w-4 shrink-0" />}
+                </button>
+              ))}
+            </nav>
+          </aside>
+
+          {/* Main Content Area */}
+          <main className="lg:col-span-3">
+            {activeBlock && (
+              <ForecastsBlockPanel
+                key={activeBlock.id}
+                orgId={summary.org.id}
+                block={activeBlock}
+                spraySettings={sprayProgram(summary.org.settings)}
+                authedFetch={authedFetch}
+              />
+            )}
+          </main>
         </div>
       )}
     </div>
@@ -123,18 +163,20 @@ function EmptyForecastState() {
         Draw vineyard blocks first. Forecasts appear once blocks have
         recommendations.
       </p>
-      <Link
-        href="/spray/dashboard"
-        className="mt-4 inline-flex rounded-md border border-border/40 px-4 py-2 frame text-xs font-semibold text-foreground/80 hover:text-foreground"
-      >
-        Go to Home
-      </Link>
-      <Link
-        href="/spray/vineyards"
-        className="mt-3 inline-flex rounded-md bg-amber px-4 py-2 frame text-xs font-semibold text-background hover:bg-amber/90"
-      >
-        Create blocks
-      </Link>
+      <div className="mt-6 flex items-center justify-center gap-3">
+        <Link
+          href="/spray/dashboard"
+          className="rounded-md border border-border/40 px-4 py-2 frame text-xs font-semibold text-foreground/80 hover:text-foreground"
+        >
+          Go to Home
+        </Link>
+        <Link
+          href="/spray/vineyards"
+          className="rounded-md bg-amber px-4 py-2 frame text-xs font-semibold text-background hover:bg-amber/90"
+        >
+          Create blocks
+        </Link>
+      </div>
     </div>
   );
 }

@@ -68,6 +68,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "api",
     "spray",
+    "crm",
 ]
 
 # DRF config for the Spray app. The existing `api` app uses plain Django
@@ -129,15 +130,20 @@ def _spray_integration_fernet_key() -> str:
 SPRAY_INTEGRATION_FERNET_KEY = _spray_integration_fernet_key()
 PESSL_CLIENT_ID = os.environ.get("PESSL_CLIENT_ID", "")
 PESSL_CLIENT_SECRET = os.environ.get("PESSL_CLIENT_SECRET", "")
-PESSL_REDIRECT_URI = os.environ.get(
-    "PESSL_REDIRECT_URI",
-    "https://api.graft-systems.app/api/spray/integrations/pessl/oauth/callback",
+_default_pessl_redirect = (
+    "http://127.0.0.1:8080/api/spray/integrations/pessl/oauth/callback"
+    if DEBUG
+    else "https://api.graft-systems.app/api/spray/integrations/pessl/oauth/callback"
 )
+PESSL_REDIRECT_URI = os.environ.get("PESSL_REDIRECT_URI", _default_pessl_redirect)
 PESSL_API_BASE = os.environ.get(
     "PESSL_API_BASE", "https://api.fieldclimate.com/v2"
 )
 # Frontend origin used for OAuth callback redirects (set in Render env).
-SPRAY_FRONTEND_BASE_URL = os.environ.get("SPRAY_FRONTEND_BASE_URL", "")
+SPRAY_FRONTEND_BASE_URL = os.environ.get(
+    "SPRAY_FRONTEND_BASE_URL",
+    "http://localhost:3000" if DEBUG else "",
+)
 # API origin surfaced in PR-E's METER webhook reveal flow so the user
 # can paste a complete webhook URL into METER ZENTRA Cloud.
 SPRAY_API_BASE_URL = os.environ.get(
@@ -170,10 +176,17 @@ LLM_BRIEF_TIMEOUT_SEC = int(os.environ.get("LLM_BRIEF_TIMEOUT_SEC", "10"))
 
 # M1-09: Imagery bucket (separate from M0-04's data-lake bucket so
 # retention rules + KMS-CMK swaps can diverge per spec §17.1).
-AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "")
-AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
+AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "testing" if DEBUG else "")
+AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "testing" if DEBUG else "")
 AWS_REGION = os.environ.get("AWS_REGION", "us-west-2")
 IMAGERY_BUCKET = os.environ.get("IMAGERY_BUCKET", "graft-spray-imagery-dev")
+
+# Local testing mode: save captures to local disk instead of S3.
+# Default to true in DEBUG if we don't have real keys.
+USE_LOCAL_STORAGE = _env_bool(
+    "USE_LOCAL_STORAGE",
+    DEBUG and (AWS_ACCESS_KEY_ID == "testing" or not AWS_ACCESS_KEY_ID),
+)
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
@@ -247,16 +260,41 @@ USE_TZ = True
 # Static files — WhiteNoise serves admin CSS/JS in production.
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
-STORAGES = {
-    "default": {
-        "BACKEND": "django.core.files.storage.FileSystemStorage",
-    },
-    "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-    },
-}
+
+USE_S3 = os.environ.get("USE_S3", "false").lower() == "true"
+
+if USE_S3:
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
+    AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID")
+    AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
+    AWS_STORAGE_BUCKET_NAME = os.environ.get("AWS_STORAGE_BUCKET_NAME")
+    AWS_S3_REGION_NAME = os.environ.get("AWS_S3_REGION_NAME")
+    AWS_S3_CUSTOM_DOMAIN = os.environ.get("AWS_S3_CUSTOM_DOMAIN")
+    AWS_DEFAULT_ACL = None
+    AWS_S3_FILE_OVERWRITE = False
+    
+    if AWS_S3_CUSTOM_DOMAIN:
+        MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/"
+    else:
+        MEDIA_URL = f"https://{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/"
+else:
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
+    MEDIA_URL = "/media/"
+    MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
