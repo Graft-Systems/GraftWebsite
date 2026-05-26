@@ -212,6 +212,42 @@ export type SprayRecord = {
   archived_at: string | null;
 };
 
+export type WeatherStation = {
+  id: string;
+  provider: string;
+  station_id: string;
+  name: string;
+  location: { type: "Point"; coordinates: [number, number] };
+  is_regional_default: boolean;
+  region: string;
+  settings: Record<string, unknown>;
+  created_at: string;
+  last_pull_at: string | null;
+};
+
+export type WeatherFeedCurrent = {
+  available: boolean;
+  temp_c: number | null;
+  temp_f: number | null;
+  rh_pct: number | null;
+  observed_at: string | null;
+  source: "live" | "cached" | null;
+  detail: string | null;
+};
+
+export type WeatherFeedMeta = {
+  name: string;
+  coordinates: [number, number];
+  provider: string;
+  is_regional_default: boolean;
+};
+
+export type WeatherStationResponse = {
+  results: WeatherStation[];
+  feed: WeatherFeedMeta | null;
+  current: WeatherFeedCurrent;
+};
+
 export type ProgramSettings = {
   program_type: string;
   allowed_products: string;

@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Camera } from "lucide-react";
 import { formatPmiDayLabel } from "@/components/spray/PmiCharts";
+import { CaptureUploader } from "@/components/spray/CaptureUploader";
 import type { Verdict } from "@/components/spray/VerdictCard";
 import type {
   BlockSensorReadingsResponse,
@@ -468,6 +469,8 @@ export function BlockInsightPanel({
 }: Props) {
   const [readings, setReadings] = useState<BlockSensorReadingsResponse | null>(null);
   const [readingsErr, setReadingsErr] = useState<string | null>(null);
+  const [captures, setCaptures] = useState<import("@/components/spray/CaptureUploader").UploadedCapture[]>([]);
+  const [loadingCaptures, setLoadingCaptures] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [budbreakInput, setBudbreakInput] = useState("");
   const [saveErr, setSaveErr] = useState<string | null>(null);
@@ -478,6 +481,7 @@ export function BlockInsightPanel({
     if (blockId == null) {
       setReadings(null);
       setReadingsErr(null);
+      setCaptures([]);
       return;
     }
     let cancelled = false;
@@ -499,10 +503,26 @@ export function BlockInsightPanel({
       }
     }
     void load();
+    void loadCaptures();
     return () => {
       cancelled = true;
     };
   }, [orgId, blockId, authedFetch]);
+
+  async function loadCaptures() {
+    if (!blockId) return;
+    setLoadingCaptures(true);
+    try {
+      const res = await authedFetch(`/api/spray/orgs/${orgId}/captures?block_id=${blockId}&limit=6`);
+      if (res.ok) {
+        setCaptures(await res.json());
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setLoadingCaptures(false);
+    }
+  }
 
   const chron = useMemo(() => {
     if (!readings?.readings.length) return [];
@@ -714,6 +734,61 @@ export function BlockInsightPanel({
             <TempRhSparkChart points={chron} />
           </>
         )}
+      </section>
+
+      <section className="rounded-lg border border-border/35 bg-background/45 p-4 shadow-sm">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="font-display text-base text-foreground/90">Field captures</h3>
+          {captures.length > 0 && (
+            <Link
+              href="/spray/captures"
+              className="text-[0.65rem] font-semibold text-amber hover:underline"
+            >
+              View gallery
+            </Link>
+          )}
+        </div>
+
+        {captures.length > 0 && (
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            {captures.map((c) => (
+              <Link
+                key={c.id}
+                href={`/spray/captures/${c.id}`}
+                className="aspect-square overflow-hidden rounded-md border border-border/30 bg-background/40 transition-colors hover:border-amber/50"
+              >
+                {c.download_url ? (
+                  <img
+                    src={c.download_url}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-[0.6rem] text-foreground/40">
+                    {c.status}
+                  </div>
+                )}
+              </Link>
+            ))}
+          </div>
+        )}
+
+        {loadingCaptures && captures.length === 0 && (
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="aspect-square animate-pulse rounded-md bg-foreground/5" />
+            ))}
+          </div>
+        )}
+
+        <CaptureUploader
+          orgId={orgId}
+          blockId={block.id}
+          onCaptureUploaded={() => {
+            void loadCaptures();
+            onDashboardReload?.();
+          }}
+        />
       </section>
 
       <dialog

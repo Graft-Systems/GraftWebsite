@@ -37,6 +37,29 @@ from spray.connectors.base import (
 logger = logging.getLogger(__name__)
 
 
+def pessl_oauth_configured() -> bool:
+    """True when partner-app client credentials are present."""
+    cid = getattr(settings, "PESSL_CLIENT_ID", "") or ""
+    cs = getattr(settings, "PESSL_CLIENT_SECRET", "") or ""
+    return bool(cid.strip() and cs.strip())
+
+
+def pessl_oauth_config_error() -> str | None:
+    """Human-readable hint when OAuth cannot start; None when configured."""
+    missing: list[str] = []
+    if not (getattr(settings, "PESSL_CLIENT_ID", "") or "").strip():
+        missing.append("PESSL_CLIENT_ID")
+    if not (getattr(settings, "PESSL_CLIENT_SECRET", "") or "").strip():
+        missing.append("PESSL_CLIENT_SECRET")
+    if not missing:
+        return None
+    return (
+        f"Pessl OAuth is not configured ({', '.join(missing)} unset). "
+        "Register a FieldClimate partner app and set these in services/api/.env "
+        "(see services/api/.env.example). Restart the API after updating."
+    )
+
+
 def _api_base() -> str:
     return getattr(settings, "PESSL_API_BASE", "https://api.fieldclimate.com/v2")
 

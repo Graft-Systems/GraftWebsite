@@ -582,7 +582,10 @@ export function ToolUploadSection() {
   } = useTool();
 
   return (
-    <section className="rounded-sm border border-border/60 bg-surface/40 p-6 sm:p-8">
+    <section
+      id="yield-upload"
+      className="scroll-mt-24 rounded-sm border border-border/60 bg-surface/40 p-6 sm:p-8"
+    >
       <input
         ref={inputRef}
         type="file"

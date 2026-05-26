@@ -81,9 +81,9 @@ export function AboutOrigin() {
           <div className="mt-10 space-y-6 text-base leading-relaxed text-foreground/80 sm:text-lg">
             {[
               "Graft started in an attic in Ann Arbor, after a conversation in a Bordeaux tasting room. Benson had been sitting with Aymeric De Gironde, head winemaker at Chateau Troplong Mondot, and walked away sure of one thing: this craft was too old, too careful, and too exposed to be running on pre-harvest guesswork.",
-              "A few months later, he and Jacob started prototyping. Michigan Build & Launch gave the idea a deadline. Market research gave it a focus: the yield estimation problem kept coming up in every grower conversation across Napa and Sonoma.",
-              "The solution took shape fast. On a limited dataset, the model hit 99% accuracy in a cluster-level test. We don't trust that number yet — we trust the trajectory. We're collecting our own data at real wineries, on the most popular clones of the most popular varietals, so the tool is defensible under commercial use.",
-              "Graft isn't a winemaker's assistant. It doesn't touch the creative work. It just makes the logistics — barrel orders, labor plans, distribution promises — something you can plan for instead of around.",
+              "A few months later, he and Jacob started prototyping. Michigan Build & Launch gave the idea a deadline. Market research gave it a focus: the Powdery Mildew problem kept coming up in every grower conversation across Burgundy, Bordeaux, Napa, and Sonoma.",
+              "The solution took shape fast, with over 16 wineries validating a need for plot specific spray forecasts that could replace costly fixed calendar sprays. Soon after, we were invited to the America 250 Startup Competition and won $25,000 in front of a legendary panel of judges like Sarah Friar (CFO, OpenAI), Chris Larsen (Chairman, Ripple), Tim Draper (Founder, Draper Associates), and Rosie Rios (Former U.S. Treasurer).",
+              "Graft isn't a winemaker's assistant. It doesn't touch the creative work. It just makes the logistics, like not knowing when you should spray your crops, something you can anticipate.",
             ].map((para, i) => (
               <motion.p
                 key={i}

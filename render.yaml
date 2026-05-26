@@ -8,7 +8,7 @@ services:
     healthCheckPath: /
     buildCommand: >-
       pip install -r requirements.txt &&
-      python -c "import torch; torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14', verbose=False)"
+      python -c "import torch; torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14', verbose=False, trust_repo=True, skip_validation=True)"
     startCommand: >-
       bash -lc "python manage.py migrate --noinput &&
       python manage.py collectstatic --noinput &&

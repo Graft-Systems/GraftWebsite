@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import path, include
 
 from . import views
 from . import drf_views
@@ -26,6 +26,11 @@ urlpatterns = [
         "news/articles/manage/<uuid:article_id>",
         newsroom_views.NewsArticleManageDetailView.as_view(),
         name="news_articles_manage_detail",
+    ),
+    path(
+        "news/images/upload",
+        newsroom_views.NewsImageUploadView.as_view(),
+        name="news_images_upload",
     ),
     path(
         "news/articles/<slug:slug>",
@@ -59,4 +64,6 @@ urlpatterns = [
 
     # Protected filler page — frontend can redirect users here after auth.
     path("toolsdashboard", drf_views.ToolsDashboardView.as_view(), name="toolsdashboard"),
+    
+    path("crm/", include("crm.urls")),
 ]

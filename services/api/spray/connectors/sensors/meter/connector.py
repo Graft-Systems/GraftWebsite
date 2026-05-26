@@ -31,29 +31,23 @@ class MeterConnector(SensorConnector):
     VENDOR_SLUG = "meter"
 
     def list_stations(self, connection) -> list[VendorStation]:
-        client = self._client_for(connection)
-        try:
-            devices = client.list_devices()
-        except ConnectorAuthError:
-            self._mark_needs_reauth(connection)
-            raise
+        # ZENTRA v4 has no device-list API; stations are registered at
+        # connect time (device_sn) or via future manual add flows.
+        from spray.models import SensorStation
 
-        out: list[VendorStation] = []
-        for d in devices:
-            if not isinstance(d, dict):
-                continue
-            sn = str(d.get("device_sn") or d.get("sn") or "")
-            if not sn:
-                continue
-            out.append(
-                VendorStation(
-                    vendor_station_id=sn,
-                    name=str(d.get("device_name") or d.get("name") or sn),
-                    lat=_safe_float(d.get("latitude")),
-                    lon=_safe_float(d.get("longitude")),
-                )
+        rows = SensorStation.objects.for_org(connection.org_id).filter(
+            connection=connection,
+            archived_at__isnull=True,
+        )
+        return [
+            VendorStation(
+                vendor_station_id=row.vendor_station_id,
+                name=row.name or row.vendor_station_id,
+                lat=float(row.lat) if row.lat is not None else None,
+                lon=float(row.lon) if row.lon is not None else None,
             )
-        return out
+            for row in rows
+        ]
 
     def fetch_readings(self, connection, station, since: datetime) -> list:
         from spray.models import SensorReading

@@ -2,7 +2,7 @@
 
 Two distinct payload shapes from METER ZENTRA Cloud v4:
 
-POLL response (`/api/v4/readings/?device_sn=...`):
+POLL response (`/api/v4/get_readings/?device_sn=...`):
 
     {
       "device": {"device_sn": "z6-12345", "model": "ATMOS-41"},
@@ -117,7 +117,7 @@ def _parse_ts(raw: Any) -> datetime | None:
 
 
 def normalize_poll_response(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """METER `/api/v4/readings/?device_sn=...` → canonical rows."""
+    """METER `/api/v4/get_readings/?device_sn=...` → canonical rows."""
     data_block = payload.get("data") or {}
     if not isinstance(data_block, dict):
         return []

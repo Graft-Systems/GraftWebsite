@@ -80,42 +80,68 @@ export function CaptureUploader({ orgId, blockId, onCaptureUploaded }: Props) {
       }
     );
     if (!initRes.ok) {
-      update({ state: "error", error: `init failed (${initRes.status})` });
+      const errJson = await initRes.json().catch(() => ({}));
+      update({
+        state: "error",
+        error: `init failed: ${errJson.detail || initRes.status}`,
+      });
       return;
     }
     const { capture, upload } = await initRes.json();
 
     update({ state: "putting" });
     const fd = new FormData();
-    for (const [k, v] of Object.entries(upload.fields)) fd.append(k, v as string);
+    // S3 requires the file field to be LAST in the form data
+    for (const [k, v] of Object.entries(upload.fields)) {
+      fd.append(k, v as string);
+    }
     fd.append("file", file);
 
-    const putRes = await new Promise<{ ok: boolean; status: number }>((resolve) => {
-      const xhr = new XMLHttpRequest();
-      xhr.upload.addEventListener("progress", (e) => {
-        if (e.lengthComputable) {
-          update({ progress: Math.round((e.loaded / e.total) * 100) });
-        }
-      });
-      xhr.addEventListener("load", () =>
-        resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status })
-      );
-      xhr.addEventListener("error", () => resolve({ ok: false, status: 0 }));
-      xhr.open("POST", upload.url);
-      xhr.send(fd);
-    });
+    const putRes = await new Promise<{ ok: boolean; status: number; detail?: string }>(
+      (resolve) => {
+        const xhr = new XMLHttpRequest();
+        xhr.upload.addEventListener("progress", (e) => {
+          if (e.lengthComputable) {
+            update({ progress: Math.round((e.loaded / e.total) * 100) });
+          }
+        });
+        xhr.addEventListener("load", () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve({ ok: true, status: xhr.status });
+          } else {
+            let detail = "";
+            try {
+              // Try to parse error from local_upload or S3
+              detail = xhr.responseText.slice(0, 100);
+            } catch {
+              /* ignore */
+            }
+            resolve({ ok: false, status: xhr.status, detail });
+          }
+        });
+        xhr.addEventListener("error", () => resolve({ ok: false, status: 0 }));
+        xhr.open("POST", upload.url);
+        xhr.send(fd);
+      },
+    );
     if (!putRes.ok) {
-      update({ state: "error", error: `S3 PUT failed (${putRes.status})` });
+      update({
+        state: "error",
+        error: `upload failed (${putRes.status}) ${putRes.detail || ""}`,
+      });
       return;
     }
 
     update({ state: "finalizing", progress: 100 });
-    const finRes = await authedFetch(
-      `/api/spray/orgs/${orgId}/captures/${capture.id}/finalize`,
-      { method: "POST" }
-    );
+    const finRes = await authedFetch(`/api/spray/orgs/${orgId}/captures/${capture.id}/finalize`, {
+      method: "POST",
+    });
     if (!finRes.ok) {
-      update({ state: "error", error: `finalize failed (${finRes.status})` });
+      const errJson = await finRes.json().catch(() => ({}));
+      update({
+        state: "error",
+        error: `finalize failed: ${errJson.detail || finRes.status}`,
+      });
       return;
     }
     const final: UploadedCapture = await finRes.json();

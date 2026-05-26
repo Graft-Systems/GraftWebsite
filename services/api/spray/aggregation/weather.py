@@ -58,16 +58,16 @@ def _regional_weather_observations(
     valid_from: datetime,
     valid_to: datetime,
 ) -> Iterable[WeatherObservation]:
-    """Return observations for *all* regional-default stations in the block's region.
+    """Return observations for regional-default stations OR org-specific stations.
 
-    Migrations seed `vc-region-<region>` defaults; tests and providers may add
-    additional defaults (e.g. `napa-default`). Using only `.first()` hid
-    observations attached to a non-first station.
+    Migrations seed `vc-region-<region>` defaults; user-defined virtual stations
+    carry the block's `org_id`. Both are used as evidence for fusion.
     """
+    from django.db.models import Q
     station_ids = list(
         WeatherStation.objects.filter(
-            is_regional_default=True,
-            region=block.vineyard.region,
+            Q(is_regional_default=True, region=block.vineyard.region) |
+            Q(org_id=block.vineyard.org_id)
         ).values_list("pk", flat=True)
     )
     if not station_ids:
@@ -90,12 +90,17 @@ def _regional_weather_evidence(
 ) -> list[EvidenceObservation]:
     evidence: list[EvidenceObservation] = []
     for row in _regional_weather_observations(block, valid_from, valid_to):
+        # Org-owned virtual stations are prioritized over regional defaults
+        # by assigning them higher quality (0.92 vs 0.82).
+        base_quality = 0.92 if row.station.org_id else 0.82
+        quality = 0.72 if row.is_forecast else base_quality
+
         evidence.append(
             EvidenceObservation(
                 ts=row.ts,
                 source=f"{row.station.provider}:{row.station.station_id}",
                 source_kind="forecast" if row.is_forecast else "regional_station",
-                quality=0.72 if row.is_forecast else 0.82,
+                quality=quality,
                 is_forecast=row.is_forecast,
                 temp_c=_float_or_none(row.temp_c),
                 rh_pct=_float_or_none(row.rh_pct),

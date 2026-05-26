@@ -1,7 +1,4 @@
-from __future__ import annotations
-
 import uuid
-
 from django.db import models
 from django.utils import timezone
 from django.utils.text import slugify
@@ -15,11 +12,10 @@ class ContactSubmission(models.Model):
         SKIPPED = "skipped", "Skipped (no API key)"
 
     name = models.CharField(max_length=200)
-    email = models.EmailField(max_length=254)
+    email = models.EmailField()
     message = models.TextField(max_length=5000)
     vineyard_size_acres = models.PositiveIntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-
     email_status = models.CharField(
         max_length=16,
         choices=EmailStatus.choices,
@@ -32,20 +28,20 @@ class ContactSubmission(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self) -> str:
-        return f"{self.name} <{self.email}> — {self.created_at:%Y-%m-%d %H:%M}"
+        return f"Submission from {self.name} ({self.email})"
 
 
 class WaitlistEntry(models.Model):
-    email = models.EmailField(max_length=254, unique=True)
+    email = models.EmailField(unique=True)
     source = models.CharField(max_length=64, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ["-created_at"]
         verbose_name_plural = "Waitlist entries"
+        ordering = ["-created_at"]
 
     def __str__(self) -> str:
-        return f"{self.email} — {self.created_at:%Y-%m-%d %H:%M}"
+        return self.email
 
 
 class PredictionBatch(models.Model):
@@ -55,9 +51,6 @@ class PredictionBatch(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
-
-    def __str__(self) -> str:
-        return f"Batch {self.id} — {self.processed_count} items — {self.created_at:%Y-%m-%d %H:%M}"
 
 
 class PredictionResult(models.Model):
@@ -99,22 +92,14 @@ class NewsroomAccess(models.Model):
         "spray.User",
         on_delete=models.SET_NULL,
         null=True,
-        blank=True,
         related_name="newsroom_grants_given",
+        blank=True,
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         verbose_name_plural = "Newsroom access grants"
-
-    def __str__(self) -> str:
-        flags = []
-        if self.can_publish:
-            flags.append("publish")
-        if self.can_manage_permissions:
-            flags.append("manage")
-        return f"{self.user.email} ({', '.join(flags) or 'none'})"
 
 
 class NewsArticle(models.Model):
@@ -172,3 +157,17 @@ class NewsArticle(models.Model):
             if exclude_id is not None:
                 qs = qs.exclude(id=exclude_id)
         return candidate
+
+
+class NewsImage(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    image = models.ImageField(upload_to="news_uploads/%Y/%m/%d")
+    uploaded_by = models.ForeignKey(
+        "spray.User",
+        on_delete=models.PROTECT,
+        related_name="uploaded_news_images",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return f"NewsImage {self.id}"

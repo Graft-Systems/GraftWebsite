@@ -94,25 +94,69 @@ def test_davis_connect_missing_fields_400(auth_client, make_org, make_membership
 def test_meter_connect_returns_one_time_secret(
     auth_client, make_org, make_membership
 ):
+    from spray.models import SensorStation
+
     client, _, org = _setup_admin(auth_client, make_org, make_membership)
     responses.add(
         responses.GET,
-        f"{METER_BASE}/devices/",
-        json={"devices": [{"device_sn": "z6-1", "account_id": 99}]},
+        f"{METER_BASE}/get_readings/",
+        json={
+            "device": {"device_sn": "z6-1", "device_name": "North block"},
+            "data": {},
+        },
         status=200,
     )
     r = client.post(
         f"/api/spray/orgs/{org.id}/integrations/meter/connect",
-        {"token": "T"},
+        {"token": "T", "device_sn": "z6-1"},
         format="json",
     )
     assert r.status_code in (200, 201)
     body = r.json()
     assert "webhook_secret" in body
     assert "webhook_url" in body
+    assert SensorStation.objects.for_org(org).filter(
+        vendor_station_id="z6-1"
+    ).exists()
     # Subsequent reads of /integrations should NOT include the secret.
     list_r = client.get(f"/api/spray/orgs/{org.id}/integrations")
     list_body = list_r.json()
     serialized = list_body["results"][0]
     assert "webhook_secret" not in serialized
     assert "token_ciphertext" not in serialized
+
+
+@override_settings(
+    SPRAY_INTEGRATION_FERNET_KEY=TEST_KEY,
+    METER_API_BASE=METER_BASE,
+)
+def test_meter_connect_requires_device_sn(auth_client, make_org, make_membership):
+    client, _, org = _setup_admin(auth_client, make_org, make_membership)
+    r = client.post(
+        f"/api/spray/orgs/{org.id}/integrations/meter/connect",
+        {"token": "T"},
+        format="json",
+    )
+    assert r.status_code == 400
+    assert "device_sn" in r.json()["detail"]
+
+
+@override_settings(
+    SPRAY_INTEGRATION_FERNET_KEY=TEST_KEY,
+    METER_API_BASE=METER_BASE,
+)
+@responses.activate
+def test_meter_connect_rejects_bad_token(auth_client, make_org, make_membership):
+    client, _, org = _setup_admin(auth_client, make_org, make_membership)
+    responses.add(
+        responses.GET,
+        f"{METER_BASE}/get_readings/",
+        json={"detail": "Invalid token."},
+        status=401,
+    )
+    r = client.post(
+        f"/api/spray/orgs/{org.id}/integrations/meter/connect",
+        {"token": "bad", "device_sn": "z6-1"},
+        format="json",
+    )
+    assert r.status_code == 400

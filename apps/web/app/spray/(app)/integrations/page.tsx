@@ -13,8 +13,15 @@ import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Plus, X } from "lucide-react";
-import { useActiveOrg } from "@/lib/sprayApi";
+import {
+  formatSprayHttpError,
+  useActiveOrg,
+  type WeatherFeedCurrent,
+  type WeatherFeedMeta,
+  type WeatherStation,
+} from "@/lib/sprayApi";
 import { PasteKeyDialog } from "@/components/spray/PasteKeyDialog";
+import { WeatherLocationDialog } from "@/components/spray/WeatherLocationDialog";
 import {
   getConnectionHealth,
   type ConnectionHealth,
@@ -66,10 +73,16 @@ function IntegrationsPageInner() {
   const orgId = org?.id ?? null;
   const orgName = org?.name ?? "";
   const [connections, setConnections] = useState<Connection[] | null>(null);
+  const [weatherStation, setWeatherStation] = useState<WeatherStation | null>(null);
+  const [weatherFeed, setWeatherFeed] = useState<WeatherFeedMeta | null>(null);
+  const [weatherCurrent, setWeatherCurrent] = useState<WeatherFeedCurrent | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showDavisDialog, setShowDavisDialog] = useState(false);
   const [showMeterDialog, setShowMeterDialog] = useState(false);
+  const [showWeatherDialog, setShowWeatherDialog] = useState(false);
   const [showAddConnectionMenu, setShowAddConnectionMenu] = useState(false);
   const [meterReveal, setMeterReveal] = useState<
     { secret: string; url: string } | null
@@ -95,6 +108,20 @@ function IntegrationsPageInner() {
         if (!r.ok) throw new Error("Integration status is unavailable right now. Try again shortly.");
         const data = (await r.json()) as { results: Connection[] };
         if (!cancelled) setConnections(data.results);
+
+        const wr = await authedFetch(`/api/spray/orgs/${orgId}/weather-station`);
+        if (wr.ok) {
+          const wdata = (await wr.json()) as {
+            results: WeatherStation[];
+            feed: WeatherFeedMeta | null;
+            current: WeatherFeedCurrent;
+          };
+          if (!cancelled) {
+            setWeatherStation(wdata.results[0] ?? null);
+            setWeatherFeed(wdata.feed ?? null);
+            setWeatherCurrent(wdata.current ?? null);
+          }
+        }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "load failed");
       }
@@ -191,6 +218,40 @@ function IntegrationsPageInner() {
     setShowMeterDialog(false);
     setMeterReveal({ secret: data.webhook_secret, url: data.webhook_url });
     await reloadConnections();
+  }
+
+  async function updateWeatherStation(values: { name: string; lat: number; lon: number }) {
+    if (!orgId) return;
+    const r = await authedFetch(
+      `/api/spray/orgs/${orgId}/weather-station`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "visual_crossing",
+          station_id: `vc-virtual-${orgId}`,
+          name: values.name,
+          location: { type: "Point", coordinates: [values.lon, values.lat] },
+        }),
+      },
+    );
+    if (!r.ok) {
+      throw new Error(await formatSprayHttpError(r));
+    }
+    const data = (await r.json()) as WeatherStation;
+    setWeatherStation(data);
+    setShowWeatherDialog(false);
+    const refresh = await authedFetch(`/api/spray/orgs/${orgId}/weather-station`);
+    if (refresh.ok) {
+      const wdata = (await refresh.json()) as {
+        results: WeatherStation[];
+        feed: WeatherFeedMeta | null;
+        current: WeatherFeedCurrent;
+      };
+      setWeatherStation(wdata.results[0] ?? data);
+      setWeatherFeed(wdata.feed ?? null);
+      setWeatherCurrent(wdata.current ?? null);
+    }
   }
 
   async function disconnect(connId: string) {
@@ -359,6 +420,84 @@ function IntegrationsPageInner() {
         )}
       </section>
 
+      <section className="mt-12">
+        <h2 className="frame text-xs font-semibold uppercase tracking-wider text-foreground/60">
+          Weather Feed
+        </h2>
+        <p className="mt-1 text-xs text-foreground/50">
+          Virtual station using gridded Visual Crossing data. Used as a fallback
+          when on-site sensors are unavailable.
+        </p>
+
+        <div className="mt-4 rounded-md border border-border/40 bg-background/40 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="font-display text-lg">
+                {weatherStation?.name ||
+                  weatherFeed?.name ||
+                  "Regional default"}
+              </p>
+              {weatherStation || weatherFeed ? (
+                <p className="mt-1 text-xs text-foreground/60">
+                  {(weatherStation?.location.coordinates[1] ??
+                    weatherFeed?.coordinates[1] ??
+                    0
+                  ).toFixed(4)}
+                  ,{" "}
+                  {(weatherStation?.location.coordinates[0] ??
+                    weatherFeed?.coordinates[0] ??
+                    0
+                  ).toFixed(4)}{" "}
+                  · Visual Crossing
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-foreground/60">
+                  Using default location for your region.
+                </p>
+              )}
+              {weatherCurrent?.available && weatherCurrent.temp_f != null ? (
+                <p className="mt-3 font-display text-2xl text-foreground">
+                  {Math.round(weatherCurrent.temp_f)}°F
+                  {weatherCurrent.rh_pct != null ? (
+                    <span className="ml-2 text-base font-normal text-foreground/55">
+                      {Math.round(weatherCurrent.rh_pct)}% RH
+                    </span>
+                  ) : null}
+                </p>
+              ) : weatherCurrent && !weatherCurrent.available ? (
+                <p className="mt-3 text-xs text-amber/90">
+                  {weatherCurrent.detail ?? "Could not load current conditions."}
+                </p>
+              ) : weatherCurrent === null ? (
+                <p className="mt-3 text-xs text-foreground/50">
+                  Loading current conditions…
+                </p>
+              ) : null}
+              {weatherCurrent?.available && weatherCurrent.observed_at ? (
+                <p className="mt-1 text-[0.65rem] text-foreground/45">
+                  As of{" "}
+                  {new Date(weatherCurrent.observed_at).toLocaleString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                    timeZoneName: "short",
+                  })}
+                  {weatherCurrent.source === "cached" ? " (cached)" : ""}
+                </p>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowWeatherDialog(true)}
+              className="rounded-md border border-amber/50 bg-amber/10 px-3 py-1 frame text-xs font-semibold text-amber transition-colors hover:bg-amber/20"
+            >
+              {weatherStation ? "Update location" : "Set custom location"}
+            </button>
+          </div>
+        </div>
+      </section>
+
       {showProviderHealth && providerHealth != null ? (
         <section className="mt-10 rounded-md border border-border/40 bg-background/30 p-5">
           <h2 className="frame text-xs font-semibold uppercase tracking-wider text-foreground/60">
@@ -477,11 +616,37 @@ function IntegrationsPageInner() {
         <PasteKeyDialog
           vendorLabel="METER ZENTRA"
           fields={[
-            { name: "token", label: "API Token", placeholder: "from ZENTRA Cloud → Settings → API" },
+            {
+              name: "token",
+              label: "API Token",
+              placeholder: "ZENTRA Cloud → API → Keys → Copy token",
+            },
+            {
+              name: "device_sn",
+              label: "Device serial",
+              type: "text",
+              placeholder: "e.g. z6-12345 (Devices page in ZENTRA Cloud)",
+            },
           ]}
-          helpText="On connect we generate a webhook secret you'll paste into METER's Push API setup. The secret is shown once — copy it now."
+          helpText="We validate the token against that device via the v4 get_readings API (see ZENTRA Cloud API docs). On success you get a one-time webhook secret to paste into METER Push API setup."
           onSubmit={connectMeter}
           onClose={() => setShowMeterDialog(false)}
+        />
+      )}
+
+      {showWeatherDialog && (
+        <WeatherLocationDialog
+          initialValues={
+            weatherStation
+              ? {
+                  name: weatherStation.name,
+                  lat: weatherStation.location.coordinates[1],
+                  lon: weatherStation.location.coordinates[0],
+                }
+              : undefined
+          }
+          onSubmit={updateWeatherStation}
+          onClose={() => setShowWeatherDialog(false)}
         />
       )}
 

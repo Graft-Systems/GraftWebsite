@@ -8,6 +8,7 @@ M0-02 step 6 + step 7 + step 9.
 
 from __future__ import annotations
 
+from django.utils import timezone
 from rest_framework import serializers
 
 from spray.models import (
@@ -22,6 +23,7 @@ from spray.models import (
     SprayRecord,
     User,
     Vineyard,
+    WeatherStation,
 )
 
 
@@ -203,12 +205,38 @@ def merge_block_geometries(existing, addition):
         f"Could not merge footprint: union returned {merged.geom_type}"
     )
 
+def subtract_block_geometries(existing, subtraction):
+    """Difference existing - subtraction polygon; persist as MultiPolygon (EPSG:4326)."""
+    from django.contrib.gis.geos import MultiPolygon, Polygon
+
+    if subtraction.geom_type != "Polygon":
+        raise serializers.ValidationError("subtract_geom must be a Polygon")
+    diff = existing.difference(subtraction)
+    
+    if diff.empty:
+        raise serializers.ValidationError("Cannot completely erase block geometry.")
+        
+    if diff.geom_type == "Polygon":
+        return MultiPolygon(diff)
+    if diff.geom_type == "MultiPolygon":
+        return diff
+    if diff.geom_type == "GeometryCollection":
+        # Keep only polygons from the collection
+        polys = [g for g in diff if g.geom_type == "Polygon"]
+        if not polys:
+             raise serializers.ValidationError("Erase operation resulted in no valid polygons.")
+        return MultiPolygon(polys)
+        
+    raise serializers.ValidationError(
+        f"Could not erase footprint: difference returned {diff.geom_type}"
+    )
 
 class BlockSerializer(serializers.ModelSerializer):
-    """Block read/write. `geom` is GeoJSON Polygon or MultiPolygon; `append_geom` merges a Polygon into the stored footprint."""
+    """Block read/write. `geom` is GeoJSON Polygon or MultiPolygon; `append_geom` merges, `subtract_geom` subtracts."""
 
     geom = GeometryField(required=False)
     append_geom = GeometryField(write_only=True, required=False)
+    subtract_geom = GeometryField(write_only=True, required=False)
     vineyard_id = serializers.UUIDField(write_only=True, required=False)
 
     class Meta:
@@ -219,6 +247,7 @@ class BlockSerializer(serializers.ModelSerializer):
             "name",
             "geom",
             "append_geom",
+            "subtract_geom",
             "variety",
             "training_system",
             "row_spacing_m",
@@ -229,14 +258,16 @@ class BlockSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at", "archived_at"]
 
     def validate(self, data):
-        if data.get("geom") is not None and data.get("append_geom") is not None:
+        geom_keys = [k for k in ["geom", "append_geom", "subtract_geom"] if data.get(k) is not None]
+        if len(geom_keys) > 1:
             raise serializers.ValidationError(
-                "Send either geom (replace footprint) or append_geom (add to footprint), not both."
+                "Send only one of geom, append_geom, or subtract_geom."
             )
         return data
 
     def create(self, validated_data):
         validated_data.pop("append_geom", None)
+        validated_data.pop("subtract_geom", None)
         if "geom" not in validated_data or validated_data["geom"] is None:
             raise serializers.ValidationError({"geom": "geom is required when creating a block"})
         return super().create(validated_data)
@@ -245,6 +276,11 @@ class BlockSerializer(serializers.ModelSerializer):
         append = validated_data.pop("append_geom", None)
         if append is not None:
             validated_data["geom"] = merge_block_geometries(instance.geom, append)
+            
+        subtract = validated_data.pop("subtract_geom", None)
+        if subtract is not None:
+            validated_data["geom"] = subtract_block_geometries(instance.geom, subtract)
+            
         incoming_settings = validated_data.pop("settings", None)
         if incoming_settings is not None:
             merged = {**(instance.settings or {}), **incoming_settings}
@@ -306,10 +342,147 @@ class CaptureSerializer(serializers.ModelSerializer):
             "taken_at",
             "uploaded_at",
             "status",
+            "notes",
             "download_url",
             "created_at",
         ]
         read_only_fields = fields
+
+
+class CaptureUpdateSerializer(serializers.ModelSerializer):
+    """PATCH body for capture detail — notes only."""
+
+    class Meta:
+        from spray.models import Capture as _Capture
+
+        model = _Capture
+        fields = ["notes"]
+
+
+def _validate_vine_location_in_block(block, location) -> None:
+    if location is None:
+        raise serializers.ValidationError({"location": "Location is required."})
+    if not block.geom.contains(location):
+        raise serializers.ValidationError(
+            {"location": "Vine must be inside the block footprint."}
+        )
+
+
+def _next_vine_index(block, row_index: int) -> int:
+    from django.db.models import Max
+
+    from spray.models import Vine
+
+    agg = (
+        Vine.objects.filter(
+            block=block,
+            row_index=row_index,
+            archived_at__isnull=True,
+        ).aggregate(m=Max("vine_index"))
+    )
+    return int(agg["m"] or 0) + 1
+
+
+class VineSerializer(serializers.ModelSerializer):
+    """Vine read/write; `location` is GeoJSON Point."""
+
+    location = GeometryField()
+    block_id = serializers.UUIDField(source="block.id", read_only=True)
+
+    class Meta:
+        from spray.models import Vine as _Vine
+
+        model = _Vine
+        fields = [
+            "id",
+            "block_id",
+            "location",
+            "row_index",
+            "vine_index",
+            "status",
+            "label",
+            "settings",
+            "created_at",
+            "archived_at",
+        ]
+        read_only_fields = ["id", "block_id", "created_at", "archived_at"]
+        extra_kwargs = {"vine_index": {"required": False}}
+
+    def validate(self, data):
+        block = self.context.get("block")
+        if block is None:
+            return data
+        loc = data.get("location")
+        if loc is not None or self.instance is None:
+            point = loc if loc is not None else getattr(self.instance, "location", None)
+            _validate_vine_location_in_block(block, point)
+        row_index = data.get("row_index")
+        vine_index = data.get("vine_index")
+        if self.instance is None and vine_index is None and row_index is not None:
+            data["vine_index"] = _next_vine_index(block, row_index)
+        return data
+
+    def create(self, validated_data):
+        validated_data["block"] = self.context["block"]
+        return super().create(validated_data)
+
+
+class VineRowBulkSerializer(serializers.Serializer):
+    """Place evenly spaced vines along a row segment."""
+
+    row_index = serializers.IntegerField(min_value=1)
+    start = serializers.ListField(
+        child=serializers.FloatField(), min_length=2, max_length=2
+    )
+    end = serializers.ListField(
+        child=serializers.FloatField(), min_length=2, max_length=2
+    )
+    count = serializers.IntegerField(min_value=2, max_value=250)
+    replace_row = serializers.BooleanField(default=True)
+
+    def validate(self, data):
+        block = self.context.get("block")
+        if block is None:
+            return data
+        from django.contrib.gis.geos import Point
+
+        for key in ("start", "end"):
+            lng, lat = data[key]
+            _validate_vine_location_in_block(block, Point(lng, lat, srid=4326))
+        return data
+
+    def create(self, validated_data):
+        from django.contrib.gis.geos import Point
+
+        from spray.models import Vine
+
+        block = self.context["block"]
+        row_index = validated_data["row_index"]
+        count = validated_data["count"]
+        lng0, lat0 = validated_data["start"]
+        lng1, lat1 = validated_data["end"]
+
+        if validated_data.get("replace_row", True):
+            Vine.objects.filter(
+                block=block,
+                row_index=row_index,
+                archived_at__isnull=True,
+            ).update(archived_at=timezone.now())
+
+        created = []
+        for i in range(count):
+            t = i / (count - 1) if count > 1 else 0.0
+            lng = lng0 + (lng1 - lng0) * t
+            lat = lat0 + (lat1 - lat0) * t
+            vine = Vine.objects.create(
+                block=block,
+                location=Point(lng, lat, srid=4326),
+                row_index=row_index,
+                vine_index=i + 1,
+                status=Vine.Status.OK,
+            )
+            created.append(vine)
+        return created
 
 
 # ---------------------------------------------------------------------
@@ -471,3 +644,26 @@ class SensorStationSerializer(serializers.ModelSerializer):
 
     def get_linked_block_ids(self, obj) -> list[str]:
         return [str(b.id) for b in obj.linked_blocks.all()]
+
+
+class WeatherStationSerializer(serializers.ModelSerializer):
+    """Weather data source (physical or gridded)."""
+
+    location = GeometryField(required=True)
+
+    class Meta:
+        model = WeatherStation
+        fields = [
+            "id",
+            "org",
+            "provider",
+            "station_id",
+            "name",
+            "location",
+            "is_regional_default",
+            "region",
+            "settings",
+            "created_at",
+            "last_pull_at",
+        ]
+        read_only_fields = ["id", "org", "created_at", "last_pull_at"]

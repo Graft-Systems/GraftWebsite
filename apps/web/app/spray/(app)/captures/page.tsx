@@ -19,9 +19,17 @@ type Capture = {
   taken_at: string | null;
   uploaded_at: string | null;
   status: string;
+  notes: string;
   download_url: string | null;
   created_at: string;
 };
+
+function captureLocationLabel(c: Capture): string {
+  if (c.vineyard_name && c.block_name) {
+    return `${c.vineyard_name} · ${c.block_name}`;
+  }
+  return c.block_id.slice(0, 8);
+}
 
 type Block = { id: string; name: string };
 
@@ -145,11 +153,6 @@ export default function CapturesPage() {
         </div>
       </header>
 
-      <p className="mt-4 text-sm text-foreground/55">
-        ML severity and disease labels ship when the inference API is wired — filters
-        today follow upload metadata only.
-      </p>
-
       {error && (
         <p className="mt-6 rounded-md border border-red-500/50 bg-red-500/10 p-3 text-sm text-red-300">
           {error}
@@ -171,32 +174,39 @@ export default function CapturesPage() {
       )}
 
       {captures && captures.length > 0 && (
-        <ul className="mt-10 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
+        <ul className="mt-8 grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8">
           {captures.map((c) => (
             <li key={c.id}>
               <Link
                 href={`/spray/captures/${c.id}`}
-                className="block overflow-hidden rounded-md border border-border/40 bg-background/40 transition-colors hover:border-amber/50"
+                className="group block overflow-hidden rounded-md border border-border/40 bg-background/40 transition-colors hover:border-amber/50"
               >
-                <div className="aspect-square">
+                <div className="aspect-[4/3] bg-foreground/5">
                   {c.download_url ? (
                     /* eslint-disable-next-line @next/next/no-img-element */
                     <img
                       src={c.download_url}
                       alt=""
-                      className="h-full w-full object-cover transition-transform hover:scale-105"
+                      className="h-full w-full object-cover transition-transform group-hover:scale-[1.03]"
                     />
                   ) : (
-                    <div className="flex h-full items-center justify-center text-xs text-foreground/40">
+                    <div className="flex h-full items-center justify-center text-[0.6rem] uppercase tracking-wide text-foreground/40">
                       {c.status}
                     </div>
                   )}
                 </div>
-                <p className="frame truncate px-2 py-1 text-[0.65rem] text-foreground/50">
-                  {c.vineyard_name && c.block_name
-                    ? `${c.vineyard_name} · ${c.block_name}`
-                    : c.block_id.slice(0, 8)}
-                </p>
+                <div className="space-y-0.5 px-1.5 py-1.5">
+                  <p className="frame truncate text-[0.6rem] font-medium uppercase tracking-wide text-foreground/55">
+                    {captureLocationLabel(c)}
+                  </p>
+                  {c.notes?.trim() ? (
+                    <p className="line-clamp-2 text-[0.65rem] leading-snug text-foreground/75">
+                      {c.notes.trim()}
+                    </p>
+                  ) : (
+                    <p className="text-[0.6rem] italic text-foreground/35">No notes</p>
+                  )}
+                </div>
               </Link>
             </li>
           ))}

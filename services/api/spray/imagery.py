@@ -41,12 +41,15 @@ EXT_BY_MIME = {
 
 
 def _client():
-    return boto3.client(
-        "s3",
-        aws_access_key_id=settings.AWS_ACCESS_KEY_ID or None,
-        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY or None,
-        region_name=settings.AWS_REGION,
-    )
+    kwargs = {
+        "region_name": settings.AWS_REGION,
+    }
+    if settings.AWS_ACCESS_KEY_ID:
+        kwargs["aws_access_key_id"] = settings.AWS_ACCESS_KEY_ID
+    if settings.AWS_SECRET_ACCESS_KEY:
+        kwargs["aws_secret_access_key"] = settings.AWS_SECRET_ACCESS_KEY
+
+    return boto3.client("s3", **kwargs)
 
 
 def s3_key_for(*, org_id, block_id, capture_id, ext: str) -> str:
@@ -67,19 +70,47 @@ def presigned_post(
 
     Returns `{url, fields}` where `fields` includes the signed policy.
     """
-    return _client().generate_presigned_post(
-        Bucket=settings.IMAGERY_BUCKET,
-        Key=s3_key,
-        Conditions=[
-            {"Content-Type": mime_type},
-            ["content-length-range", 1, max_size],
-        ],
-        Fields={"Content-Type": mime_type},
-        ExpiresIn=300,  # 5 min, matches spec §17.1
-    )
+    if settings.USE_LOCAL_STORAGE:
+        # Mock S3 presigned post for local dev.
+        # Use a relative URL so it goes through the Next.js /api proxy.
+        from django.urls import reverse
+
+        url = reverse("spray:local_upload")
+        return {
+            "url": url,
+            "fields": {
+                "key": s3_key,
+                "Content-Type": mime_type,
+            },
+        }
+
+    try:
+        return _client().generate_presigned_post(
+            Bucket=settings.IMAGERY_BUCKET,
+            Key=s3_key,
+            Conditions=[
+                {"Content-Type": mime_type},
+                ["content-length-range", 1, max_size],
+            ],
+            Fields={"Content-Type": mime_type},
+            ExpiresIn=300,  # 5 min, matches spec §17.1
+        )
+    except Exception as e:
+        logger.error(
+            "presigned_post failed for bucket=%s key=%s: %s",
+            settings.IMAGERY_BUCKET,
+            s3_key,
+            e,
+        )
+        raise
 
 
 def presigned_get_url(s3_key: str) -> str:
+    if settings.USE_LOCAL_STORAGE:
+        # Return a relative URL so it works through the Next.js /media proxy
+        # or directly on the backend.
+        return f"{settings.MEDIA_URL.rstrip('/')}/{s3_key}"
+
     return _client().generate_presigned_url(
         "get_object",
         Params={"Bucket": settings.IMAGERY_BUCKET, "Key": s3_key},
@@ -93,6 +124,14 @@ def head_object(s3_key: str) -> dict[str, Any] | None:
     Used by the finalize endpoint to verify the browser actually
     completed the PUT before flipping Capture.status to uploaded.
     """
+    if settings.USE_LOCAL_STORAGE:
+        import os
+
+        full_path = os.path.join(settings.MEDIA_ROOT, s3_key)
+        if not os.path.exists(full_path):
+            return None
+        return {"ContentLength": os.path.getsize(full_path)}
+
     try:
         return _client().head_object(
             Bucket=settings.IMAGERY_BUCKET, Key=s3_key
