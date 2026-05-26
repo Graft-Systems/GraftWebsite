@@ -8,7 +8,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { CreateVineyardDialog } from "@/components/spray/CreateVineyardDialog";
 import { formatSprayHttpError, orgCanArchiveVineyards, useActiveOrg } from "@/lib/sprayApi";
@@ -71,6 +71,7 @@ function formatBlockCount(n: number | undefined) {
 
 export default function VineyardsPage() {
   const pathname = usePathname();
+  const router = useRouter();
   const { org, loading: orgLoading, authedFetch } = useActiveOrg();
   const [vineyards, setVineyards] = useState<Vineyard[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -124,6 +125,7 @@ export default function VineyardsPage() {
     const created = (await res.json()) as Vineyard;
     setVineyards((vs) => [...(vs ?? []), created]);
     setShowCreate(false);
+    router.push(`/spray/vineyards/${created.id}`);
   }
 
   async function handleDeleteVineyard(v: Vineyard) {

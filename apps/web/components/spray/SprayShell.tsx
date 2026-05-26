@@ -237,6 +237,8 @@ export function SprayShell({ children }: { children: React.ReactNode }) {
               memberships={memberships}
               activeOrgId={org?.id ?? null}
               onSwitch={switchOrg}
+              authedFetch={authedFetch}
+              onOrgCreated={() => void reload()}
             />
             <UserButton
               appearance={{ variables: { colorPrimary: "#c08a3e" } }}

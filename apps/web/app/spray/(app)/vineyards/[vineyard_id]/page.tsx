@@ -31,6 +31,7 @@ import {
   orgCanArchiveVineyards,
   useActiveOrg,
 } from "@/lib/sprayApi";
+import { SPRAY_REGION_OPTIONS } from "@/lib/sprayRegions";
 import { useBlockVinePlacement } from "@/lib/useBlockVinePlacement";
 import { defaultRowLengthM } from "@/lib/vinePlacementUtils";
 
@@ -75,6 +76,10 @@ export default function VineyardDetailPage() {
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [deletingVineyard, setDeletingVineyard] = useState(false);
+  const [editingVineyard, setEditingVineyard] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editRegion, setEditRegion] = useState("");
+  const [savingVineyard, setSavingVineyard] = useState(false);
   const [editable, setEditable] = useState(false);
   const [footprintExtend, setFootprintExtend] = useState(false);
   const [footprintErase, setFootprintErase] = useState(false);
@@ -347,6 +352,34 @@ export default function VineyardDetailPage() {
     }
   }
 
+  function startEditVineyard() {
+    if (!vineyard) return;
+    setEditName(vineyard.name);
+    setEditRegion(vineyard.region);
+    setEditingVineyard(true);
+  }
+
+  async function saveVineyardEdit() {
+    if (!org || !vineyard) return;
+    setSavingVineyard(true);
+    setError(null);
+    try {
+      const res = await authedFetch(`/api/spray/orgs/${org.id}/vineyards/${vineyardId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editName.trim(), region: editRegion }),
+      });
+      if (!res.ok) {
+        setError(await formatSprayHttpError(res));
+        return;
+      }
+      setVineyard((await res.json()) as Vineyard);
+      setEditingVineyard(false);
+    } finally {
+      setSavingVineyard(false);
+    }
+  }
+
   const canArchiveVineyard = orgCanArchiveVineyards(org);
 
   if (!org && !orgLoading) {
@@ -370,16 +403,66 @@ export default function VineyardDetailPage() {
           {vineyard && (
             <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
               <h1 className="font-display text-xl">{vineyard.name}</h1>
-              {canArchiveVineyard && (
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => void archiveVineyard()}
-                  disabled={deletingVineyard}
-                  className="shrink-0 rounded-md border border-red-500/40 px-3 py-1.5 frame text-xs font-semibold uppercase tracking-wide text-red-300 transition-colors hover:bg-red-500/10 disabled:opacity-40"
+                  onClick={startEditVineyard}
+                  className="rounded-md border border-border/40 px-3 py-1.5 frame text-xs font-semibold uppercase tracking-wide text-foreground/60 transition-colors hover:border-amber/60 hover:text-amber"
                 >
-                  {deletingVineyard ? "Archiving…" : "Delete vineyard"}
+                  Edit
                 </button>
-              )}
+                {canArchiveVineyard && (
+                  <button
+                    type="button"
+                    onClick={() => void archiveVineyard()}
+                    disabled={deletingVineyard}
+                    className="shrink-0 rounded-md border border-red-500/40 px-3 py-1.5 frame text-xs font-semibold uppercase tracking-wide text-red-300 transition-colors hover:bg-red-500/10 disabled:opacity-40"
+                  >
+                    {deletingVineyard ? "Archiving…" : "Delete vineyard"}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+          {vineyard && editingVineyard && (
+            <div className="mt-2 flex flex-wrap items-end gap-2">
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-foreground/50">Name</span>
+                <input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="h-9 rounded-md border border-border/40 bg-background/60 px-3 text-sm"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-foreground/50">Region</span>
+                <select
+                  value={editRegion}
+                  onChange={(e) => setEditRegion(e.target.value)}
+                  className="h-9 rounded-md border border-border/40 bg-background/60 px-3 text-sm"
+                >
+                  {SPRAY_REGION_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={() => void saveVineyardEdit()}
+                disabled={savingVineyard || !editName.trim()}
+                className="h-9 rounded-md bg-amber px-4 frame text-xs font-semibold text-background transition-colors hover:bg-amber/90 disabled:opacity-40"
+              >
+                {savingVineyard ? "Saving…" : "Save"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditingVineyard(false)}
+                className="h-9 rounded-md border border-border/40 px-3 frame text-xs font-semibold text-foreground/60 transition-colors hover:text-foreground"
+              >
+                Cancel
+              </button>
             </div>
           )}
         </div>
