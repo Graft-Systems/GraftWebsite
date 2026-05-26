@@ -93,6 +93,10 @@ class CurrentOrgMiddleware:
         self.get_response = get_response
 
     def __call__(self, request: HttpRequest) -> HttpResponse:
+        # Public uploaded files (prediction tool, newsroom); no org RLS context.
+        if request.path.startswith("/media/"):
+            return self.get_response(request)
+
         # Best-effort early set from header; the view may overwrite via
         # set_current_org_id() once it has a more authoritative value
         # (e.g. JSON body, freshly-created Org).

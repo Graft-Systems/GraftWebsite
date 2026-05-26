@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { resolveMediaUrl } from "@/lib/resolveMediaUrl";
 
 type ResultItem = {
   filename: string;
@@ -66,25 +67,6 @@ function getBackendBaseUrl() {
     process.env.NEXT_PUBLIC_BACKEND_URL?.trim() ??
     "http://127.0.0.1:8080";
   return serverBase.replace(/\/+$/, "");
-}
-
-function resolveImageUrl(imageUrl?: string) {
-  if (!imageUrl) return "";
-  if (typeof window !== "undefined") {
-    try {
-      const parsed = new URL(imageUrl, window.location.origin);
-      if (parsed.pathname.startsWith("/media/")) {
-        return `${parsed.pathname}${parsed.search}`;
-      }
-    } catch {
-      /* keep relative paths as-is */
-    }
-    if (imageUrl.startsWith("/")) return imageUrl;
-  }
-  if (/^https?:\/\//i.test(imageUrl)) return imageUrl;
-  if (!imageUrl.startsWith("/")) return imageUrl;
-  const base = getBackendBaseUrl();
-  return base ? `${base}${imageUrl}` : imageUrl;
 }
 
 function getBatchTotal(batch: PredictionHistoryBatch) {
@@ -666,7 +648,7 @@ function ResultCard({ result }: { result: ResultItem }) {
       {result.image_url ? (
         // eslint-disable-next-line @next/next/no-img-element -- dynamic estimate API URLs; host varies by env
         <img
-          src={resolveImageUrl(result.image_url)}
+          src={resolveMediaUrl(result.image_url)}
           alt={result.filename}
           className="h-40 w-full object-cover"
           loading="lazy"

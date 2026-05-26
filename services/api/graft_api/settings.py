@@ -402,6 +402,14 @@ if sys.platform == "darwin":
     GDAL_LIBRARY_PATH = "/opt/homebrew/opt/gdal/lib/libgdal.dylib"
     GEOS_LIBRARY_PATH = "/opt/homebrew/opt/geos/lib/libgeos_c.dylib"
 
+# ───── PostGIS / GDAL (local macOS dev) ─────
+import sys
+
+if sys.platform == "darwin":
+    GDAL_LIBRARY_PATH = "/opt/homebrew/opt/gdal/lib/libgdal.dylib"
+    GEOS_LIBRARY_PATH = "/opt/homebrew/opt/geos/lib/libgeos_c.dylib"
+
+
 # ───── Production hardening ─────
 # HSTS / proxy / framing only when DEBUG=False. HTTPS redirect and secure
 # cookies stay off during DEBUG *and* under pytest so APIClient never

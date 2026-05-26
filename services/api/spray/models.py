@@ -19,9 +19,11 @@ ExternalRiskIndex (SA-1), RiskIndexRun, SprayRecord, Product, etc.
 from __future__ import annotations
 
 import uuid
+from typing import ClassVar
 
 from django.contrib.gis.db import models as gis_models
 from django.db import models
+from django.db.models.manager import Manager
 
 from spray.managers import OrgScopedManager
 
@@ -56,6 +58,8 @@ class Org(models.Model):
     settings = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     archived_at = models.DateTimeField(null=True, blank=True)
+
+    objects: ClassVar[Manager["Org"]] = models.Manager()
 
     class Meta:
         indexes = [
@@ -131,6 +135,8 @@ class Membership(models.Model):
         max_length=10, choices=Role.choices, default=Role.MEMBER
     )
     created_at = models.DateTimeField(auto_now_add=True)
+
+    objects: ClassVar[Manager["Membership"]] = models.Manager()
 
     class Meta:
         constraints = [
@@ -527,6 +533,8 @@ class WeatherObservation(models.Model):
     )
     is_forecast = models.BooleanField(default=False)
     raw = models.JSONField(default=dict, blank=True)
+
+    objects: ClassVar[Manager["WeatherObservation"]] = models.Manager()
 
     class Meta:
         constraints = [
@@ -1024,6 +1032,8 @@ class SensorStationBlock(models.Model):
         User, on_delete=models.SET_NULL, null=True, blank=True
     )
     linked_at = models.DateTimeField(auto_now_add=True)
+
+    objects: ClassVar[Manager["SensorStationBlock"]] = models.Manager()
 
     class Meta:
         constraints = [

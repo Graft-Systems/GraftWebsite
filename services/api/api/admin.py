@@ -36,7 +36,7 @@ class ContactSubmissionAdmin(admin.ModelAdmin):
 
     @admin.display(description="Message")
     def short_message(self, obj: ContactSubmission) -> str:
-        preview = obj.message.replace("\n", " ").strip()
+        preview = str(obj.message).replace("\n", " ").strip()
         return preview[:80] + ("…" if len(preview) > 80 else "")
 
     def has_add_permission(self, request) -> bool:

@@ -48,6 +48,17 @@ services:
         value: PredictionTool
       - key: PREDICTION_USE_RAW_DEPTH
         value: "false"
+      # User uploads (/tool history, newsroom). Prefer S3 for durable public URLs.
+      - key: USE_S3
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_STORAGE_BUCKET_NAME
+        sync: false
+      - key: AWS_S3_REGION_NAME
+        sync: false
 
 databases:
   - name: graft-db
