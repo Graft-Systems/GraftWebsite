@@ -50,7 +50,7 @@ const SIDEBAR_COLLAPSED_KEY = "spray.shell.sidebarCollapsed";
 export function SprayShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { isSignedIn } = useAuth();
-  const { org, loading, error, needsOrg, reload, authedFetch } = useActiveOrg();
+  const { org, memberships, loading, error, needsOrg, reload, switchOrg, authedFetch } = useActiveOrg();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
@@ -233,7 +233,11 @@ export function SprayShell({ children }: { children: React.ReactNode }) {
             {NAV.find((n) => pathname?.startsWith(n.href))?.label ?? "Graft Spray"}
           </span>
           <div className="flex items-center gap-4">
-            <OrgSwitcher />
+            <OrgSwitcher
+              memberships={memberships}
+              activeOrgId={org?.id ?? null}
+              onSwitch={switchOrg}
+            />
             <UserButton
               appearance={{ variables: { colorPrimary: "#c08a3e" } }}
               userProfileMode="modal"

@@ -17,6 +17,8 @@ const DEFAULT_SETTINGS: ProgramSettings = {
   min_temp_f: 45,
   max_temp_f: 85,
   avoid_rain_hours: 12,
+  notify_email_spray_urgent: false,
+  notify_email_verdict_daily: false,
 };
 
 type ConsentRow = {
@@ -100,7 +102,9 @@ export default function SettingsPage() {
         {tab === "members" && (
           <MembersTab orgId={org?.id ?? null} authedFetch={authedFetch} />
         )}
-        {tab === "notifications" && <NotificationsStub />}
+        {tab === "notifications" && (
+          <NotificationsTab orgId={org?.id ?? null} authedFetch={authedFetch} />
+        )}
         {tab === "billing" && <BillingStub />}
       </div>
     </div>
@@ -660,15 +664,148 @@ function MembersTab({
   );
 }
 
-function NotificationsStub() {
+function NotificationsTab({
+  orgId,
+  authedFetch,
+}: {
+  orgId: string | null;
+  authedFetch: (path: string, init?: RequestInit) => Promise<Response>;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [prefs, setPrefs] = useState({
+    notify_email_spray_urgent: false,
+    notify_email_verdict_daily: false,
+  });
+
+  useEffect(() => {
+    if (!orgId) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      const res = await authedFetch(`/api/spray/orgs/${orgId}/program-settings`);
+      if (!res.ok) {
+        setError("Notification preferences unavailable right now.");
+        setLoading(false);
+        return;
+      }
+      const data = (await res.json()) as {
+        notify_email_spray_urgent?: boolean;
+        notify_email_verdict_daily?: boolean;
+      };
+      if (!cancelled) {
+        setPrefs({
+          notify_email_spray_urgent: data.notify_email_spray_urgent ?? false,
+          notify_email_verdict_daily: data.notify_email_verdict_daily ?? false,
+        });
+        setLoading(false);
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId, authedFetch]);
+
+  async function toggle(key: keyof typeof prefs) {
+    if (!orgId) return;
+    const next = { ...prefs, [key]: !prefs[key] };
+    setSaving(key);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await authedFetch(`/api/spray/orgs/${orgId}/program-settings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [key]: next[key] }),
+      });
+      if (!res.ok) throw new Error("Could not save notification preferences.");
+      setPrefs(next);
+      setMessage("Saved.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save.");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  if (!orgId) {
+    return (
+      <p className="text-sm text-foreground/60">
+        Join an organization to manage notification preferences.
+      </p>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="h-48 animate-pulse rounded-md border border-border/40 bg-foreground/5" />
+    );
+  }
+
+  const PREFS: {
+    key: keyof typeof prefs;
+    label: string;
+    help: string;
+  }[] = [
+    {
+      key: "notify_email_spray_urgent",
+      label: "Email me when a block is urgent to spray",
+      help: "Sends an email when any block verdict changes to Spray with 24h or Now urgency.",
+    },
+    {
+      key: "notify_email_verdict_daily",
+      label: "Daily email digest of all block recommendations",
+      help: "One email per day summarizing the action (spray / scout / hold) for every active block.",
+    },
+  ];
+
   return (
     <section className="rounded-md border border-border/40 bg-background/40 p-5">
       <h2 className="font-display text-xl">Notifications</h2>
-      <p className="mt-3 text-sm text-foreground/60">
-        Web push and in-app notification preferences are not implemented in the pilot API yet
-        (no <code className="font-mono text-xs">POST /api/spray/notifications/test</code> route).
-        This tab is a placeholder so the shell matches the long-term settings model.
+      <p className="mt-2 text-sm text-foreground/60">
+        Email alerts for your organization&apos;s blocks. Sent to the address on your account.
       </p>
+      {error && (
+        <p className="mt-4 rounded-md border border-red-500/50 bg-red-500/10 p-3 text-sm text-red-300">
+          {error}
+        </p>
+      )}
+      {message && (
+        <p className="mt-4 rounded-md border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-300">
+          {message}
+        </p>
+      )}
+      <ul className="mt-6 space-y-3">
+        {PREFS.map(({ key, label, help }) => (
+          <li
+            key={key}
+            className="flex items-start justify-between gap-6 rounded-md border border-border/30 bg-background/30 px-4 py-3"
+          >
+            <div>
+              <p className="text-sm font-medium text-foreground/90">{label}</p>
+              <p className="mt-1 text-xs text-foreground/55">{help}</p>
+            </div>
+            <button
+              type="button"
+              disabled={saving === key}
+              onClick={() => void toggle(key)}
+              className={`shrink-0 min-h-[44px] rounded-md px-4 py-2 frame text-xs font-semibold transition-colors ${
+                prefs[key]
+                  ? "bg-emerald-500/20 text-emerald-200"
+                  : "border border-border/50 text-foreground/70"
+              } disabled:opacity-40`}
+            >
+              {saving === key ? "Saving…" : prefs[key] ? "On" : "Off"}
+            </button>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

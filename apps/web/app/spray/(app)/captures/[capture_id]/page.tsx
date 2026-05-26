@@ -149,6 +149,11 @@ export default function CaptureDetailPage() {
             </p>
           </header>
 
+          <p className="text-sm text-foreground/65">
+            {capture.status === "uploaded"
+              ? "Photo received. Analysis results appear in your block recommendation once processed."
+              : "Awaiting upload — no analysis available yet."}
+          </p>
           {capture.download_url ? (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img

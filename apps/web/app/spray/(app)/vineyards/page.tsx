@@ -166,7 +166,6 @@ export default function VineyardsPage() {
           {!org && !orgLoading && (
             <p className="max-w-xl text-sm text-foreground/55">
               No org membership yet — complete onboarding or ask an owner to invite you.
-              (Pilot uses your first org only; multi-org switching is not wired.)
             </p>
           )}
         </div>

@@ -349,7 +349,7 @@ export default function SprayDashboardPage() {
 
           <details className="mt-6 rounded-md border border-border/40 bg-background/20 p-4">
             <summary className="cursor-pointer font-display text-lg text-foreground/80">
-              Program, FRAC, and savings (pilot — not in active use)
+              Program, FRAC, and savings
             </summary>
             <div className="mt-4">
               <ProgramAndSavingsRow
