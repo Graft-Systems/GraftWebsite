@@ -4,6 +4,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { LenisProvider } from "@/components/providers/LenisProvider";
 import { FilmGrain } from "@/components/effects/FilmGrain";
 import { Nav } from "@/components/layout/Nav";
+import { NavAdminLink } from "@/components/layout/NavAdminLink";
 import { Footer } from "@/components/layout/Footer";
 import { MarketingChromeGuard } from "@/components/layout/MarketingChromeGuard";
 import "./globals.css";
@@ -64,7 +65,7 @@ export default function RootLayout({
         <body className="antialiased">
           <LenisProvider>
             <MarketingChromeGuard>
-              <Nav />
+              <Nav adminSlot={<NavAdminLink />} />
             </MarketingChromeGuard>
             {children}
             <MarketingChromeGuard>

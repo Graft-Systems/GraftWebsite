@@ -45,7 +45,6 @@ export function Footer() {
               <li><Link href="/tool" className="text-foreground/80 hover:text-foreground">Yield preview</Link></li>
               <li><Link href="/spray" className="text-foreground/80 hover:text-foreground">Spray</Link></li>
               <li><Link href="/contact" className="text-foreground/80 hover:text-foreground">Contact</Link></li>
-              <li><Link href="/admin" className="text-foreground/80 hover:text-foreground">Admin</Link></li>
             </ul>
           </div>
           <div>

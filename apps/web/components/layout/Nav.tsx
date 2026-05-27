@@ -15,7 +15,7 @@ const LINKS = [
   { href: "/contact", label: "Contact" },
 ];
 
-export function Nav() {
+export function Nav({ adminSlot }: { adminSlot?: React.ReactNode }) {
   const [scrolled, setScrolled] = useState(false);
   const [visible, setVisible] = useState(true);
   const { isSignedIn, isLoaded } = useAuth();
@@ -99,6 +99,7 @@ export function Nav() {
               </li>
             );
           })}
+          {adminSlot}
           <li>
             {isLoaded && isSignedIn ? (
               <UserButton
