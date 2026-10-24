@@ -32,7 +32,7 @@ const FOUNDERS: Person[] = [
 const TEAM: Person[] = [
   {
     name: "Kayan Shah",
-    role: "Business Development",
+    role: "Head of Operations",
     photo: "/team/headshot-kayan.jpg",
     bio: "Freshman studying BBA & PPE. Leads outreach to wine producers, manages discovery calls, develops pitch content. Bridges product and market to position Graft as a trusted solution.",
     linkedin: "https://www.linkedin.com/in/kayan-shah",
@@ -85,15 +85,8 @@ export function AboutTeam() {
           ))}
         </div>
 
-        {/* Subsection heading for the rest of the team */}
-        <div className="mt-24 border-t border-border/40 pt-14 lg:mt-28">
-          <h3 className="display text-2xl leading-tight text-foreground lg:text-[1.75rem]">
-            Michigan Build and Launch Team
-          </h3>
-        </div>
-
         {/* Team — compact horizontal cards */}
-        <div className="mt-12 grid grid-cols-1 gap-x-10 gap-y-10 md:grid-cols-2 lg:gap-x-14">
+        <div className="mt-24 grid grid-cols-1 gap-x-10 gap-y-10 border-t border-border/40 pt-14 md:grid-cols-2 lg:mt-28 lg:gap-x-14">
           {TEAM.map((p, i) => (
             <TeamCard key={p.name} person={p} index={i} />
           ))}
